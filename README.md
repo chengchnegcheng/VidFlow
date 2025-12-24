@@ -198,4 +198,4 @@ MIT License
 
 ---
 
-**VidFlow Team** © 2024
+**VidFlow Team** © 2025

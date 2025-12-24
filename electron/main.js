@@ -125,6 +125,15 @@ function startPythonBackend() {
         reject(new Error('Backend executable not found'));
         return;
       }
+
+      if (process.platform !== 'win32') {
+        try {
+          fs.chmodSync(backendPath, 0o755);
+          console.log(`[PROD] Set executable permission for ${backendPath}`);
+        } catch (error) {
+          console.error('[PROD] Failed to set executable permission:', error);
+        }
+      }
       
       // 指定 UTF-8 编码环境和禁用输出缓冲
       const env = {

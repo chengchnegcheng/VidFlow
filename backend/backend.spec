@@ -190,6 +190,16 @@ a = Analysis(
 
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
+use_upx = sys.platform == 'win32'
+
+icon_path = None
+if sys.platform == 'win32':
+    icon_path = os.path.join('..', 'resources', 'icons', 'icon.ico')
+elif sys.platform == 'darwin':
+    candidate_icon = os.path.join('..', 'resources', 'icon.icns')
+    if os.path.exists(candidate_icon):
+        icon_path = candidate_icon
+
 exe = EXE(
     pyz,
     a.scripts,
@@ -199,14 +209,14 @@ exe = EXE(
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=True,
+    upx=use_upx,
     console=True,  # 保留控制台窗口以查看日志
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon='../resources/icons/icon.ico' if sys.platform == 'win32' else None,
+    icon=icon_path,
 )
 
 coll = COLLECT(
@@ -215,7 +225,7 @@ coll = COLLECT(
     a.zipfiles,
     a.datas,
     strip=False,
-    upx=True,
+    upx=use_upx,
     upx_exclude=[],
     name='VidFlow-Backend',
 )

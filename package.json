@@ -10,7 +10,7 @@
         "electron:dev": "electron .",
         "build": "npm run build:all && npm run build:electron",
         "build:all": "npm run build:frontend && npm run build:backend",
-        "build:backend": "cd backend && venv\\Scripts\\python.exe -m PyInstaller backend.spec --clean --noconfirm",
+        "build:backend": "node scripts/build-backend.js",
         "build:frontend": "cd frontend && npm run build",
         "build:electron": "electron-builder --config electron-builder.json",
         "build:win": "npm run build:all && electron-builder --win --config electron-builder.json",
@@ -34,6 +34,7 @@
         "concurrently": "^8.2.2",
         "electron": "^28.0.0",
         "electron-builder": "^24.9.1",
+        "png2icons": "^2.0.1",
         "wait-on": "^7.2.0"
     },
     "dependencies": {

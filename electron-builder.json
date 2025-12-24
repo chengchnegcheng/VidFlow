@@ -53,9 +53,19 @@
     "installerHeaderIcon": "resources/icon.ico"
   },
   "mac": {
-    "target": ["dmg"],
+    "target": [
+      {
+        "target": "dmg",
+        "arch": ["x64", "arm64"]
+      }
+    ],
     "icon": "resources/icon.icns",
-    "category": "public.app-category.utilities"
+    "category": "public.app-category.utilities",
+    "hardenedRuntime": true,
+    "gatekeeperAssess": false,
+    "entitlements": "build/entitlements.mac.plist",
+    "entitlementsInherit": "build/entitlements.mac.plist",
+    "type": "distribution"
   },
   "linux": {
     "target": ["AppImage"],

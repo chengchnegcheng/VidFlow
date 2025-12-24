@@ -1108,7 +1108,9 @@ class ToolManager:
                         python_exe = sys.executable
                         if getattr(sys, 'frozen', False):
                             base_path = Path(sys._MEIPASS) if hasattr(sys, '_MEIPASS') else Path(sys.executable).parent / '_internal'
-                            embedded_python = base_path / 'python' / 'python.exe'
+                            # 根据平台选择正确的 Python 可执行文件名
+                            python_name = 'python.exe' if sys.platform == 'win32' else 'python'
+                            embedded_python = base_path / 'python' / python_name
                             if embedded_python.exists():
                                 python_exe = str(embedded_python)
 
@@ -1198,7 +1200,9 @@ print("cuda" if torch.cuda.is_available() else "cpu")
                 if getattr(sys, 'frozen', False):
                     # 打包后环境：寻找嵌入式 Python（在 _internal/python 目录）
                     base_path = Path(sys._MEIPASS) if hasattr(sys, '_MEIPASS') else Path(sys.executable).parent / '_internal'
-                    embedded_python = base_path / 'python' / 'python.exe'
+                    # 根据平台选择正确的 Python 可执行文件名
+                    python_name = 'python.exe' if sys.platform == 'win32' else 'python'
+                    embedded_python = base_path / 'python' / python_name
 
                     if embedded_python.exists():
                         python_exe = str(embedded_python)
