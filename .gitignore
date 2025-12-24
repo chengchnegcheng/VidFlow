@@ -16,7 +16,8 @@ backend/**/*.pyd
 dist/
 dist-output/
 release/
-build/
+build/**
+!build/entitlements.mac.plist
 frontend/dist/
 backend/dist/
 backend/build/
