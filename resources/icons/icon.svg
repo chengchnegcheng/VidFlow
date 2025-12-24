@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <!-- 极简黑白摄像机图标（透明背景） -->
+  <g transform="translate(256,256)">
+    <!-- 机身 -->
+    <rect x="-120" y="-80" width="220" height="160" rx="24"
+          fill="none" stroke="#000" stroke-width="28" stroke-linejoin="round"/>
+    <!-- 右侧取景器/镜头块 -->
+    <path d="M 110 -40 L 170 -80 L 170 80 L 110 40 Z"
+          fill="none" stroke="#000" stroke-width="28" stroke-linejoin="round"/>
+  </g>
+</svg>

@@ -1,0 +1,99 @@
+name: Build
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build for ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+        cache: 'npm'
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Install root dependencies
+      run: npm ci
+
+    - name: Install frontend dependencies
+      working-directory: ./frontend
+      run: npm ci
+
+    - name: Build frontend
+      working-directory: ./frontend
+      run: npm run build
+
+    - name: Install Python dependencies
+      working-directory: ./backend
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements-minimal.txt
+        pip install pyinstaller
+
+    - name: Build backend (Windows)
+      if: runner.os == 'Windows'
+      working-directory: ./backend
+      run: pyinstaller backend.spec --clean --noconfirm
+
+    - name: Build backend (Unix)
+      if: runner.os != 'Windows'
+      working-directory: ./backend
+      run: pyinstaller backend.spec --clean --noconfirm
+
+    - name: Build Electron app (Windows)
+      if: runner.os == 'Windows'
+      run: npm run build:win
+
+    - name: Build Electron app (macOS)
+      if: runner.os == 'macOS'
+      run: npm run build:mac
+
+    - name: Build Electron app (Linux)
+      if: runner.os == 'Linux'
+      run: npm run build:linux
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: VidFlow-${{ runner.os }}
+        path: |
+          release/
+          dist/
+
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+
+    steps:
+    - name: Download artifacts
+      uses: actions/download-artifact@v3
+
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          VidFlow-Windows/**/*
+          VidFlow-macOS/**/*
+          VidFlow-Linux/**/*
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

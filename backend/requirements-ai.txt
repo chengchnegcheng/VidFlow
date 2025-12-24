@@ -1,0 +1,6 @@
+# AI 字幕生成依赖（需 Python 3.8-3.11）
+torch>=2.0.0
+torchvision>=0.15.0
+torchaudio>=2.0.0
+faster-whisper>=1.0.0
+ctranslate2>=4.0.0

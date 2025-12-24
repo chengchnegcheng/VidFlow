@@ -1,0 +1,66 @@
+{
+  "appId": "com.vidflow.desktop",
+  "productName": "VidFlow",
+  "directories": {
+    "output": "dist-output",
+    "buildResources": "resources"
+  },
+  "files": [
+    "electron/**/*",
+    "frontend/dist/**/*",
+    "package.json",
+    "!**/*.map",
+    "!**/node_modules/**/test/**",
+    "!**/node_modules/**/tests/**",
+    "!**/node_modules/**/*.md",
+    "!**/node_modules/**/*.ts",
+    "!**/node_modules/**/.github/**",
+    "!**/__pycache__/**",
+    "!**/*.pyc",
+    "!**/*.pyo",
+    "!backend/**/*"
+  ],
+  "extraResources": [
+    {
+      "from": "backend/dist/VidFlow-Backend",
+      "to": "backend",
+      "filter": ["**/*"]
+    },
+    {
+      "from": "resources/icons",
+      "to": "icons",
+      "filter": ["**/*"]
+    }
+  ],
+  "win": {
+    "target": [
+      {
+        "target": "nsis",
+        "arch": ["x64"]
+      }
+    ],
+    "icon": "resources/icon.ico"
+  },
+  "nsis": {
+    "oneClick": false,
+    "allowToChangeInstallationDirectory": true,
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true,
+    "shortcutName": "VidFlow",
+    "differentialPackage": true,
+    "installerIcon": "resources/icon.ico",
+    "uninstallerIcon": "resources/icon.ico",
+    "installerHeaderIcon": "resources/icon.ico"
+  },
+  "mac": {
+    "target": ["dmg"],
+    "icon": "resources/icon.icns",
+    "category": "public.app-category.utilities"
+  },
+  "linux": {
+    "target": ["AppImage"],
+    "icon": "resources/icon.png",
+    "category": "Utility"
+  },
+  "publish": null
+}

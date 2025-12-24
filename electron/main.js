@@ -1,0 +1,1234 @@
+const { app, BrowserWindow, ipcMain, dialog, Notification, Tray, Menu } = require('electron');
+const path = require('path');
+const { spawn } = require('child_process');
+const fs = require('fs');
+const { CustomUpdater } = require('./updater-custom');
+
+// 设置应用名称和用户模型 ID（改善开发模式下的通知和任务栏体验）
+// app.setName('VidFlow Desktop');
+// if (process.platform === 'win32') {
+//   app.setAppUserModelId('com.vidflow.desktop');
+// }
+
+// 全局异常处理，防止应用崩溃
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught Exception:', error);
+  // 不要让应用崩溃
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+  // 不要让应用崩溃
+});
+
+let mainWindow;
+let pythonProcess;
+let tray = null;
+let backendPort = null;
+let backendReady = false;
+let updater = null;
+
+// 获取应用图标路径的辅助函数
+function getIconPath() {
+  const isDev = !app.isPackaged;
+  if (isDev) {
+    return process.platform === 'win32'
+      ? path.join(__dirname, '../resources/icons/icon.ico')
+      : path.join(__dirname, '../resources/icons/icon.png');
+  } else {
+    return process.platform === 'win32'
+      ? path.join(process.resourcesPath, 'icons', 'icon.ico')
+      : path.join(process.resourcesPath, 'icons', 'icon.png');
+  }
+}
+
+// Python 后端进程管理
+function startPythonBackend() {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+
+    const safeResolve = (port) => {
+      if (!settled) {
+        settled = true;
+        backendPort = port;
+        backendReady = true;
+        resolve(port);
+      }
+    };
+
+    const safeReject = (error) => {
+      if (!settled) {
+        settled = true;
+        reject(error);
+      }
+    };
+    const isDev = !app.isPackaged;
+    
+    console.log('========================================');
+    console.log('Starting Python Backend...');
+    console.log(`Mode: ${isDev ? 'Development' : 'Production'}`);
+    console.log(`Platform: ${process.platform}`);
+    console.log('========================================');
+    
+    if (isDev) {
+      // 开发模式：使用 Python 虚拟环境
+      const pythonPath = process.platform === 'win32' 
+        ? path.join(__dirname, '../backend/venv/Scripts/python.exe')
+        : path.join(__dirname, '../backend/venv/bin/python');
+      
+      const scriptPath = path.join(__dirname, '../backend/src/main.py');
+      
+      console.log(`[DEV] Python path: ${pythonPath}`);
+      console.log(`[DEV] Script path: ${scriptPath}`);
+      console.log(`[DEV] Python exists: ${fs.existsSync(pythonPath)}`);
+      console.log(`[DEV] Script exists: ${fs.existsSync(scriptPath)}`);
+      
+      // 指定 UTF-8 编码环境和禁用输出缓冲
+      const env = {
+        ...process.env,
+        PYTHONIOENCODING: 'utf-8',
+        PYTHONUTF8: '1',
+        PYTHONUNBUFFERED: '1',  // 禁用Python输出缓冲
+        // Windows 控制台编码
+        PYTHONLEGACYWINDOWSSTDIO: '1'
+      };
+      
+      pythonProcess = spawn(pythonPath, [scriptPath, '-u'], { env });
+    } else {
+      // 生产模式：使用打包的可执行文件
+      // PyInstaller 打包后的结构：backend/VidFlow-Backend.exe 和相关依赖文件
+      const backendPath = process.platform === 'win32'
+        ? path.join(process.resourcesPath, 'backend', 'VidFlow-Backend.exe')
+        : path.join(process.resourcesPath, 'backend', 'VidFlow-Backend');
+
+      console.log(`[PROD] Backend path: ${backendPath}`);
+      console.log(`[PROD] Backend exists: ${fs.existsSync(backendPath)}`);
+      console.log(`[PROD] resourcesPath: ${process.resourcesPath}`);
+
+      // 列出 backend 目录的内容以便调试
+      const backendDir = path.join(process.resourcesPath, 'backend');
+      if (fs.existsSync(backendDir)) {
+        console.log(`[PROD] Backend directory contents:`);
+        try {
+          const files = fs.readdirSync(backendDir);
+          files.slice(0, 20).forEach(file => console.log(`  - ${file}`));
+          if (files.length > 20) console.log(`  ... and ${files.length - 20} more files`);
+        } catch (err) {
+          console.error(`[PROD] Error reading backend directory: ${err.message}`);
+        }
+      } else {
+        console.error(`[PROD] Backend directory does not exist: ${backendDir}`);
+      }
+
+      if (!fs.existsSync(backendPath)) {
+        console.error(`❌ Backend executable not found at: ${backendPath}`);
+        reject(new Error('Backend executable not found'));
+        return;
+      }
+      
+      // 指定 UTF-8 编码环境和禁用输出缓冲
+      const env = {
+        ...process.env,
+        PYTHONIOENCODING: 'utf-8',
+        PYTHONUTF8: '1',
+        PYTHONUNBUFFERED: '1',  // 禁用Python输出缓冲
+        PYTHONLEGACYWINDOWSSTDIO: '1'
+      };
+      
+      pythonProcess = spawn(backendPath, [], { env });
+    }
+    
+    console.log('Backend process spawned, waiting for startup...');
+
+    pythonProcess.stdout.on('data', (data) => {
+      // 使用 UTF-8 解码 Python 输出
+      const output = data.toString('utf8');
+      console.log(`[BACKEND STDOUT] ${output}`);
+      
+      // 检测端口信息输出（支持多种格式）
+      if (output.includes('Uvicorn running on') || output.includes('Backend startup completed')) {
+        const match = output.match(/http:\/\/127\.0\.0\.1:(\d+)/);
+        if (match && !backendReady) {
+          const port = parseInt(match[1]);
+          console.log(`✅ Backend ready on port: ${port}`);
+          safeResolve(port);
+        }
+      }
+      
+      // 如果看到端口文件写入日志，立即尝试读取
+      if (output.includes('Server will start on port:')) {
+        const portMatch = output.match(/port:\s*(\d+)/);
+        if (portMatch && !backendReady) {
+          console.log(`Detected port from log: ${portMatch[1]}, reading port file...`);
+          setTimeout(() => {
+            if (!backendReady) {
+              tryReadPortFile().then(resolve).catch(() => {});
+            }
+          }, 500);
+        }
+      }
+    });
+
+    pythonProcess.stderr.on('data', (data) => {
+      // 使用 UTF-8 解码 Python 错误输出
+      const errorOutput = data.toString('utf8');
+      console.error(`[BACKEND STDERR] ${errorOutput}`);
+      
+      // 检查是否是启动信息（有些日志会输出到 stderr）
+      if (errorOutput.includes('Uvicorn running on')) {
+        const match = errorOutput.match(/http:\/\/127\.0\.0\.1:(\d+)/);
+        if (match) {
+          const port = parseInt(match[1]);
+          console.log(`✅ Backend ready on port (from stderr): ${port}`);
+          safeResolve(port);
+        }
+      }
+    });
+
+    pythonProcess.on('close', (code) => {
+      console.log(`========================================`);
+      console.log(`❌ Python process exited with code ${code}`);
+      console.log(`========================================`);
+      backendReady = false;
+      
+      // 如果后端意外退出，通知用户
+      if (code !== 0 && mainWindow) {
+        dialog.showMessageBoxSync(mainWindow, {
+          type: 'error',
+          title: '后端进程异常退出',
+          message: `后端进程异常退出 (退出码: ${code})\n应用可能无法正常工作，建议重启应用。`,
+          buttons: ['确定']
+        });
+      }
+    });
+    
+    pythonProcess.on('error', (error) => {
+      console.error('========================================');
+      console.error('❌ Python process error:', error);
+      console.error('========================================');
+      safeReject(error);
+    });
+    
+    // 超时处理 - 增加到10秒，并更早开始尝试读取端口文件
+    setTimeout(() => {
+      if (!settled && !backendReady) {
+        console.warn('⚠️ Backend startup timeout (10s), trying to read port file...');
+        tryReadPortFile().then(safeResolve).catch(safeReject);
+      }
+    }, 10000);
+    
+    // 同时，在2秒后开始轮询端口文件（不阻塞主流程）
+    setTimeout(() => {
+      if (!settled && !backendReady) {
+        console.log('🔄 Starting port file polling...');
+        tryReadPortFile().then((port) => {
+          if (!settled && !backendReady) {
+            console.log(`✅ Backend ready via port file: ${port}`);
+            safeResolve(port);
+          }
+        }).catch((err) => {
+          console.log('Port file not ready yet, will retry...');
+          if (!settled && err) {
+            console.warn(err.message || err);
+          }
+        });
+      }
+    }, 2000);
+  });
+}
+
+// 尝试从文件读取端口信息
+function tryReadPortFile() {
+  return new Promise((resolve, reject) => {
+    const isDev = !app.isPackaged;
+    let portFilePath;
+
+    if (isDev) {
+      // 开发模式：使用项目目录
+      portFilePath = path.join(__dirname, '../backend/data/backend_port.json');
+    } else {
+      // 生产模式：使用用户数据目录（与后端保持一致）
+      if (process.platform === 'win32') {
+        const appdata = process.env.APPDATA || path.join(require('os').homedir(), 'AppData', 'Roaming');
+        portFilePath = path.join(appdata, 'VidFlow', 'data', 'backend_port.json');
+      } else if (process.platform === 'darwin') {
+        portFilePath = path.join(require('os').homedir(), 'Library', 'Application Support', 'VidFlow', 'data', 'backend_port.json');
+      } else {
+        portFilePath = path.join(require('os').homedir(), '.local', 'share', 'VidFlow', 'data', 'backend_port.json');
+      }
+    }
+
+    console.log(`Looking for port file at: ${portFilePath}`);
+    
+    const maxRetries = 10;
+    let retries = 0;
+    
+    const readFile = () => {
+      try {
+        if (fs.existsSync(portFilePath)) {
+          const data = fs.readFileSync(portFilePath, 'utf8');
+          const config = JSON.parse(data);
+          backendPort = config.port;
+          backendReady = true;
+          console.log(`Read backend port from file: ${backendPort}`);
+          resolve(backendPort);
+        } else if (retries < maxRetries) {
+          retries++;
+          setTimeout(readFile, 500);
+        } else {
+          reject(new Error('Failed to read backend port'));
+        }
+      } catch (error) {
+        if (retries < maxRetries) {
+          retries++;
+          setTimeout(readFile, 500);
+        } else {
+          reject(error);
+        }
+      }
+    };
+    
+    readFile();
+  });
+}
+
+// 创建主窗口
+function createWindow() {
+  const isDev = !app.isPackaged;
+  
+  // 根据平台选择图标格式
+  let iconPath;
+  if (isDev) {
+    // 开发模式
+    iconPath = process.platform === 'win32'
+      ? path.join(__dirname, '../resources/icons/icon.ico')
+      : path.join(__dirname, '../resources/icons/icon.png');
+  } else {
+    // 生产模式
+    iconPath = process.platform === 'win32'
+      ? path.join(process.resourcesPath, 'icons', 'icon.ico')
+      : path.join(process.resourcesPath, 'icons', 'icon.png');
+  }
+
+  console.log('Creating main window...');
+  console.log('Window icon path:', iconPath);
+  console.log('Icon exists:', fs.existsSync(iconPath));
+  console.log('DISABLE_BACKEND_AUTO_START:', process.env.DISABLE_BACKEND_AUTO_START);
+
+  mainWindow = new BrowserWindow({
+    width: 1200,
+    height: 800,
+    minWidth: 1000,
+    minHeight: 600,
+    show: false, // 先不显示，等加载完成后再显示
+    frame: false, // 隐藏系统标题栏，使用自定义标题栏
+    title: 'VidFlow',
+    backgroundColor: '#1a1a1a', // 设置背景色，避免白屏闪烁
+    transparent: false,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, 'preload.js'),
+      devTools: true // 允许打开开发者工具
+    },
+    icon: iconPath
+  });
+  
+  console.log('Main window created');
+
+  // 处理新窗口打开（例如点击外部链接）
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    console.log('Opening new window:', url);
+    return {
+      action: 'allow',
+      overrideBrowserWindowOptions: {
+        icon: iconPath,
+        title: 'VidFlow',
+        webPreferences: {
+          nodeIntegration: false,
+          contextIsolation: true
+        }
+      }
+    };
+  });
+
+  // 等页面加载完成后再显示窗口，避免白屏
+  mainWindow.once('ready-to-show', () => {
+    console.log('Window ready to show');
+    mainWindow.show();
+    mainWindow.focus();
+  });
+
+  // isDev 已经在函数开头声明过了
+  if (isDev) {
+    // 开发模式：加载 Vite 开发服务器
+    console.log('[DEV] Loading from Vite dev server');
+
+    // 读取前端端口文件
+    const getFrontendPort = () => {
+      try {
+        const portFile = path.join(__dirname, '../frontend_port.json');
+        if (fs.existsSync(portFile)) {
+          const portData = JSON.parse(fs.readFileSync(portFile, 'utf-8'));
+          console.log(`[DEV] Found frontend port file: ${portData.port}`);
+          return portData.port;
+        }
+      } catch (error) {
+        console.log('[DEV] Failed to read frontend port file, using default 5173');
+      }
+      return 5173; // 默认端口
+    };
+
+    // 添加重试逻辑，最多重试5次
+    const loadWithRetry = async (retries = 5) => {
+      try {
+        const port = getFrontendPort();
+        const url = `http://localhost:${port}`;
+        console.log(`[DEV] Attempting to load from: ${url}`);
+        await mainWindow.loadURL(url);
+        console.log('[DEV] Successfully loaded from Vite dev server');
+      } catch (err) {
+        console.error(`[DEV] Failed to load dev server (attempt ${6 - retries}/5):`, err);
+        if (retries > 0) {
+          console.log(`[DEV] Retrying in 2 seconds...`);
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          await loadWithRetry(retries - 1);
+        } else {
+          console.error('[DEV] All retry attempts failed');
+          const port = getFrontendPort();
+          // 显示友好的错误页面
+          const errorHtml = `
+            <html>
+              <head><style>
+                body {
+                  background: #1a1a1a;
+                  color: #fff;
+                  font-family: sans-serif;
+                  padding: 40px;
+                  text-align: center;
+                }
+                h1 { color: #ff6b6b; }
+                .message { margin: 20px 0; }
+                .tip { color: #4ecdc4; margin-top: 20px; }
+              </style></head>
+              <body>
+                <h1>⚠️ 前端开发服务器未启动</h1>
+                <div class="message">
+                  <p>无法连接到 http://localhost:${port}/</p>
+                  <p>请确保前端开发服务器正在运行</p>
+                </div>
+                <div class="tip">
+                  <p>💡 在终端运行: <code>cd frontend && npm run dev</code></p>
+                  <p>🔄 或使用: <code>npm run dev</code> 启动完整应用</p>
+                  <p>🔄 服务器启动后按 Ctrl+R 刷新此页面</p>
+                </div>
+              </body>
+            </html>
+          `;
+          mainWindow.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(errorHtml));
+        }
+      }
+    };
+
+    loadWithRetry();
+    mainWindow.webContents.openDevTools();
+  } else {
+    // 生产模式：加载构建后的文件
+    console.log('[PROD] Loading frontend...');
+    console.log('[PROD] __dirname:', __dirname);
+    console.log('[PROD] app.isPackaged:', app.isPackaged);
+    console.log('[PROD] process.resourcesPath:', process.resourcesPath);
+    
+    // 正确的路径：从 app.asar 中加载
+    // __dirname 在打包后指向 app.asar/electron
+    const frontendPath = path.join(__dirname, '..', 'frontend', 'dist', 'index.html');
+    
+    console.log('[PROD] Loading from:', frontendPath);
+    
+    mainWindow.loadFile(frontendPath).then(() => {
+      console.log('[PROD] Frontend loaded successfully');
+    }).catch(err => {
+      console.error('[PROD] Failed to load frontend:', err);
+      console.error('[PROD] Path:', frontendPath);
+      
+      // 显示详细错误信息
+      const errorHtml = `
+        <html>
+          <head><style>
+            body { 
+              background: #1a1a1a; 
+              color: #fff; 
+              font-family: 'Segoe UI', sans-serif; 
+              padding: 40px;
+              max-width: 800px;
+              margin: 0 auto;
+            }
+            h1 { color: #ff6b6b; margin-bottom: 20px; }
+            .info { 
+              background: #2a2a2a; 
+              padding: 15px; 
+              border-radius: 8px; 
+              margin: 15px 0;
+              font-family: 'Consolas', monospace;
+              font-size: 13px;
+              line-height: 1.6;
+            }
+            .label { color: #4CAF50; font-weight: bold; }
+          </style></head>
+          <body>
+            <h1>Failed to Load Frontend</h1>
+            <div class="info">
+              <div><span class="label">Error:</span> ${err.message}</div>
+              <div><span class="label">Path:</span> ${frontendPath}</div>
+              <div><span class="label">__dirname:</span> ${__dirname}</div>
+              <div><span class="label">resourcesPath:</span> ${process.resourcesPath}</div>
+            </div>
+            <p>Press <strong>F12</strong> to open DevTools for more details</p>
+          </body>
+        </html>
+      `;
+      mainWindow.loadURL(`data:text/html,${encodeURIComponent(errorHtml)}`);
+    });
+    
+    // F12 打开开发者工具
+    mainWindow.webContents.on('before-input-event', (event, input) => {
+      if (input.key === 'F12') {
+        mainWindow.webContents.toggleDevTools();
+        event.preventDefault();
+      }
+    });
+  }
+
+  // 注册右键上下文菜单
+  const inputMenu = Menu.buildFromTemplate([
+    { role: 'undo', label: '撤销' },
+    { role: 'redo', label: '重做' },
+    { type: 'separator' },
+    { role: 'cut', label: '剪切' },
+    { role: 'copy', label: '复制' },
+    { role: 'paste', label: '粘贴' },
+    { role: 'delete', label: '删除' },
+    { type: 'separator' },
+    { role: 'selectAll', label: '全选' },
+  ]);
+
+  const selectionMenu = Menu.buildFromTemplate([
+    { role: 'copy', label: '复制' },
+    { type: 'separator' },
+    { role: 'selectAll', label: '全选' },
+  ]);
+
+  mainWindow.webContents.on('context-menu', (_event, params) => {
+    const menu = params.isEditable ? inputMenu : selectionMenu;
+    menu.popup({ window: mainWindow });
+  });
+
+  // 添加加载失败处理
+  mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
+    console.error('Failed to load page:', errorCode, errorDescription);
+    // 加载失败后显示错误页面而不是退出
+    if (errorCode !== -3) { // -3 是用户取消加载，忽略
+      const errorHtml = `
+        <html>
+          <head>
+            <style>
+              body { 
+                background: #1a1a1a; 
+                color: #fff; 
+                font-family: sans-serif; 
+                padding: 50px;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                height: 100vh;
+                margin: 0;
+              }
+              h1 { color: #ff6b6b; }
+              .error-code { 
+                background: #2a2a2a; 
+                padding: 20px; 
+                border-radius: 8px; 
+                margin: 20px 0;
+                font-family: monospace;
+              }
+              .tip { color: #4ecdc4; margin-top: 20px; }
+            </style>
+          </head>
+          <body>
+            <h1>⚠️ 前端加载失败</h1>
+            <div class="error-code">
+              <p><strong>错误代码:</strong> ${errorCode}</p>
+              <p><strong>错误描述:</strong> ${errorDescription}</p>
+            </div>
+            <p class="tip">💡 按 F12 打开开发者工具查看详细信息</p>
+            <p class="tip">🔄 重启应用试试</p>
+          </body>
+        </html>
+      `;
+      mainWindow.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(errorHtml));
+    }
+  });
+  
+  // 监听加载完成
+  mainWindow.webContents.on('did-finish-load', () => {
+    console.log('Page loaded successfully');
+  });
+  
+  // 监听 DOM 加载完成
+  mainWindow.webContents.on('dom-ready', () => {
+    console.log('DOM ready');
+  });
+  
+  // 防止窗口意外关闭
+  mainWindow.on('closed', () => {
+    console.log('Window closed event triggered');
+    mainWindow = null;
+  });
+  
+  // 捕获未处理的异常，防止崩溃
+  mainWindow.webContents.on('crashed', (event, killed) => {
+    console.error('❌ Renderer process crashed!', { killed });
+    
+    // 显示错误对话框
+    dialog.showMessageBoxSync(mainWindow, {
+      type: 'error',
+      title: '渲染进程崩溃',
+      message: '应用渲染进程崩溃，请重启应用',
+      buttons: ['确定'],
+      icon: getIconPath()
+    });
+    
+    // 重新加载窗口
+    if (mainWindow) {
+      mainWindow.reload();
+    }
+  });
+  
+  mainWindow.webContents.on('render-process-gone', (event, details) => {
+    console.error('❌ Render process gone!', details);
+    console.error('Reason:', details.reason);
+    console.error('Exit code:', details.exitCode);
+    
+    if (details.reason !== 'clean-exit') {
+      dialog.showMessageBoxSync(mainWindow, {
+        type: 'error',
+        title: '渲染进程异常退出',
+        message: `渲染进程异常退出\n原因: ${details.reason}\n退出码: ${details.exitCode}`,
+        buttons: ['确定'],
+        icon: getIconPath()
+      });
+    }
+  });
+  
+  // 捕获未响应
+  mainWindow.webContents.on('unresponsive', () => {
+    console.error('❌ Window became unresponsive');
+
+    const choice = dialog.showMessageBoxSync(mainWindow, {
+      type: 'warning',
+      title: '应用未响应',
+      message: '应用似乎未响应，是否要重新加载？',
+      buttons: ['等待', '重新加载'],
+      defaultId: 0,
+      icon: getIconPath()
+    });
+    
+    if (choice === 1) {
+      mainWindow.reload();
+    }
+  });
+  
+  mainWindow.webContents.on('responsive', () => {
+    console.log('✅ Window became responsive again');
+  });
+
+  // 监听窗口最大化/还原状态
+  mainWindow.on('maximize', () => {
+    console.log('Window maximized');
+    mainWindow.webContents.send('window-state-changed', { isMaximized: true });
+  });
+
+  mainWindow.on('unmaximize', () => {
+    console.log('Window unmaximized');
+    mainWindow.webContents.send('window-state-changed', { isMaximized: false });
+  });
+
+  // 窗口关闭行为
+  mainWindow.on('close', (event) => {
+    console.log('========================================');
+    console.log('Window close event triggered!');
+    console.log('app.isQuitting:', app.isQuitting);
+    console.log('Platform:', process.platform);
+    console.log('DISABLE_TRAY:', process.env.DISABLE_TRAY);
+    console.log('========================================');
+    
+    // 如果不是退出应用，在 Windows 上最小化到托盘
+    // 但如果设置了 DISABLE_TRAY 环境变量，则直接退出
+    if (!app.isQuitting && process.platform === 'win32' && !process.env.DISABLE_TRAY) {
+      event.preventDefault();
+      mainWindow.hide();
+      console.log('✅ Window hidden to tray');
+    } else {
+      console.log('✅ Window will close and app will quit');
+    }
+  });
+}
+
+// 初始化更新器
+function initUpdater() {
+  // 创建更新器实例
+  updater = new CustomUpdater({
+    updateServerUrl: 'http://shcrystal.top:8321',
+    autoCheck: true,
+    autoDownload: false  // 不自动下载，等用户确认
+  });
+
+  // 监听更新事件
+  updater.on('checking-for-update', () => {
+    console.log('[Update] Checking for updates...');
+    if (mainWindow) {
+      mainWindow.webContents.send('update-checking');
+    }
+  });
+
+  updater.on('update-available', (info) => {
+    console.log('[Update] Update available:', info);
+    if (mainWindow) {
+      mainWindow.webContents.send('update-available', info);
+    }
+  });
+
+  updater.on('update-not-available', (info) => {
+    console.log('[Update] No update available');
+    if (mainWindow) {
+      mainWindow.webContents.send('update-not-available', info);
+    }
+  });
+
+  updater.on('download-progress', (progress) => {
+    if (mainWindow) {
+      mainWindow.webContents.send('download-progress', progress);
+    }
+  });
+
+  updater.on('update-downloaded', (info) => {
+    console.log('[Update] Update downloaded:', info);
+    if (mainWindow) {
+      mainWindow.webContents.send('update-downloaded', info);
+    }
+  });
+
+  updater.on('error', (error) => {
+    console.error('[Update] Update error:', error);
+    if (mainWindow) {
+      mainWindow.webContents.send('update-error', error.message);
+    }
+  });
+
+  // 应用启动时检查更新（延迟5秒）
+  setTimeout(() => {
+    updater.checkForUpdates().catch(err => {
+      console.error('[Update] Check failed:', err);
+    });
+  }, 5000);
+}
+
+// 创建系统托盘
+function createTray() {
+  // 如果设置了 DISABLE_TRAY，跳过托盘创建
+  if (process.env.DISABLE_TRAY) {
+    console.log('⚠️ Tray disabled by environment variable');
+    return;
+  }
+  
+  try {
+    const isDev = !app.isPackaged;
+    
+    // 托盘图标路径（Windows 使用 .ico，其他平台使用 .png）
+    let iconPath;
+    if (isDev) {
+      // 开发模式：相对于当前文件
+      iconPath = process.platform === 'win32'
+        ? path.join(__dirname, '../resources/icons/icon.ico')
+        : path.join(__dirname, '../resources/icons/icon.png');
+    } else {
+      // 生产模式：使用 process.resourcesPath
+      iconPath = process.platform === 'win32'
+        ? path.join(process.resourcesPath, 'icons', 'icon.ico')
+        : path.join(process.resourcesPath, 'icons', 'icon.png');
+    }
+
+    console.log('Creating tray with icon:', iconPath);
+    console.log('Icon exists:', fs.existsSync(iconPath));
+    console.log('Mode:', isDev ? 'Development' : 'Production');
+    console.log('__dirname:', __dirname);
+    console.log('process.resourcesPath:', process.resourcesPath);
+    
+    if (!fs.existsSync(iconPath)) {
+      console.error('❌ Tray icon not found:', iconPath);
+      return;
+    }
+
+    tray = new Tray(iconPath);
+    console.log('✅ Tray created successfully');
+    
+    // 托盘提示文本
+    tray.setToolTip('VidFlow - 全能视频下载器');
+    
+    // 创建托盘右键菜单
+    const contextMenu = Menu.buildFromTemplate([
+      {
+        label: '显示主窗口',
+        click: () => {
+          if (mainWindow) {
+            mainWindow.show();
+            mainWindow.focus();
+          }
+        }
+      },
+      {
+        label: '隐藏窗口',
+        click: () => {
+          if (mainWindow) {
+            mainWindow.hide();
+          }
+        }
+      },
+      { type: 'separator' },
+      {
+        label: '关于 VidFlow',
+        click: () => {
+          if (mainWindow) {
+            mainWindow.show();
+            mainWindow.focus();
+          }
+        }
+      },
+      { type: 'separator' },
+      {
+        label: '退出应用',
+        click: () => {
+          app.isQuitting = true;
+          app.quit();
+        }
+      }
+    ]);
+    
+    tray.setContextMenu(contextMenu);
+    
+    // 双击托盘图标显示/隐藏窗口
+    tray.on('double-click', () => {
+      if (mainWindow) {
+        if (mainWindow.isVisible()) {
+          mainWindow.hide();
+        } else {
+          mainWindow.show();
+          mainWindow.focus();
+        }
+      }
+    });
+    
+    // Windows 单击托盘图标显示/隐藏窗口
+    if (process.platform === 'win32') {
+      tray.on('click', () => {
+        if (mainWindow) {
+          if (mainWindow.isVisible()) {
+            mainWindow.hide();
+          } else {
+            mainWindow.show();
+            mainWindow.focus();
+          }
+        }
+      });
+    }
+    
+    console.log('✅ Tray menu and events configured');
+  } catch (error) {
+    console.error('❌ Failed to create tray:', error);
+    tray = null;
+    return;
+  }
+}
+
+// 禁用硬件加速，避免某些系统上的渲染问题
+app.disableHardwareAcceleration();
+console.log('Hardware acceleration disabled');
+
+// 应用准备就绪
+app.whenReady().then(async () => {
+  console.log('========================================');
+  console.log('App is ready, starting initialization...');
+  console.log('========================================');
+  
+  // 移除应用菜单栏
+  Menu.setApplicationMenu(null);
+  console.log('Menu removed');
+  
+  // 先创建窗口，立即显示界面给用户
+  console.log('Creating window first...');
+  createWindow();
+  console.log('Window created, now starting backend...');
+
+  // 检查是否禁用后端自动启动（用于手动启动后端的开发场景）
+  if (process.env.DISABLE_BACKEND_AUTO_START === '1') {
+    console.log('⚠️ Backend auto-start disabled by environment variable');
+    console.log('⚠️ Make sure you have started the backend manually!');
+
+    // 尝试读取已存在的端口文件
+    setTimeout(() => {
+      tryReadPortFile()
+        .then(port => {
+          console.log(`✅ Found existing backend on port: ${port}`);
+          if (mainWindow) {
+            mainWindow.webContents.send('backend-ready', { port });
+          }
+        })
+        .catch(err => {
+          console.error('❌ Could not find backend port file:', err);
+          console.error('❌ Please make sure backend is running!');
+        });
+    }, 1000);
+
+    // 立即创建托盘
+    console.log('Creating tray...');
+    createTray();
+
+    // 初始化更新器
+    console.log('Initializing updater...');
+    initUpdater();
+
+    return;
+  }
+
+  // 异步启动后端，不阻塞窗口显示
+  try {
+    const port = await startPythonBackend();
+    console.log('✅ Backend started successfully on port:', port);
+    
+    // 通知渲染进程后端已就绪
+    if (mainWindow) {
+      mainWindow.webContents.send('backend-ready', { port });
+    }
+    
+    // 立即创建托盘（不延迟）
+    console.log('Creating tray...');
+    createTray();
+    
+    // 初始化更新器
+    console.log('Initializing updater...');
+    initUpdater();
+    
+  } catch (error) {
+    console.error('❌ Failed to start backend:', error);
+    
+    // 通知渲染进程后端启动失败
+    if (mainWindow && mainWindow.webContents) {
+      mainWindow.webContents.send('backend-error', { 
+        message: error.message || '后端启动失败' 
+      });
+    }
+    
+    // 或者直接在窗口中显示错误页面
+    setTimeout(() => {
+      if (mainWindow && mainWindow.webContents) {
+        const errorHtml = `
+          <html>
+            <head>
+              <style>
+                body { 
+                  background: #1a1a1a; 
+                  color: #fff; 
+                  font-family: 'Segoe UI', sans-serif; 
+                  padding: 40px;
+                  display: flex;
+                  flex-direction: column;
+                  align-items: center;
+                  justify-content: center;
+                  height: 100vh;
+                  margin: 0;
+                }
+                h1 { color: #ff6b6b; margin-bottom: 20px; }
+                .error { 
+                  background: #2a2a2a; 
+                  padding: 20px; 
+                  border-radius: 8px; 
+                  margin: 20px 0;
+                  max-width: 600px;
+                }
+                .tip { color: #4ecdc4; margin-top: 10px; }
+              </style>
+            </head>
+            <body>
+              <h1>⚠️ 后端启动失败</h1>
+              <div class="error">
+                <p><strong>错误信息:</strong> ${error.message}</p>
+                <p class="tip">请检查后端文件是否存在，或查看控制台日志获取详细信息</p>
+              </div>
+            </body>
+          </html>
+        `;
+        mainWindow.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(errorHtml));
+      }
+    }, 1000);
+  }
+});
+
+// macOS 激活应用时如果没有窗口则创建一个
+app.on('activate', () => {
+  console.log('========================================');
+  console.log('App activated');
+  console.log('Windows count:', BrowserWindow.getAllWindows().length);
+  console.log('========================================');
+  
+  if (BrowserWindow.getAllWindows().length === 0) {
+    createWindow();
+  }
+});
+
+// 所有窗口关闭
+app.on('window-all-closed', () => {
+  console.log('========================================');
+  console.log('window-all-closed event triggered!');
+  console.log('Platform:', process.platform);
+  console.log('========================================');
+  
+  // macOS 下所有窗口关闭时退出应用
+  // Windows 下窗口关闭时不退出，继续在托盘运行
+  if (process.platform === 'darwin') {
+    // 关闭 Python 后端
+    if (pythonProcess) {
+      pythonProcess.kill();
+    }
+    app.quit();
+  }
+  // Windows 下窗口关闭时不退出，继续在托盘运行
+  console.log('Windows: App continues running in tray');
+});
+
+// 应用退出前清理
+app.on('before-quit', () => {
+  console.log('========================================');
+  console.log('before-quit event triggered!');
+  console.log('========================================');
+  app.isQuitting = true;
+});
+
+app.on('will-quit', () => {
+  console.log('========================================');
+  console.log('will-quit event triggered!');
+  console.log('========================================');
+});
+
+// 应用退出
+app.on('quit', () => {
+  console.log('========================================');
+  console.log('App quit!');
+  console.log('========================================');
+  
+  // 关闭 Python 后端
+  if (pythonProcess) {
+    pythonProcess.kill();
+  }
+  
+  // 销毁托盘图标
+  if (tray) {
+    tray.destroy();
+  }
+});
+
+// IPC 处理程序
+
+// 获取后端端口
+ipcMain.handle('get-backend-port', async () => {
+  const config = {
+    port: backendPort,
+    ready: backendReady,
+    host: '127.0.0.1'
+  };
+  // 启用日志以诊断端口问题
+  console.log('[IPC] get-backend-port called, returning:', config);
+  return config;
+});
+
+// 选择目录
+ipcMain.handle('select-directory', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    properties: ['openDirectory']
+  });
+  return result.filePaths[0];
+});
+
+// 选择视频文件
+ipcMain.handle('select-video-file', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    properties: ['openFile'],
+    filters: [
+      { name: 'Video Files', extensions: ['mp4', 'mkv', 'avi', 'mov', 'wmv', 'flv', 'webm', 'm4v'] },
+      { name: 'All Files', extensions: ['*'] }
+    ]
+  });
+  return result.filePaths[0];
+});
+
+// 选择多个文件
+ipcMain.handle('select-files', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    properties: ['openFile', 'multiSelections']
+  });
+  return result.filePaths;
+});
+
+// 打开文件所在文件夹
+ipcMain.handle('show-item-in-folder', async (event, filePath) => {
+  const { shell } = require('electron');
+  shell.showItemInFolder(filePath);
+});
+
+// 打开文件夹
+ipcMain.handle('open-folder', async (event, folderPath) => {
+  const { shell } = require('electron');
+  await shell.openPath(folderPath);
+});
+
+// 打开外部链接
+ipcMain.handle('open-external', async (event, url) => {
+  const { shell } = require('electron');
+  await shell.openExternal(url);
+});
+
+// 获取应用版本
+ipcMain.handle('get-app-version', () => {
+  return app.getVersion();
+});
+
+// 检查文件是否存在
+ipcMain.handle('file-exists', async (event, filePath) => {
+  return fs.existsSync(filePath);
+});
+
+// 获取文件信息
+ipcMain.handle('get-file-info', async (event, filePath) => {
+  try {
+    const stats = fs.statSync(filePath);
+    return {
+      size: stats.size,
+      created: stats.birthtime,
+      modified: stats.mtime,
+      isFile: stats.isFile(),
+      isDirectory: stats.isDirectory()
+    };
+  } catch (error) {
+    return null;
+  }
+});
+
+// 显示桌面通知
+ipcMain.handle('show-notification', async (event, options) => {
+  try {
+    // 根据平台选择图标格式
+    const defaultIcon = process.platform === 'win32'
+      ? path.join(__dirname, '../resources/icons/icon.ico')
+      : path.join(__dirname, '../resources/icons/icon.png');
+    
+    const notification = new Notification({
+      title: options.title || 'VidFlow',
+      body: options.body || '',
+      icon: options.icon || defaultIcon,
+      silent: options.silent || false
+    });
+    
+    notification.show();
+    
+    // 点击通知时聚焦窗口
+    notification.on('click', () => {
+      if (mainWindow) {
+        if (mainWindow.isMinimized()) {
+          mainWindow.restore();
+        }
+        mainWindow.focus();
+      }
+    });
+    
+    return { success: true };
+  } catch (error) {
+    console.error('Notification error:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// 窗口控制
+ipcMain.handle('window-minimize', () => {
+  if (mainWindow) {
+    mainWindow.minimize();
+  }
+});
+
+ipcMain.handle('window-maximize', () => {
+  if (mainWindow) {
+    if (mainWindow.isMaximized()) {
+      mainWindow.unmaximize();
+    } else {
+      mainWindow.maximize();
+    }
+  }
+});
+
+ipcMain.handle('window-close', () => {
+  if (mainWindow) {
+    mainWindow.close();
+  }
+});
+
+// 更新相关 IPC 处理器
+
+// 手动检查更新
+ipcMain.handle('custom-update-check', async () => {
+  try {
+    if (!updater) {
+      return { success: false, error: 'Updater not initialized' };
+    }
+    const result = await updater.checkForUpdates();
+    return { success: true, data: result };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+// 开始下载更新
+ipcMain.handle('custom-update-download', async () => {
+  try {
+    if (!updater) {
+      return { success: false, error: 'Updater not initialized' };
+    }
+    await updater.downloadUpdate();
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+// 退出并安装
+ipcMain.handle('custom-update-install', async () => {
+  try {
+    if (!updater) {
+      return { success: false, error: 'Updater not initialized' };
+    }
+    await updater.quitAndInstall();
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+// 清理所有更新文件
+ipcMain.handle('custom-update-clean', async () => {
+  try {
+    if (!updater) {
+      return { success: false, error: 'Updater not initialized' };
+    }
+    return updater.cleanAllUpdateFiles();
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
