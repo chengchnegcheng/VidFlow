@@ -155,7 +155,8 @@ async def get_video_info(request: VideoInfoRequest):
         elif 'youtube.com' in request.url.lower() or 'youtu.be' in request.url.lower():
             detail_msg = f"获取 YouTube 视频信息失败。\n\n💡 提示：YouTube 在国内需要代理访问\n\n错误详情：{error_msg}"
 
-        raise HTTPException(status_code=500, detail=detail_msg)
+        # 返回 400 而不是 500，因为这些是用户可操作的错误
+        raise HTTPException(status_code=400, detail=detail_msg)
 
 @router.post("/start")
 async def start_download(
@@ -221,9 +222,18 @@ async def start_download(
             "video_info": video_info,
             "queue_status": queue_status
         }
+    except HTTPException:
+        # 已经是 HTTPException，直接抛出
+        raise
     except Exception as e:
         logger.error(f"Error starting download: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        # 返回 400 而不是 500，因为这通常是用户可操作的错误
+        error_msg = str(e)
+        # 如果错误信息中包含用户友好的提示，直接返回
+        if "💡" in error_msg or "解决方法" in error_msg:
+            raise HTTPException(status_code=400, detail=error_msg)
+        # 否则包装一下
+        raise HTTPException(status_code=400, detail=f"启动下载失败: {error_msg}")
 
 async def _process_queue():
     """处理下载队列"""

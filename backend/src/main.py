@@ -161,13 +161,18 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """应用生命周期管理"""
-    # 启动时执行
+    startup_start_time = time.time()
+    logger.info("Backend startup initiated")
+
+    # 启动时执行 - 只做最必要的同步初始化
     from src.models import Base, init_database
     await init_database()
     logger.info("Database initialized")
 
+    # 所有耗时操作都放到后台异步执行,不阻塞API启动
+    # 这样可以让健康检查和API立即可用,提升用户体验
+
     # 清理旧的进行中任务（后台任务，不阻塞启动）
-    # 这样可以避免在启动时阻塞 API 请求
     asyncio.create_task(cleanup_stale_tasks())
 
     # 初始化工具（后台任务，不阻塞启动）
@@ -175,7 +180,6 @@ async def lifespan(app: FastAPI):
     asyncio.create_task(initialize_tools())
 
     # 预热AI状态缓存（后台任务，不阻塞启动）
-    # 避免首次请求时导入torch导致慢查询
     def preload_ai_cache():
         from src.api.system import _preload_ai_status_cache
         _preload_ai_status_cache()
@@ -193,10 +197,8 @@ async def lifespan(app: FastAPI):
     )
     logger.info("Database backup scheduler started (interval: 24 hours)")
 
-    # 给数据库一点时间初始化完成
-    await asyncio.sleep(0.1)
-
-    logger.info("✅ Backend startup completed, ready to accept requests")
+    startup_duration = time.time() - startup_start_time
+    logger.info(f"✅ Backend startup completed in {startup_duration:.3f}s, ready to accept requests")
 
     yield
 
