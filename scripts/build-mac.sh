@@ -76,6 +76,19 @@ if ! command -v python3 &> /dev/null; then
     exit 1
 fi
 PYTHON_VERSION=$(python3 --version | awk '{print $2}')
+
+# 检查 Python 版本是否为 beta/rc
+if [[ "$PYTHON_VERSION" =~ (a|b|rc) ]]; then
+    log_error "检测到 Python Beta/RC 版本: Python $PYTHON_VERSION"
+    log_error "SQLAlchemy 不支持 Python 测试版本"
+    log_info "请运行以下命令安装稳定版并重新构建:"
+    echo "  brew install python@3.11"
+    echo "  cd backend && rm -rf venv"
+    echo "  /opt/homebrew/bin/python3.11 -m venv venv"
+    echo "  source venv/bin/activate && pip install -r requirements.txt"
+    exit 1
+fi
+
 log_success "Python: $PYTHON_VERSION"
 
 # 检查 Python 版本（推荐 3.11）
@@ -83,7 +96,7 @@ PYTHON_MAJOR=$(python3 -c "import sys; print(sys.version_info.major)")
 PYTHON_MINOR=$(python3 -c "import sys; print(sys.version_info.minor)")
 
 if [ "$PYTHON_MAJOR" -eq 3 ] && [ "$PYTHON_MINOR" -ge 12 ]; then
-    log_warning "Python $PYTHON_VERSION 可能不兼容 AI 工具"
+    log_warning "Python $PYTHON_VERSION 可能不兼容 AI 工具（faster-whisper 需要 3.11）"
     log_warning "推荐使用 Python 3.11: brew install python@3.11"
 fi
 

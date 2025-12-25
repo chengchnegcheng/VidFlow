@@ -75,7 +75,21 @@ if ! command -v python3 &> /dev/null; then
     log_info "请运行: brew install python@3.11"
     exit 1
 fi
-log_success "Python: $(python3 --version)"
+
+# 检查 Python 版本是否为 beta/rc
+PYTHON_VERSION=$(python3 --version 2>&1)
+if [[ "$PYTHON_VERSION" =~ (a|b|rc) ]]; then
+    log_error "检测到 Python Beta/RC 版本: $PYTHON_VERSION"
+    log_error "SQLAlchemy 不支持 Python 测试版本"
+    log_info "请运行以下命令安装稳定版:"
+    echo "  brew install python@3.11"
+    echo "  cd backend && rm -rf venv"
+    echo "  /opt/homebrew/bin/python3.11 -m venv venv"
+    echo "  source venv/bin/activate && pip install -r requirements.txt"
+    exit 1
+fi
+
+log_success "Python: $PYTHON_VERSION"
 
 # 检查依赖是否已安装
 echo ""

@@ -104,34 +104,78 @@ fi
 
 # 检查 Python 3.11
 PYTHON_CMD=""
+
+# 检测 Python beta/rc 版本的函数
+check_python_stability() {
+    local py_cmd=$1
+    local version=$($py_cmd --version 2>&1 | awk '{print $2}')
+
+    if [[ "$version" =~ (a|b|rc) ]]; then
+        return 1  # 不稳定版本
+    else
+        return 0  # 稳定版本
+    fi
+}
+
 if command -v python3.11 &> /dev/null; then
-    PYTHON_CMD="python3.11"
-    log_success "Python 3.11: $(python3.11 --version)"
+    if check_python_stability "python3.11"; then
+        PYTHON_CMD="python3.11"
+        log_success "Python 3.11: $(python3.11 --version)"
+    else
+        log_error "检测到 Python 3.11 Beta/RC 版本: $(python3.11 --version)"
+        log_error "SQLAlchemy 不支持 Python 测试版本"
+        log_info "正在通过 Homebrew 安装稳定版..."
+        brew install python@3.11
+        PYTHON_CMD="/opt/homebrew/bin/python3.11"
+        log_success "Python 3.11 稳定版安装完成"
+    fi
 elif command -v python3 &> /dev/null; then
     PYTHON_VERSION=$(python3 --version | awk '{print $2}')
     PYTHON_MINOR=$(python3 -c "import sys; print(sys.version_info.minor)")
 
     if [ "$PYTHON_MINOR" -eq 11 ]; then
-        PYTHON_CMD="python3"
-        log_success "Python 3.11: $PYTHON_VERSION"
-    else
+        if check_python_stability "python3"; then
+            PYTHON_CMD="python3"
+            log_success "Python 3.11: $PYTHON_VERSION"
+        else
+            log_error "检测到 Python 3.11 Beta/RC 版本: $PYTHON_VERSION"
+            log_error "SQLAlchemy 不支持 Python 测试版本"
+            log_info "正在通过 Homebrew 安装稳定版..."
+            brew install python@3.11
+            PYTHON_CMD="/opt/homebrew/bin/python3.11"
+            log_success "Python 3.11 稳定版安装完成"
+        fi
+    elif [ "$PYTHON_MINOR" -eq 12 ] || [ "$PYTHON_MINOR" -eq 13 ]; then
         log_warning "Python 3 已安装，但版本是 $PYTHON_VERSION"
-        log_warning "AI 功能需要 Python 3.11"
+        log_warning "AI 功能需要 Python 3.11（faster-whisper 不支持 3.12+）"
         log_info "是否安装 Python 3.11? (y/n)"
         read -r response
         if [[ "$response" =~ ^[Yy]$ ]]; then
             brew install python@3.11
-            PYTHON_CMD="python3.11"
+            PYTHON_CMD="/opt/homebrew/bin/python3.11"
             log_success "Python 3.11 安装完成"
         else
             PYTHON_CMD="python3"
-            log_warning "使用现有 Python 版本，AI 功能可能不可用"
+            log_warning "使用现有 Python 版本，AI 功能将不可用"
+        fi
+    else
+        log_warning "Python 3 已安装，但版本是 $PYTHON_VERSION"
+        log_warning "推荐使用 Python 3.11"
+        log_info "是否安装 Python 3.11? (y/n)"
+        read -r response
+        if [[ "$response" =~ ^[Yy]$ ]]; then
+            brew install python@3.11
+            PYTHON_CMD="/opt/homebrew/bin/python3.11"
+            log_success "Python 3.11 安装完成"
+        else
+            PYTHON_CMD="python3"
+            log_warning "使用现有 Python 版本"
         fi
     fi
 else
     log_info "正在安装 Python 3.11..."
     brew install python@3.11
-    PYTHON_CMD="python3.11"
+    PYTHON_CMD="/opt/homebrew/bin/python3.11"
     log_success "Python 3.11 安装完成"
 fi
 
