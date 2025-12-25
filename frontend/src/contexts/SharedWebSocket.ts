@@ -6,6 +6,7 @@ let ws: WebSocket | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 const listeners = new Set<Listener>();
 let connected = false;
+let lastLoggedMessages: { [key: string]: any } = {}; // 缓存上次日志的消息
 
 const notify = (data: any) => {
   listeners.forEach(listener => {
@@ -43,12 +44,27 @@ const connect = () => {
 
     ws.onopen = () => {
       connected = true;
+      console.log('[SharedWS] Connected');
     };
 
     ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
-        console.log('[SharedWS] Received message:', data);
+
+        // 只在消息实际变化时打印日志(避免重复进度消息导致日志爆炸)
+        if (data?.type === 'tool_install_progress') {
+          const key = `${data.type}_${data.tool_id}`;
+          const lastMsg = lastLoggedMessages[key];
+          // 只在进度变化时打印
+          if (!lastMsg || lastMsg.progress !== data.progress) {
+            console.log(`[SharedWS] ${data.tool_id}: ${data.progress}% - ${data.message}`);
+            lastLoggedMessages[key] = data;
+          }
+        } else {
+          // 非进度消息，正常打印
+          console.log('[SharedWS] Received:', data);
+        }
+
         notify(data);
       } catch (err) {
         console.warn('[SharedWS] parse error', err);
@@ -58,6 +74,7 @@ const connect = () => {
     ws.onclose = () => {
       connected = false;
       if (listeners.size > 0) {
+        console.log('[SharedWS] Disconnected, reconnecting...');
         scheduleReconnect(3000);
       }
     };

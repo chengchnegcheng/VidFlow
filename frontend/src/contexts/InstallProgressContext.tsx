@@ -21,6 +21,7 @@ const InstallProgressContext = createContext<InstallProgressContextType | undefi
 export function InstallProgressProvider({ children }: { children: ReactNode }) {
   const [installProgress, setInstallProgress] = useState<InstallProgress>({});
   const isMountedRef = useRef(true);
+  const lastProgressRef = useRef<{ [key: string]: number }>({});
 
   // WebSocket 连接（共享通道）
   useEffect(() => {
@@ -29,38 +30,46 @@ export function InstallProgressProvider({ children }: { children: ReactNode }) {
     const unsubscribe = subscribeSharedWebSocket((data) => {
       if (!isMountedRef.current) return;
 
-      console.log('[InstallProgressContext] Received WebSocket data:', data);
-
       if (data?.type === 'tool_install_progress') {
-        console.log('[InstallProgressContext] Processing tool_install_progress:', {
-          tool_id: data.tool_id,
-          progress: data.progress,
-          message: data.message
-        });
+        const toolId = data.tool_id;
+        const currentProgress = data.progress;
+        const lastProgress = lastProgressRef.current[toolId];
+
+        // 只在进度实际变化时打印日志(避免日志爆炸)
+        if (lastProgress !== currentProgress) {
+          console.log('[InstallProgressContext] Progress update:', {
+            tool_id: toolId,
+            progress: currentProgress,
+            message: data.message
+          });
+          lastProgressRef.current[toolId] = currentProgress;
+        }
 
         setInstallProgress(prev => ({
           ...prev,
-          [data.tool_id]: {
-            progress: data.progress,
+          [toolId]: {
+            progress: currentProgress,
             message: data.message,
-            installing: data.progress < 100
+            installing: currentProgress < 100
           }
         }));
 
         // 安装完成后清理进度
-        if (data.progress === 100) {
+        if (currentProgress === 100) {
           setTimeout(() => {
             setInstallProgress(prev => {
               const newProgress = { ...prev };
-              delete newProgress[data.tool_id];
+              delete newProgress[toolId];
               return newProgress;
             });
+            // 清理进度记录
+            delete lastProgressRef.current[toolId];
           }, 3000);
         }
       }
 
       if (data?.type === 'tool_install_error') {
-        console.log('[InstallProgressContext] Processing tool_install_error:', {
+        console.log('[InstallProgressContext] Install error:', {
           tool_id: data.tool_id,
           error: data.error
         });
