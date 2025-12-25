@@ -166,6 +166,8 @@ export function SubtitleProcessor() {
     setInstalling(true);
     try {
       const apiUrl = getApiBaseUrl();
+      const platform = window.electron?.platform;
+
       // 从 localStorage 读取用户选择的版本
       let version = 'cpu';
       try {
@@ -175,6 +177,15 @@ export function SubtitleProcessor() {
         }
       } catch {
         // 忽略错误，使用默认 cpu
+      }
+
+      if (platform === 'darwin') {
+        version = 'cpu';
+        try {
+          localStorage.setItem('vidflow_ai_version', 'cpu');
+        } catch {
+          // ignore
+        }
       }
 
       const response = await fetch(`${apiUrl}/api/v1/system/tools/ai/install?version=${version}`, {

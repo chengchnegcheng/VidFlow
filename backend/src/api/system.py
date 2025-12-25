@@ -39,40 +39,61 @@ def _preload_ai_status_cache():
 
     logger.info("[AI Status] 开始预热缓存...")
     try:
-        # 尝试导入torch并检查CUDA
-        import torch  # type: ignore[import-not-found]
-        cuda_available = torch.cuda.is_available()
-        torch_version = torch.__version__
+        # 预热逻辑需要与 /api/v1/system/tools/ai/status 的返回结构保持一致
+        # 否则前端会因为字段缺失/类型不匹配而出错。
+        from importlib.metadata import version as get_version, PackageNotFoundError
 
-        _ai_status_cache = {
-            "installed": True,
-            "version": torch_version,
-            "cuda_available": cuda_available,
-            "gpu_name": torch.cuda.get_device_name(0) if cuda_available else None,
-            "can_install": False
-        }
-        _ai_status_cache_time = datetime.now()
-        logger.info(f"[AI Status] 缓存预热完成: torch {torch_version}, CUDA可用: {cuda_available}")
-    except ImportError:
-        # torch未安装
-        _ai_status_cache = {
+        result: Dict[str, Any] = {
             "installed": False,
+            "faster_whisper": False,
+            "torch": False,
             "version": None,
-            "cuda_available": False,
-            "gpu_name": None,
-            "can_install": True
+            "torch_version": None,
+            "device": "unknown",
+            "python_compatible": True,
         }
+
+        try:
+            result["version"] = get_version("faster-whisper")
+            result["faster_whisper"] = True
+        except PackageNotFoundError:
+            result["faster_whisper"] = False
+
+        try:
+            result["torch_version"] = get_version("torch")
+            result["torch"] = True
+        except PackageNotFoundError:
+            result["torch"] = False
+
+        if result["torch"]:
+            try:
+                import torch  # type: ignore[import-not-found]
+                if torch.cuda.is_available():
+                    result["device"] = "cuda"
+                elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+                    result["device"] = "mps"
+                else:
+                    result["device"] = "cpu"
+            except Exception as e:
+                logger.warning(f"[AI Status] torch preload failed, defaulting to CPU: {e}")
+                result["device"] = "cpu"
+
+        result["installed"] = bool(result["faster_whisper"] and result["torch"])
+
+        _ai_status_cache = result
         _ai_status_cache_time = datetime.now()
-        logger.info("[AI Status] 缓存预热完成（torch未安装）")
+        logger.info(f"[AI Status] 缓存预热完成: {_ai_status_cache}")
     except Exception as e:
         # 其他错误
         _ai_status_cache = {
             "installed": False,
+            "faster_whisper": False,
+            "torch": False,
             "version": None,
-            "cuda_available": False,
-            "gpu_name": None,
-            "can_install": True,
-            "error": str(e)
+            "torch_version": None,
+            "device": "unknown",
+            "python_compatible": True,
+            "error": str(e),
         }
         _ai_status_cache_time = datetime.now()
         logger.warning(f"[AI Status] 缓存预热失败: {e}")

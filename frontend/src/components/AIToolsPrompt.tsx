@@ -26,6 +26,11 @@ export function AIToolsPrompt({
   onGoToSettings,
   installing = false
 }: AIToolsPromptProps) {
+  const platform = window.electron?.platform;
+  const arch = window.electron?.arch;
+  const isMacOS = platform === 'darwin';
+  const isAppleSilicon = isMacOS && arch === 'arm64';
+
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent className="max-w-md">
@@ -43,12 +48,22 @@ export function AIToolsPrompt({
               <div className="bg-blue-50 border border-blue-200 rounded-md p-3 space-y-2">
                 <p className="font-medium text-blue-900 text-sm">AI 组件说明</p>
                 <ul className="text-sm text-blue-800 space-y-1">
-                  <li>• <span className="font-medium">CPU 版本</span>（推荐）：约 300 MB，兼容所有机器</li>
-                  <li>• <span className="font-medium">GPU 版本</span>：约 1 GB，需要 NVIDIA 显卡</li>
+                  <li>
+                    • <span className="font-medium">CPU 版本</span>（推荐）：约 300 MB，
+                    {isAppleSilicon ? 'Apple Silicon 优化（CPU）' : '兼容所有机器'}
+                  </li>
+                  {!isMacOS && (
+                    <li>• <span className="font-medium">GPU 版本</span>：约 1 GB，需要 NVIDIA 显卡</li>
+                  )}
                 </ul>
                 <p className="text-xs text-blue-700 mt-2">
                   💡 推荐使用 CPU 版本，体积小、兼容性好
                 </p>
+                {isMacOS && (
+                  <p className="text-xs text-blue-700">
+                    macOS 不支持 CUDA 版本。{isAppleSilicon ? 'Apple Silicon 将使用 CPU 模式（针对 Apple 芯片优化）。' : ''}
+                  </p>
+                )}
               </div>
 
               <p className="text-sm text-muted-foreground">
@@ -80,7 +95,7 @@ export function AIToolsPrompt({
             disabled={installing}
           >
             <Download className="w-4 h-4 mr-2" />
-            {installing ? '安装中...' : '立即安装（CPU）'}
+            {installing ? '安装中...' : isAppleSilicon ? '立即安装（CPU，Apple Silicon 优化）' : '立即安装（CPU）'}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

@@ -92,6 +92,8 @@ export function ToolsConfig() {
   // AI 版本选择 - 从 localStorage 读取用户上次的选择
   const [aiVersion, setAiVersion] = useState<'cpu' | 'cuda'>(() => {
     try {
+      const platform = window.electron?.platform;
+      if (platform === 'darwin') return 'cpu';
       const saved = localStorage.getItem('vidflow_ai_version');
       return (saved === 'cuda' || saved === 'cpu') ? saved : 'cpu';
     } catch {
@@ -105,9 +107,11 @@ export function ToolsConfig() {
 
   // 当用户更改 AI 版本时，保存到 localStorage
   const handleAIVersionChange = useCallback((version: 'cpu' | 'cuda') => {
-    setAiVersion(version);
+    const platform = window.electron?.platform;
+    const resolvedVersion = (platform === 'darwin' && version === 'cuda') ? 'cpu' : version;
+    setAiVersion(resolvedVersion);
     try {
-      localStorage.setItem('vidflow_ai_version', version);
+      localStorage.setItem('vidflow_ai_version', resolvedVersion);
     } catch (error) {
       console.error('Failed to save AI version to localStorage:', error);
     }

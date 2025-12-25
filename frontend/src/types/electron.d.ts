@@ -76,6 +76,7 @@ interface ElectronAPI {
   
   // 平台信息
   platform: string;
+  arch: string;
   isElectron: boolean;
 }
 

@@ -101,5 +101,6 @@ contextBridge.exposeInMainWorld('electron', {
   
   // 平台信息
   platform: process.platform,
+  arch: process.arch,
   isElectron: true
 });

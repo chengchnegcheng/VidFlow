@@ -1126,7 +1126,12 @@ class ToolManager:
 import sys
 sys.path.insert(0, r"{AI_PACKAGES_DIR}")
 import torch
-print("cuda" if torch.cuda.is_available() else "cpu")
+if torch.cuda.is_available():
+    print("cuda")
+elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+    print("mps")
+else:
+    print("cpu")
 '''
 
                         process = await asyncio.create_subprocess_exec(
@@ -1146,7 +1151,7 @@ print("cuda" if torch.cuda.is_available() else "cpu")
 
                         if process.returncode == 0:
                             device = stdout.decode('utf-8', errors='ignore').strip().lower()
-                            if device in {"cuda", "cpu"}:
+                            if device in {"cuda", "mps", "cpu"}:
                                 result["device"] = device
                                 logger.info(f"[Device Detection] Detected device: {device}")
                         else:
@@ -1190,6 +1195,18 @@ print("cuda" if torch.cuda.is_available() else "cpu")
                         f"1. 运行 backend/FIX_PYTHON_VERSION.bat 脚本\n"
                         f"2. 或手动删除 backend/venv 文件夹\n"
                         f"3. 使用 Python 3.11 运行 SETUP.bat 重建环境"
+                    )
+                    return {"success": False, "error": error_msg}
+
+                machine = platform.machine()
+                is_macos = self.system == "Darwin"
+                is_apple_silicon = is_macos and machine in {"arm64", "aarch64"}
+
+                if is_macos and version == "cuda":
+                    error_msg = (
+                        "macOS 不支持 CUDA 版本 AI 工具\n\n"
+                        "请使用 CPU 版本。\n"
+                        "Apple Silicon（M1/M2/M3）可正常运行，但当前字幕识别使用 CPU 模式（Apple 芯片已做优化）。"
                     )
                     return {"success": False, "error": error_msg}
 
@@ -1446,6 +1463,9 @@ print("cuda" if torch.cuda.is_available() else "cpu")
                 # 根据 CUDA 版本选择兼容的 ctranslate2 版本
                 whisper_packages = ['faster-whisper', 'requests']
 
+                if is_apple_silicon:
+                    whisper_packages.append('ctranslate2>=3.20.0')
+
                 # 检测 CUDA 版本（仅 CUDA 版本需要）
                 if version == "cuda":
                     try:
@@ -1659,7 +1679,7 @@ print("cuda" if torch.cuda.is_available() else "cpu")
         if version == "cpu":
             return {
                 "name": "AI 字幕生成 (CPU 版本)",
-                "description": "使用 faster-whisper 进行语音识别，兼容所有机器",
+                "description": "使用 faster-whisper 进行语音识别（CPU 版本，兼容所有机器）",
                 "download_size": "约 300 MB",
                 "install_time": "3-5 分钟",
                 "compatible": "所有机器"

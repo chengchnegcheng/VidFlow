@@ -37,6 +37,18 @@ export function AIToolsCard({
   onInstall,
   onUninstall
 }: AIToolsCardProps) {
+  const platform = window.electron?.platform;
+  const arch = window.electron?.arch;
+  const isMacOS = platform === 'darwin';
+  const isAppleSilicon = isMacOS && arch === 'arm64';
+  const supportsCudaInstall = !isMacOS;
+
+  React.useEffect(() => {
+    if (!supportsCudaInstall && version === 'cuda') {
+      onVersionChange('cpu');
+    }
+  }, [supportsCudaInstall, version, onVersionChange]);
+
   console.log('[AIToolsCard] Props:', {
     installing,
     uninstalling,
@@ -79,6 +91,13 @@ export function AIToolsCard({
     return <Badge variant="secondary" className="text-xs">未安装</Badge>;
   };
 
+  const getDeviceLabel = (device: string | undefined) => {
+    if (device === 'cuda') return 'CUDA (GPU) 可用';
+    if (device === 'mps') return 'Metal (MPS) 可用';
+    if (device === 'cpu') return 'CPU';
+    return '未知';
+  };
+
   return (
     <Card>
       <CardHeader>
@@ -115,9 +134,12 @@ export function AIToolsCard({
           </div>
           {status?.torch && (
             <div>
-              <span className="text-muted-foreground">PyTorch</span>
+              <span className="text-muted-foreground">PyTorch 后端</span>
               <div className="font-medium mt-1">
-                {status.device === 'cuda' ? 'GPU 加速' : 'CPU 模式'}
+                {getDeviceLabel(status.device)}
+              </div>
+              <div className="text-xs text-muted-foreground mt-1">
+                仅表示 PyTorch 可用后端，faster-whisper 实际仅支持 CPU/CUDA
               </div>
             </div>
           )}
@@ -127,7 +149,7 @@ export function AIToolsCard({
         {!status?.installed && (
           <div className="space-y-2">
             <label className="text-sm font-medium">选择版本</label>
-            <div className="grid grid-cols-2 gap-2">
+            <div className={supportsCudaInstall ? "grid grid-cols-2 gap-2" : "grid grid-cols-1 gap-2"}>
               <Button
                 variant={version === 'cpu' ? 'default' : 'outline'}
                 onClick={() => onVersionChange('cpu')}
@@ -136,20 +158,22 @@ export function AIToolsCard({
               >
                 <div className="text-left w-full">
                   <div className="font-medium">CPU 版本 ⭐</div>
-                  <div className="text-xs opacity-70">约 300 MB</div>
+                  <div className="text-xs opacity-70">{isAppleSilicon ? 'Apple Silicon 优化（CPU）' : '约 300 MB'}</div>
                 </div>
               </Button>
-              <Button
-                variant={version === 'cuda' ? 'default' : 'outline'}
-                onClick={() => onVersionChange('cuda')}
-                disabled={installing}
-                className="w-full"
-              >
-                <div className="text-left w-full">
-                  <div className="font-medium">GPU 版本</div>
-                  <div className="text-xs opacity-70">约 1 GB</div>
-                </div>
-              </Button>
+              {supportsCudaInstall && (
+                <Button
+                  variant={version === 'cuda' ? 'default' : 'outline'}
+                  onClick={() => onVersionChange('cuda')}
+                  disabled={installing}
+                  className="w-full"
+                >
+                  <div className="text-left w-full">
+                    <div className="font-medium">GPU 版本</div>
+                    <div className="text-xs opacity-70">约 1 GB</div>
+                  </div>
+                </Button>
+              )}
             </div>
           </div>
         )}
@@ -166,7 +190,7 @@ export function AIToolsCard({
               <>
                 <span className="font-medium">AI 工具已就绪</span>
                 <br />
-                faster-whisper {status.version} ({status.device === 'cuda' ? 'GPU 加速' : 'CPU 模式'})
+                faster-whisper {status.version}
                 <br />
                 <span className="text-xs">可在字幕功能中使用 AI 语音识别</span>
               </>
@@ -178,8 +202,19 @@ export function AIToolsCard({
                 <br />
                 <span className="text-xs font-medium text-blue-600">
                   • CPU 版本（推荐）：兼容所有机器，体积小
-                  <br />
-                  • GPU 版本：需要 NVIDIA 显卡，速度更快
+                  {supportsCudaInstall ? (
+                    <>
+                      <br />
+                      • GPU 版本：需要 NVIDIA 显卡，速度更快
+                    </>
+                  ) : (
+                    isAppleSilicon ? (
+                      <>
+                        <br />
+                        • Apple Silicon 可正常使用（CPU 模式，已针对 Apple 芯片优化）
+                      </>
+                    ) : null
+                  )}
                 </span>
               </>
             )}

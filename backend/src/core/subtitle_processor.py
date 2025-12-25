@@ -57,7 +57,8 @@ class SubtitleProcessor:
                     python_exe: Optional[str] = sys.executable
                     if getattr(sys, 'frozen', False):
                         base_path = Path(sys._MEIPASS) if hasattr(sys, '_MEIPASS') else Path(sys.executable).parent / '_internal'
-                        embedded_python = base_path / 'python' / 'python.exe'
+                        python_name = 'python.exe' if sys.platform == 'win32' else 'python'
+                        embedded_python = base_path / 'python' / python_name
                         if embedded_python.exists():
                             python_exe = str(embedded_python)
                         else:
@@ -74,12 +75,13 @@ class SubtitleProcessor:
                         'import json, torch; '
                         'print(json.dumps({'
                         '"cuda": bool(torch.cuda.is_available()),'
+                        '"mps": bool(hasattr(torch.backends, "mps") and torch.backends.mps.is_available()),'
                         '"cuda_version": getattr(torch.version, "cuda", None)'
                         '}))'
                     )
 
                     if not python_exe:
-                        raise RuntimeError("embedded python.exe not found for torch probe")
+                        raise RuntimeError("embedded python not found for torch probe")
 
                     process = await asyncio.create_subprocess_exec(
                         python_exe,
@@ -109,8 +111,10 @@ class SubtitleProcessor:
                             data = {}
 
                         cuda_available = bool(data.get("cuda"))
+                        mps_available = bool(data.get("mps"))
                         cuda_version = data.get("cuda_version")
                         logger.info(f"System CUDA version: {cuda_version}")
+                        logger.info(f"System MPS available: {mps_available}")
                         logger.info(f"ctranslate2 version: {ctranslate2_version}")
 
                         if cuda_available:
