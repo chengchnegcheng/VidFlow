@@ -253,6 +253,7 @@ class ToolManager:
         self.progress_callback: Optional[Callable[[str, int, str], Awaitable[None]]] = None
         self._updating_tools = {}  # 追踪工具更新状态 {tool_id: bool}
         self._auto_update_task: Optional[asyncio.Task] = None
+        self._update_lock = asyncio.Lock()  # 防止并发更新
         self.auto_update_enabled = os.environ.get("TOOLS_AUTO_UPDATE_ENABLED", "true").lower() == "true"
         try:
             self.auto_update_interval_hours = int(os.environ.get("TOOLS_AUTO_UPDATE_INTERVAL_HOURS", "24"))
@@ -586,48 +587,49 @@ class ToolManager:
 
     async def check_and_update_tool(self, tool_id: str):
         """检查并更新指定工具（简单策略：每次按最新地址下载替换）"""
-        if tool_id not in ("yt-dlp", "ffmpeg"):
-            logger.warning(f"[Tools] Unknown tool_id: {tool_id}")
-            return
+        async with self._update_lock:
+            if tool_id not in ("yt-dlp", "ffmpeg"):
+                logger.warning(f"[Tools] Unknown tool_id: {tool_id}")
+                return
 
-        # 标准化 tool_id 用于前端显示（yt-dlp -> ytdlp）
-        display_id = "ytdlp" if tool_id == "yt-dlp" else tool_id
+            # 标准化 tool_id 用于前端显示（yt-dlp -> ytdlp）
+            display_id = "ytdlp" if tool_id == "yt-dlp" else tool_id
 
-        # 避免并发重复下载
-        if self._updating_tools.get(display_id):
-            logger.info(f"[Tools] {tool_id} is already updating, skip")
-            return
+            # 避免并发重复下载
+            if self._updating_tools.get(display_id):
+                logger.info(f"[Tools] {tool_id} is already updating, skip")
+                return
 
-        # 获取下载 URL
-        url = TOOL_URLS["yt-dlp" if tool_id == "yt-dlp" else tool_id].get(self.system)
-        if not url:
-            logger.warning(f"[Tools] No download URL for {tool_id} on {self.system}")
-            return
+            # 获取下载 URL
+            url = TOOL_URLS["yt-dlp" if tool_id == "yt-dlp" else tool_id].get(self.system)
+            if not url:
+                logger.warning(f"[Tools] No download URL for {tool_id} on {self.system}")
+                return
 
-        # 版本/变更检测：通过 ETag / Last-Modified
-        should_download, meta = await self._should_download(tool_id, url)
-        if not should_download:
-            logger.info(f"[Tools] {tool_id} is up to date (ETag/Last-Modified unchanged), skip download")
-            return
+            # 版本/变更检测：通过 ETag / Last-Modified
+            should_download, meta = await self._should_download(tool_id, url)
+            if not should_download:
+                logger.info(f"[Tools] {tool_id} is up to date (ETag/Last-Modified unchanged), skip download")
+                return
 
-        self._updating_tools[display_id] = True
-        try:
-            if tool_id == "yt-dlp":
-                await self.download_ytdlp()
-            elif tool_id == "ffmpeg":
-                await self.download_ffmpeg()
-            
-            # 下载完成后，记录元数据（即使为空也要保存，表示已安装过）
-            # 这样下次检查时就不会重复下载
-            if not meta:
-                # 如果没有 ETag/Last-Modified，使用时间戳作为标记
-                meta = {"timestamp": str(__import__('datetime').datetime.now().isoformat())}
-            
-            self.tools_meta[tool_id] = meta
-            self._save_tools_meta()
-            logger.info(f"[Tools] {tool_id} download completed, metadata saved: {meta}")
-        finally:
-            self._updating_tools[display_id] = False
+            self._updating_tools[display_id] = True
+            try:
+                if tool_id == "yt-dlp":
+                    await self.download_ytdlp()
+                elif tool_id == "ffmpeg":
+                    await self.download_ffmpeg()
+
+                # 下载完成后，记录元数据（即使为空也要保存，表示已安装过）
+                # 这样下次检查时就不会重复下载
+                if not meta:
+                    # 如果没有 ETag/Last-Modified，使用时间戳作为标记
+                    meta = {"timestamp": str(__import__('datetime').datetime.now().isoformat())}
+
+                self.tools_meta[tool_id] = meta
+                self._save_tools_meta()
+                logger.info(f"[Tools] {tool_id} download completed, metadata saved: {meta}")
+            finally:
+                self._updating_tools[display_id] = False
     
     async def setup_ffmpeg(self) -> Path:
         """设置 FFmpeg - 优先使用已下载版本（便于自动更新），其次内置"""
