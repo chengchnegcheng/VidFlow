@@ -217,32 +217,52 @@ function startPythonBackend() {
       console.error('========================================');
       safeReject(error);
     });
-    
-    // 超时处理 - 增加到10秒，并更早开始尝试读取端口文件
+
+    // 立即开始尝试读取端口文件（不等待日志输出）
+    // 因为 Python 进程会立即写入端口文件
+    const startPortPolling = () => {
+      let pollAttempts = 0;
+      const maxPollAttempts = 20; // 最多轮询 10 秒（每次 500ms）
+
+      const pollInterval = setInterval(() => {
+        pollAttempts++;
+
+        if (settled || backendReady) {
+          clearInterval(pollInterval);
+          return;
+        }
+
+        tryReadPortFile()
+          .then((port) => {
+            clearInterval(pollInterval);
+            if (!settled && !backendReady) {
+              console.log(`✅ Backend ready via port file polling (attempt ${pollAttempts}): ${port}`);
+              safeResolve(port);
+            }
+          })
+          .catch(() => {
+            // 继续轮询
+            if (pollAttempts >= maxPollAttempts) {
+              clearInterval(pollInterval);
+              if (!settled && !backendReady) {
+                console.error('❌ Port file polling timeout');
+                safeReject(new Error('Backend port file not found after polling'));
+              }
+            }
+          });
+      }, 500); // 每 500ms 轮询一次
+    };
+
+    // 立即开始轮询（不等待）
+    setTimeout(startPortPolling, 100);
+
+    // 超时处理 - 增加到15秒，给予数据库初始化足够时间
     setTimeout(() => {
       if (!settled && !backendReady) {
-        console.warn('⚠️ Backend startup timeout (10s), trying to read port file...');
+        console.warn('⚠️ Backend startup timeout (15s), trying final port file read...');
         tryReadPortFile().then(safeResolve).catch(safeReject);
       }
-    }, 10000);
-    
-    // 同时，在2秒后开始轮询端口文件（不阻塞主流程）
-    setTimeout(() => {
-      if (!settled && !backendReady) {
-        console.log('🔄 Starting port file polling...');
-        tryReadPortFile().then((port) => {
-          if (!settled && !backendReady) {
-            console.log(`✅ Backend ready via port file: ${port}`);
-            safeResolve(port);
-          }
-        }).catch((err) => {
-          console.log('Port file not ready yet, will retry...');
-          if (!settled && err) {
-            console.warn(err.message || err);
-          }
-        });
-      }
-    }, 2000);
+    }, 15000);
   });
 }
 
@@ -267,37 +287,20 @@ function tryReadPortFile() {
       }
     }
 
-    console.log(`Looking for port file at: ${portFilePath}`);
-    
-    const maxRetries = 10;
-    let retries = 0;
-    
-    const readFile = () => {
-      try {
-        if (fs.existsSync(portFilePath)) {
-          const data = fs.readFileSync(portFilePath, 'utf8');
-          const config = JSON.parse(data);
-          backendPort = config.port;
-          backendReady = true;
-          console.log(`Read backend port from file: ${backendPort}`);
-          resolve(backendPort);
-        } else if (retries < maxRetries) {
-          retries++;
-          setTimeout(readFile, 500);
-        } else {
-          reject(new Error('Failed to read backend port'));
-        }
-      } catch (error) {
-        if (retries < maxRetries) {
-          retries++;
-          setTimeout(readFile, 500);
-        } else {
-          reject(error);
-        }
+    try {
+      if (fs.existsSync(portFilePath)) {
+        const data = fs.readFileSync(portFilePath, 'utf8');
+        const config = JSON.parse(data);
+        backendPort = config.port;
+        backendReady = true;
+        console.log(`📄 Read backend port from file: ${backendPort}`);
+        resolve(backendPort);
+      } else {
+        reject(new Error(`Port file not found: ${portFilePath}`));
       }
-    };
-    
-    readFile();
+    } catch (error) {
+      reject(error);
+    }
   });
 }
 

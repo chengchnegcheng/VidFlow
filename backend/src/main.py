@@ -166,8 +166,11 @@ async def lifespan(app: FastAPI):
 
     # 启动时执行 - 只做最必要的同步初始化
     from src.models import Base, init_database
-    await init_database()
-    logger.info("Database initialized")
+
+    # 数据库初始化放到后台,不阻塞端口监听
+    # 这样前端可以更快连接,健康检查立即可用
+    db_init_task = asyncio.create_task(init_database())
+    logger.info("Database initialization started in background")
 
     # 所有耗时操作都放到后台异步执行,不阻塞API启动
     # 这样可以让健康检查和API立即可用,提升用户体验
@@ -199,6 +202,13 @@ async def lifespan(app: FastAPI):
 
     startup_duration = time.time() - startup_start_time
     logger.info(f"✅ Backend startup completed in {startup_duration:.3f}s, ready to accept requests")
+
+    # 等待数据库初始化完成（在后台继续）
+    try:
+        await asyncio.wait_for(db_init_task, timeout=5.0)
+        logger.info("Database initialized successfully")
+    except asyncio.TimeoutError:
+        logger.warning("Database initialization still in progress (continuing in background)")
 
     yield
 
@@ -413,25 +423,26 @@ if __name__ == "__main__":
         sock.close()
         logger.info(f"Using random port {port} for Electron mode")
     
-    # 将端口信息写入文件供 Electron 读取
+    # 立即写入端口信息文件，让前端可以尽快连接
+    # 不等待 uvicorn 完全启动，因为端口已经确定
     port_file = DATA_DIR / "backend_port.json"
-    with open(port_file, 'w') as f:
+    with open(port_file, 'w', encoding='utf-8') as f:
         json.dump({"port": port, "host": "127.0.0.1"}, f)
-    
+
     print("=" * 60, flush=True)
     print(f"✅ Port file written: {port_file}", flush=True)
     print(f"🌐 Server will start on port: {port}", flush=True)
     print(f"📡 Backend URL: http://127.0.0.1:{port}", flush=True)
     print("=" * 60, flush=True)
-    
+
     logger.info(f"Server will start on port: {port}")
     logger.info(f"Port file: {port_file}")
-    
+
     # 确保所有输出都被刷新
     sys.stdout.flush()
     sys.stderr.flush()
-    
-    print(f"Starting Uvicorn on http://127.0.0.1:{port} ...", flush=True)
+
+    print(f"🚀 Starting Uvicorn on http://127.0.0.1:{port} ...", flush=True)
     
     uvicorn.run(
         app,
