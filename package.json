@@ -22,7 +22,8 @@
         "package:linux": "electron-builder --linux --config electron-builder.json",
         "setup:mac": "bash scripts/setup-mac.sh",
         "dev:mac": "bash scripts/dev-mac.sh",
-        "build-script:mac": "bash scripts/build-mac.sh"
+        "build-script:mac": "bash scripts/build-mac.sh",
+        "icons:tray": "node scripts/generate-tray-icons.js"
     },
     "keywords": [
         "video",

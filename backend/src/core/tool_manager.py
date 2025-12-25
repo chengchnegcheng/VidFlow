@@ -1272,11 +1272,20 @@ else:
                 ]
 
                 if version == "cpu":
-                    # CPU 版本（推荐，体积小）- 使用清华镜像加速
-                    torch_cmd = common_pip_args + [
-                        'torch', 'torchvision', 'torchaudio',
-                        '-i', 'https://pypi.tuna.tsinghua.edu.cn/simple',
-                    ]
+                    # CPU 版本（推荐，体积小）
+                    # macOS 使用官方 PyPI（国内镜像对大文件有限制）
+                    # Windows/Linux 优先尝试镜像，失败后回退到官方源
+                    if is_macos:
+                        # macOS 直接使用官方源
+                        torch_cmd = common_pip_args + [
+                            'torch', 'torchvision', 'torchaudio',
+                        ]
+                    else:
+                        # Windows/Linux 使用阿里云镜像
+                        torch_cmd = common_pip_args + [
+                            'torch', 'torchvision', 'torchaudio',
+                            '-i', 'https://mirrors.aliyun.com/pypi/simple/',
+                        ]
                 else:
                     # CUDA 版本 - 使用阿里云镜像的 find-links 服务
                     # 注意：镜像最高到torch 2.5.1，必须指定版本号避免下载最新的CPU版本
@@ -1506,12 +1515,20 @@ else:
                     except Exception as e:
                         logger.warning(f"[Whisper Install] Failed to detect CUDA version: {e}, using default ctranslate2")
 
+                # 根据平台选择镜像源
+                if is_macos:
+                    # macOS 使用官方 PyPI（镜像对大文件有限制）
+                    index_url = []
+                else:
+                    # Windows/Linux 使用阿里云镜像加速
+                    index_url = ['-i', 'https://mirrors.aliyun.com/pypi/simple/']
+
                 whisper_cmd = [
                     python_exe, '-m', 'pip', 'install',
                     '--target', str(staging_dir),
                     '--upgrade',
                     *whisper_packages,
-                    '-i', 'https://pypi.tuna.tsinghua.edu.cn/simple',
+                    *index_url,
                     '--default-timeout=300',
                 ]
                 process = await asyncio.create_subprocess_exec(

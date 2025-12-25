@@ -755,17 +755,18 @@ function createTray() {
     const isDev = !app.isPackaged;
     
     // 托盘图标路径（Windows 使用 .ico，其他平台使用 .png）
+    // 使用专门的小尺寸托盘图标
     let iconPath;
     if (isDev) {
       // 开发模式：相对于当前文件
       iconPath = process.platform === 'win32'
-        ? path.join(__dirname, '../resources/icons/icon.ico')
-        : path.join(__dirname, '../resources/icons/icon.png');
+        ? path.join(__dirname, '../resources/icons/tray-icon.ico')
+        : path.join(__dirname, '../resources/icons/tray-icon.png');
     } else {
       // 生产模式：使用 process.resourcesPath
       iconPath = process.platform === 'win32'
-        ? path.join(process.resourcesPath, 'icons', 'icon.ico')
-        : path.join(process.resourcesPath, 'icons', 'icon.png');
+        ? path.join(process.resourcesPath, 'icons', 'tray-icon.ico')
+        : path.join(process.resourcesPath, 'icons', 'tray-icon.png');
     }
 
     console.log('Creating tray with icon:', iconPath);
