@@ -137,9 +137,21 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     console.error('❌ API Error:', error.message);
+
+    // 打印后端返回的详细错误信息
+    if (error.response?.data) {
+      console.error('❌ Backend Error Details:', error.response.data);
+    }
+
     if (error.code === 'ERR_NETWORK' || error.code === 'ECONNREFUSED') {
       console.error('❌ Backend connection refused. Backend might not be ready yet.');
     }
+
+    // 如果后端返回了详细错误信息,将其附加到 error.message
+    if (error.response?.data?.detail) {
+      error.message = error.response.data.detail;
+    }
+
     return Promise.reject(error);
   }
 );
