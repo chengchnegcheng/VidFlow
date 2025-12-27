@@ -259,8 +259,10 @@ TOOLS_BIN_DIR="$PROJECT_ROOT/resources/tools/bin"
 mkdir -p "$TOOLS_BIN_DIR"
 
 # 下载 ffmpeg (macOS)
+# 注意: evermeet.cx 提供的是 Intel (x86_64) 版本
+# Apple Silicon Mac 会通过 Rosetta 2 运行，或者用户可以使用 Homebrew 安装原生版本
 if [ ! -f "$TOOLS_BIN_DIR/ffmpeg" ]; then
-    log_info "下载 ffmpeg (macOS)..."
+    log_info "下载 ffmpeg (macOS x86_64)..."
     FFMPEG_URL="https://evermeet.cx/ffmpeg/ffmpeg-7.1.zip"
     FFMPEG_ZIP="$TOOLS_BIN_DIR/ffmpeg.zip"
     
@@ -269,6 +271,12 @@ if [ ! -f "$TOOLS_BIN_DIR/ffmpeg" ]; then
         rm -f "$FFMPEG_ZIP"
         chmod +x "$TOOLS_BIN_DIR/ffmpeg"
         log_success "ffmpeg 下载完成"
+        
+        # 检查架构
+        if [ "$(uname -m)" = "arm64" ]; then
+            log_warning "注意: 下载的 ffmpeg 是 Intel 版本，将通过 Rosetta 2 运行"
+            log_info "如需原生 ARM64 版本，可运行: brew install ffmpeg"
+        fi
     else
         log_warning "ffmpeg 下载失败，将在运行时自动下载"
     fi
@@ -295,8 +303,9 @@ else
 fi
 
 # 下载 yt-dlp (macOS)
+# yt-dlp_macos 是 Universal Binary，支持 Intel 和 Apple Silicon
 if [ ! -f "$TOOLS_BIN_DIR/yt-dlp" ]; then
-    log_info "下载 yt-dlp (macOS)..."
+    log_info "下载 yt-dlp (macOS Universal Binary)..."
     YTDLP_URL="https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos"
     
     if curl -L -o "$TOOLS_BIN_DIR/yt-dlp" "$YTDLP_URL"; then

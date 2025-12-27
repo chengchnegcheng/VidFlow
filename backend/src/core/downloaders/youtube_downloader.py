@@ -252,6 +252,9 @@ class YoutubeDownloader(BaseDownloader):
             ffmpeg_path = tool_mgr.get_ffmpeg_path()
             if ffmpeg_path:
                 ydl_opts['ffmpeg_location'] = str(Path(ffmpeg_path).parent)
+                logger.info(f"Using ffmpeg from: {ffmpeg_path}")
+            else:
+                logger.warning("FFmpeg not found! Video/audio merging may fail. Please check system settings to install FFmpeg.")
 
             if output_format == 'mp3':
                 ydl_opts.pop('merge_output_format', None)

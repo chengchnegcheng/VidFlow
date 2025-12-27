@@ -203,9 +203,12 @@ _process_ai_cleanup_queue()
 
 # 内置工具目录（打包时包含的预下载工具）
 # 开发环境: VidFlow-Desktop/resources/tools/bin
-# 打包后: dist/VidFlow/resources/tools/bin
+# 打包后: {_MEIPASS}/resources/tools/bin
 BUNDLED_TOOLS_DIR = PROJECT_ROOT / "resources" / "tools"
 BUNDLED_BIN_DIR = BUNDLED_TOOLS_DIR / "bin"
+
+# 兼容旧的打包路径（backend/tools/bin -> {_MEIPASS}/tools/bin）
+LEGACY_BUNDLED_BIN_DIR = PROJECT_ROOT / "tools" / "bin"
 
 # 创建目录
 for directory in [TOOLS_DIR, BIN_DIR, MODELS_DIR]:
@@ -215,14 +218,19 @@ for directory in [TOOLS_DIR, BIN_DIR, MODELS_DIR]:
 logger.info(f"Tool Manager initialized:")
 logger.info(f"  BASE_DIR: {BASE_DIR}")
 logger.info(f"  PROJECT_ROOT: {PROJECT_ROOT}")
+logger.info(f"  BIN_DIR: {BIN_DIR}")
 logger.info(f"  BUNDLED_BIN_DIR: {BUNDLED_BIN_DIR}")
 logger.info(f"  BUNDLED_BIN_DIR exists: {BUNDLED_BIN_DIR.exists()}")
+logger.info(f"  LEGACY_BUNDLED_BIN_DIR: {LEGACY_BUNDLED_BIN_DIR}")
+logger.info(f"  LEGACY_BUNDLED_BIN_DIR exists: {LEGACY_BUNDLED_BIN_DIR.exists()}")
 
 # 工具下载链接
 TOOL_URLS = {
     "ffmpeg": {
         "Windows": "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip",
-        "Darwin": "https://evermeet.cx/ffmpeg/ffmpeg-7.1.zip",  # 使用稳定版本（带 ffprobe）
+        # macOS: evermeet.cx 提供 Intel 版本，Apple Silicon 通过 Rosetta 2 运行
+        # 如果需要原生 ARM64 版本，可以使用 Homebrew: brew install ffmpeg
+        "Darwin": "https://evermeet.cx/ffmpeg/ffmpeg-7.1.zip",
         "Linux": "https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz"
     },
     "ffprobe": {
@@ -230,6 +238,7 @@ TOOL_URLS = {
     },
     "yt-dlp": {
         "Windows": "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe",
+        # macOS: yt-dlp_macos 是 Universal Binary，支持 Intel 和 Apple Silicon
         "Darwin": "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos",
         "Linux": "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp"
     }
@@ -644,19 +653,27 @@ class ToolManager:
             logger.info(f"Using downloaded FFmpeg: {builtin_path}")
             return builtin_path
         
-        # 2. 检查打包的内置版本（备用）
+        # 2. 检查打包的内置版本（resources/tools/bin）
         bundled_path = BUNDLED_BIN_DIR / exe_name
+        logger.debug(f"Checking bundled FFmpeg: {bundled_path} (exists: {bundled_path.exists()})")
         if bundled_path.exists():
             logger.info(f"[OK] Using bundled FFmpeg: {bundled_path}")
             return bundled_path
         
-        # 3. 检查系统安装
+        # 3. 检查旧的打包路径（tools/bin，兼容旧版本）
+        legacy_bundled_path = LEGACY_BUNDLED_BIN_DIR / exe_name
+        logger.debug(f"Checking legacy bundled FFmpeg: {legacy_bundled_path} (exists: {legacy_bundled_path.exists()})")
+        if legacy_bundled_path.exists():
+            logger.info(f"[OK] Using legacy bundled FFmpeg: {legacy_bundled_path}")
+            return legacy_bundled_path
+        
+        # 4. 检查系统安装
         system_path = shutil.which("ffmpeg")
         if system_path:
             logger.info(f"Using system FFmpeg: {system_path}")
             return Path(system_path)
         
-        # 4. 最后才自动下载（开发模式）
+        # 5. 最后才自动下载（开发模式）
         logger.info("No FFmpeg found, downloading...")
         await self.download_ffmpeg()
         
@@ -678,8 +695,9 @@ class ToolManager:
                 os.chmod(builtin_path, 0o755)
             return builtin_path
         
-        # 2. 检查打包的内置版本（备用版本）
+        # 2. 检查打包的内置版本（resources/tools/bin）
         bundled_path = BUNDLED_BIN_DIR / exe_name
+        logger.debug(f"Checking bundled yt-dlp: {bundled_path} (exists: {bundled_path.exists()})")
         if bundled_path.exists():
             logger.info(f"[OK] Using bundled yt-dlp: {bundled_path}")
             # 确保可执行
@@ -687,13 +705,23 @@ class ToolManager:
                 os.chmod(bundled_path, 0o755)
             return bundled_path
         
-        # 3. 检查系统安装
+        # 3. 检查旧的打包路径（tools/bin，兼容旧版本）
+        legacy_bundled_path = LEGACY_BUNDLED_BIN_DIR / exe_name
+        logger.debug(f"Checking legacy bundled yt-dlp: {legacy_bundled_path} (exists: {legacy_bundled_path.exists()})")
+        if legacy_bundled_path.exists():
+            logger.info(f"[OK] Using legacy bundled yt-dlp: {legacy_bundled_path}")
+            # 确保可执行
+            if self.system != "Windows":
+                os.chmod(legacy_bundled_path, 0o755)
+            return legacy_bundled_path
+        
+        # 4. 检查系统安装
         system_path = shutil.which("yt-dlp")
         if system_path:
             logger.info(f"Using system yt-dlp: {system_path}")
             return Path(system_path)
         
-        # 4. 最后才自动下载（开发模式）
+        # 5. 最后才自动下载（开发模式）
         logger.info("No yt-dlp found, downloading...")
         await self.download_ytdlp()
         
@@ -1079,19 +1107,25 @@ class ToolManager:
         # 否则尝试查找（同步版本，用于快速检测）
         exe_name = "ffmpeg.exe" if self.system == "Windows" else "ffmpeg"
         
-        # 1. 检查打包的内置版本
-        bundled_path = BUNDLED_BIN_DIR / exe_name
-        if bundled_path.exists():
-            self.ffmpeg_path = bundled_path
-            return bundled_path
-        
-        # 2. 检查已下载的版本
+        # 1. 检查已下载的版本（用户数据目录）
         builtin_path = BIN_DIR / exe_name
         if builtin_path.exists():
             self.ffmpeg_path = builtin_path
             return builtin_path
         
-        # 3. 检查系统安装
+        # 2. 检查打包的内置版本（resources/tools/bin）
+        bundled_path = BUNDLED_BIN_DIR / exe_name
+        if bundled_path.exists():
+            self.ffmpeg_path = bundled_path
+            return bundled_path
+        
+        # 3. 检查旧的打包路径（tools/bin，兼容旧版本）
+        legacy_bundled_path = LEGACY_BUNDLED_BIN_DIR / exe_name
+        if legacy_bundled_path.exists():
+            self.ffmpeg_path = legacy_bundled_path
+            return legacy_bundled_path
+        
+        # 4. 检查系统安装
         system_path = shutil.which("ffmpeg")
         if system_path:
             self.ffmpeg_path = Path(system_path)
@@ -1124,23 +1158,31 @@ class ToolManager:
                 except Exception as e:
                     logger.warning(f"[yt-dlp] Failed to remove old Mac file: {e}")
 
-        # 1. 检查打包的内置版本
-        bundled_path = BUNDLED_BIN_DIR / exe_name
-        logger.info(f"[yt-dlp] Checking bundled: {bundled_path} (exists: {bundled_path.exists()})")
-        if bundled_path.exists():
-            self.ytdlp_path = bundled_path
-            logger.info(f"[yt-dlp] ✓ Found bundled version: {bundled_path}")
-            return bundled_path
-
-        # 2. 检查已下载的版本
+        # 1. 检查已下载的版本（用户数据目录）
         builtin_path = BIN_DIR / exe_name
         logger.info(f"[yt-dlp] Checking downloaded: {builtin_path} (exists: {builtin_path.exists()})")
         if builtin_path.exists():
             self.ytdlp_path = builtin_path
             logger.info(f"[yt-dlp] ✓ Found downloaded version: {builtin_path}")
             return builtin_path
+
+        # 2. 检查打包的内置版本（resources/tools/bin）
+        bundled_path = BUNDLED_BIN_DIR / exe_name
+        logger.info(f"[yt-dlp] Checking bundled: {bundled_path} (exists: {bundled_path.exists()})")
+        if bundled_path.exists():
+            self.ytdlp_path = bundled_path
+            logger.info(f"[yt-dlp] ✓ Found bundled version: {bundled_path}")
+            return bundled_path
         
-        # 3. 检查系统安装
+        # 3. 检查旧的打包路径（tools/bin，兼容旧版本）
+        legacy_bundled_path = LEGACY_BUNDLED_BIN_DIR / exe_name
+        logger.info(f"[yt-dlp] Checking legacy bundled: {legacy_bundled_path} (exists: {legacy_bundled_path.exists()})")
+        if legacy_bundled_path.exists():
+            self.ytdlp_path = legacy_bundled_path
+            logger.info(f"[yt-dlp] ✓ Found legacy bundled version: {legacy_bundled_path}")
+            return legacy_bundled_path
+        
+        # 4. 检查系统安装
         system_path = shutil.which("yt-dlp")
         logger.info(f"[yt-dlp] Checking system PATH: {system_path}")
         if system_path:

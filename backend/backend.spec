@@ -12,13 +12,28 @@ datas = []
 binaries = []  # 初始化 binaries 列表
 
 # 如果 tools/bin 目录存在且有文件，则打包工具
-tools_bin = os.path.join(os.path.dirname(os.path.abspath(SPEC)), 'tools', 'bin')
-if os.path.exists(tools_bin) and os.listdir(tools_bin):
+# 优先检查项目根目录的 resources/tools/bin（构建脚本下载的位置）
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(SPEC)))
+resources_tools_bin = os.path.join(project_root, 'resources', 'tools', 'bin')
+backend_tools_bin = os.path.join(os.path.dirname(os.path.abspath(SPEC)), 'tools', 'bin')
+
+# 优先使用 resources/tools/bin
+if os.path.exists(resources_tools_bin) and os.listdir(resources_tools_bin):
+    tools_bin = resources_tools_bin
+    dest_path = 'resources/tools/bin'  # 保持与运行时代码一致的路径
+elif os.path.exists(backend_tools_bin) and os.listdir(backend_tools_bin):
+    tools_bin = backend_tools_bin
+    dest_path = 'tools/bin'
+else:
+    tools_bin = None
+    dest_path = None
+
+if tools_bin:
     # 打包所有工具文件
     for tool_file in glob.glob(os.path.join(tools_bin, '*')):
         if os.path.isfile(tool_file):
-            datas.append((tool_file, 'tools/bin'))
-    print(f"已打包工具目录: {tools_bin}")
+            datas.append((tool_file, dest_path))
+    print(f"已打包工具目录: {tools_bin} -> {dest_path}")
 else:
     print("警告: tools/bin 目录为空，工具将在首次运行时自动下载")
 
