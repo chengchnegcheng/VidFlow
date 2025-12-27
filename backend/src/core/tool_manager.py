@@ -722,21 +722,40 @@ class ToolManager:
 
                 total_size = int(response.headers.get('content-length', 0))
                 downloaded = 0
+                last_progress = -1
+                last_update_time = 0
 
                 with open(target_path, 'wb') as f:
                     async for chunk in response.content.iter_chunked(self.CHUNK_SIZE):
                         f.write(chunk)
                         downloaded += len(chunk)
 
+                        # 计算进度
                         if total_size > 0:
                             progress = int((downloaded / total_size) * progress_max)
                         else:
                             progress = min(progress_max, downloaded // (512 * 1024))
-                        await self._notify_progress(
-                            tool_id,
-                            progress,
-                            f"下载中... {downloaded // 1024 // 1024}MB / {max(1, total_size // 1024 // 1024)}MB"
+
+                        # 节流：只有满足以下条件之一时才更新进度
+                        # 1. 进度变化至少 1%
+                        # 2. 距离上次更新超过 0.5 秒
+                        # 3. 下载完成
+                        current_time = asyncio.get_event_loop().time()
+                        should_update = (
+                            progress != last_progress and
+                            (progress - last_progress >= 1 or
+                             current_time - last_update_time >= 0.5 or
+                             downloaded == total_size)
                         )
+
+                        if should_update:
+                            await self._notify_progress(
+                                tool_id,
+                                progress,
+                                f"下载中... {downloaded // 1024 // 1024}MB / {max(1, total_size // 1024 // 1024)}MB"
+                            )
+                            last_progress = progress
+                            last_update_time = current_time
 
         # 直连优先
         if not self.proxy:
