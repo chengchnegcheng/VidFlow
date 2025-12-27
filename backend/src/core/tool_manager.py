@@ -222,7 +222,7 @@ logger.info(f"  BUNDLED_BIN_DIR exists: {BUNDLED_BIN_DIR.exists()}")
 TOOL_URLS = {
     "ffmpeg": {
         "Windows": "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip",
-        "Darwin": "https://evermeet.cx/ffmpeg/ffmpeg-6.0.zip",
+        "Darwin": "https://evermeet.cx/pub/ffmpeg-7.1.zip",
         "Linux": "https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz"
     },
     "yt-dlp": {
