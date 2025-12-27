@@ -33,11 +33,13 @@ contextBridge.exposeInMainWorld('electron', {
       'download-progress',
       'update-downloaded',
       'update-error',
-      'window-state-changed'
+      'window-state-changed',
+      'backend-error',
+      'backend-disconnected'
     ];
 
     if (validChannels.includes(channel)) {
-      ipcRenderer.on(channel, (event, ...args) => callback(...args));
+      ipcRenderer.on(channel, (_event, ...args) => callback(...args));
     }
   },
 
@@ -50,7 +52,9 @@ contextBridge.exposeInMainWorld('electron', {
       'download-progress',
       'update-downloaded',
       'update-error',
-      'window-state-changed'
+      'window-state-changed',
+      'backend-error',
+      'backend-disconnected'
     ];
 
     if (validChannels.includes(channel)) {

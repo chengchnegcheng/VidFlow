@@ -21,11 +21,37 @@ process.on('unhandledRejection', (reason, promise) => {
   // 不要让应用崩溃
 });
 
+// ============================================
+// 单实例锁定 - 防止重复启动
+// ============================================
+const gotTheLock = app.requestSingleInstanceLock();
+
+if (!gotTheLock) {
+  // 如果获取锁失败，说明已有实例在运行，直接退出
+  console.log('Another instance is already running. Quitting...');
+  app.quit();
+} else {
+  // 当第二个实例启动时，聚焦到已有窗口
+  app.on('second-instance', (event, commandLine, workingDirectory) => {
+    console.log('Second instance detected, focusing existing window...');
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) {
+        mainWindow.restore();
+      }
+      if (!mainWindow.isVisible()) {
+        mainWindow.show();
+      }
+      mainWindow.focus();
+    }
+  });
+}
+
 let mainWindow;
 let pythonProcess;
 let tray = null;
 let backendPort = null;
 let backendReady = false;
+let backendError = null; // 新增: 记录后端启动错误
 let updater = null;
 
 // 获取应用图标路径的辅助函数
@@ -42,6 +68,29 @@ function getIconPath() {
   }
 }
 
+// 获取端口文件路径
+function getPortFilePath() {
+  const isDev = !app.isPackaged;
+  let portFilePath;
+
+  if (isDev) {
+    // 开发模式：使用项目目录
+    portFilePath = path.join(__dirname, '../backend/data/backend_port.json');
+  } else {
+    // 生产模式：使用用户数据目录
+    if (process.platform === 'win32') {
+      const appdata = process.env.APPDATA || path.join(require('os').homedir(), 'AppData', 'Roaming');
+      portFilePath = path.join(appdata, 'VidFlow', 'data', 'backend_port.json');
+    } else if (process.platform === 'darwin') {
+      portFilePath = path.join(require('os').homedir(), 'Library', 'Application Support', 'VidFlow', 'data', 'backend_port.json');
+    } else {
+      portFilePath = path.join(require('os').homedir(), '.local', 'share', 'VidFlow', 'data', 'backend_port.json');
+    }
+  }
+
+  return portFilePath;
+}
+
 // Python 后端进程管理
 function startPythonBackend() {
   return new Promise((resolve, reject) => {
@@ -52,6 +101,7 @@ function startPythonBackend() {
         settled = true;
         backendPort = port;
         backendReady = true;
+        backendError = null; // 清除错误状态
         resolve(port);
       }
     };
@@ -59,9 +109,22 @@ function startPythonBackend() {
     const safeReject = (error) => {
       if (!settled) {
         settled = true;
+        backendError = error.message || '后端启动失败'; // 记录错误
         reject(error);
       }
     };
+
+    // 清理旧的端口文件
+    const portFilePath = getPortFilePath();
+    if (fs.existsSync(portFilePath)) {
+      try {
+        fs.unlinkSync(portFilePath);
+        console.log('✅ Cleaned up old port file');
+      } catch (error) {
+        console.warn('⚠️ Failed to clean up old port file:', error);
+      }
+    }
+
     const isDev = !app.isPackaged;
     
     console.log('========================================');
@@ -199,7 +262,14 @@ function startPythonBackend() {
       console.log(`❌ Python process exited with code ${code}`);
       console.log(`========================================`);
       backendReady = false;
-      
+      backendPort = null; // 清空端口
+      backendError = `后端进程退出 (退出码: ${code})`; // 记录错误
+
+      // 通知前端后端已断开
+      if (mainWindow && mainWindow.webContents) {
+        mainWindow.webContents.send('backend-disconnected', { code });
+      }
+
       // 如果后端意外退出，通知用户
       if (code !== 0 && mainWindow) {
         dialog.showMessageBoxSync(mainWindow, {
@@ -269,23 +339,7 @@ function startPythonBackend() {
 // 尝试从文件读取端口信息
 function tryReadPortFile() {
   return new Promise((resolve, reject) => {
-    const isDev = !app.isPackaged;
-    let portFilePath;
-
-    if (isDev) {
-      // 开发模式：使用项目目录
-      portFilePath = path.join(__dirname, '../backend/data/backend_port.json');
-    } else {
-      // 生产模式：使用用户数据目录（与后端保持一致）
-      if (process.platform === 'win32') {
-        const appdata = process.env.APPDATA || path.join(require('os').homedir(), 'AppData', 'Roaming');
-        portFilePath = path.join(appdata, 'VidFlow', 'data', 'backend_port.json');
-      } else if (process.platform === 'darwin') {
-        portFilePath = path.join(require('os').homedir(), 'Library', 'Application Support', 'VidFlow', 'data', 'backend_port.json');
-      } else {
-        portFilePath = path.join(require('os').homedir(), '.local', 'share', 'VidFlow', 'data', 'backend_port.json');
-      }
-    }
+    const portFilePath = getPortFilePath();
 
     try {
       if (fs.existsSync(portFilePath)) {
@@ -881,7 +935,15 @@ app.whenReady().then(async () => {
   // 先创建窗口，立即显示界面给用户
   console.log('Creating window first...');
   createWindow();
-  console.log('Window created, now starting backend...');
+  console.log('Window created');
+
+  // 立即创建托盘（不依赖后端启动结果）
+  console.log('Creating tray...');
+  createTray();
+
+  // 初始化更新器
+  console.log('Initializing updater...');
+  initUpdater();
 
   // 检查是否禁用后端自动启动（用于手动启动后端的开发场景）
   if (process.env.DISABLE_BACKEND_AUTO_START === '1') {
@@ -893,9 +955,6 @@ app.whenReady().then(async () => {
       tryReadPortFile()
         .then(port => {
           console.log(`✅ Found existing backend on port: ${port}`);
-          if (mainWindow) {
-            mainWindow.webContents.send('backend-ready', { port });
-          }
         })
         .catch(err => {
           console.error('❌ Could not find backend port file:', err);
@@ -903,42 +962,22 @@ app.whenReady().then(async () => {
         });
     }, 1000);
 
-    // 立即创建托盘
-    console.log('Creating tray...');
-    createTray();
-
-    // 初始化更新器
-    console.log('Initializing updater...');
-    initUpdater();
-
     return;
   }
 
   // 异步启动后端，不阻塞窗口显示
+  console.log('Starting backend...');
   try {
     const port = await startPythonBackend();
     console.log('✅ Backend started successfully on port:', port);
-    
-    // 通知渲染进程后端已就绪
-    if (mainWindow) {
-      mainWindow.webContents.send('backend-ready', { port });
-    }
-    
-    // 立即创建托盘（不延迟）
-    console.log('Creating tray...');
-    createTray();
-    
-    // 初始化更新器
-    console.log('Initializing updater...');
-    initUpdater();
-    
+
   } catch (error) {
     console.error('❌ Failed to start backend:', error);
-    
+
     // 通知渲染进程后端启动失败
     if (mainWindow && mainWindow.webContents) {
-      mainWindow.webContents.send('backend-error', { 
-        message: error.message || '后端启动失败' 
+      mainWindow.webContents.send('backend-error', {
+        message: error.message || '后端启动失败'
       });
     }
     
@@ -1054,10 +1093,20 @@ app.on('quit', () => {
 
 // 获取后端端口
 ipcMain.handle('get-backend-port', async () => {
+  // 确定状态
+  let status = 'starting';
+  if (backendReady) {
+    status = 'ready';
+  } else if (backendError) {
+    status = 'failed';
+  }
+
   const config = {
     port: backendPort,
     ready: backendReady,
-    host: '127.0.0.1'
+    host: '127.0.0.1',
+    error: backendError || null,
+    status: status
   };
   // 启用日志以诊断端口问题
   console.log('[IPC] get-backend-port called, returning:', config);

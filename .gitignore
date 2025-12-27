@@ -1,3 +1,7 @@
+# ============================================
+# VidFlow - Git 忽略配置
+# ============================================
+
 # Dependencies
 node_modules/
 frontend/node_modules/
@@ -24,7 +28,7 @@ backend/build/
 backend/htmlcov/
 frontend/coverage/
 
-# Data
+# Data (运行时生成)
 backend/data/
 cache/
 *.db
@@ -47,6 +51,7 @@ backend/.env
 .idea/
 .cursor/
 .claude/
+.kiro/
 *.swp
 *.swo
 *~
@@ -64,20 +69,27 @@ out/
 *.tmp
 *.temp
 
-# Tools - Large binary files (excluded from Git due to GitHub 100MB limit)
+# Tools - 大文件(GitHub 100MB 限制)
 backend/tools/bin/ffmpeg.exe
 backend/tools/bin/ffprobe.exe
+backend/tools/bin/yt-dlp.exe
 resources/tools/bin/ffmpeg.exe
 resources/tools/bin/ffprobe.exe
-# Note: These tools should be downloaded at runtime or included in releases
+# 注意: 这些工具应在运行时下载或包含在发布包中
 
-backend/tools/models/         # AI models (downloaded at runtime)
-backend/subtitles/            # Generated subtitle files
-**/nul                        # System file to ignore
-nul                           # System file to ignore at root
+backend/tools/models/         # AI 模型(运行时下载)
+backend/subtitles/            # 生成的字幕文件
+**/nul                        # 系统临时文件
+nul
 
 # Python embedded
 backend/python_embedded/
 
-# Frontend port config (runtime)
+# Frontend port config (运行时)
 frontend_port.json
+
+# 测试和覆盖率
+.pytest_cache/
+.coverage
+htmlcov/
+
