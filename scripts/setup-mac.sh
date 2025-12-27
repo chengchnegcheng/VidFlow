@@ -251,9 +251,70 @@ cd ..
 echo ""
 
 # ============================================================================
-# 步骤 4: 生成图标
+# 步骤 4: 下载 macOS 工具
 # ============================================================================
-log_header "步骤 4/5: 生成 macOS 图标"
+log_header "步骤 4/6: 下载 macOS 工具"
+
+TOOLS_BIN_DIR="$PROJECT_ROOT/resources/tools/bin"
+mkdir -p "$TOOLS_BIN_DIR"
+
+# 下载 ffmpeg (macOS)
+if [ ! -f "$TOOLS_BIN_DIR/ffmpeg" ]; then
+    log_info "下载 ffmpeg (macOS)..."
+    FFMPEG_URL="https://evermeet.cx/ffmpeg/ffmpeg-7.1.zip"
+    FFMPEG_ZIP="$TOOLS_BIN_DIR/ffmpeg.zip"
+    
+    if curl -L -o "$FFMPEG_ZIP" "$FFMPEG_URL"; then
+        unzip -o "$FFMPEG_ZIP" -d "$TOOLS_BIN_DIR"
+        rm -f "$FFMPEG_ZIP"
+        chmod +x "$TOOLS_BIN_DIR/ffmpeg"
+        log_success "ffmpeg 下载完成"
+    else
+        log_warning "ffmpeg 下载失败，将在运行时自动下载"
+    fi
+else
+    log_success "ffmpeg 已存在"
+fi
+
+# 下载 ffprobe (macOS)
+if [ ! -f "$TOOLS_BIN_DIR/ffprobe" ]; then
+    log_info "下载 ffprobe (macOS)..."
+    FFPROBE_URL="https://evermeet.cx/ffmpeg/ffprobe-7.1.zip"
+    FFPROBE_ZIP="$TOOLS_BIN_DIR/ffprobe.zip"
+    
+    if curl -L -o "$FFPROBE_ZIP" "$FFPROBE_URL"; then
+        unzip -o "$FFPROBE_ZIP" -d "$TOOLS_BIN_DIR"
+        rm -f "$FFPROBE_ZIP"
+        chmod +x "$TOOLS_BIN_DIR/ffprobe"
+        log_success "ffprobe 下载完成"
+    else
+        log_warning "ffprobe 下载失败，将在运行时自动下载"
+    fi
+else
+    log_success "ffprobe 已存在"
+fi
+
+# 下载 yt-dlp (macOS)
+if [ ! -f "$TOOLS_BIN_DIR/yt-dlp" ]; then
+    log_info "下载 yt-dlp (macOS)..."
+    YTDLP_URL="https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos"
+    
+    if curl -L -o "$TOOLS_BIN_DIR/yt-dlp" "$YTDLP_URL"; then
+        chmod +x "$TOOLS_BIN_DIR/yt-dlp"
+        log_success "yt-dlp 下载完成"
+    else
+        log_warning "yt-dlp 下载失败，将在运行时自动下载"
+    fi
+else
+    log_success "yt-dlp 已存在"
+fi
+
+echo ""
+
+# ============================================================================
+# 步骤 5: 生成图标
+# ============================================================================
+log_header "步骤 5/6: 生成 macOS 图标"
 
 if [ ! -f "resources/icon.icns" ]; then
     log_info "生成 .icns 图标..."
@@ -271,9 +332,9 @@ fi
 echo ""
 
 # ============================================================================
-# 步骤 5: 验证环境
+# 步骤 6: 验证环境
 # ============================================================================
-log_header "步骤 5/5: 环境验证"
+log_header "步骤 6/6: 环境验证"
 
 ERRORS=0
 

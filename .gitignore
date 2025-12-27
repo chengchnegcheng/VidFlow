@@ -75,6 +75,11 @@ backend/tools/bin/ffprobe.exe
 backend/tools/bin/yt-dlp.exe
 resources/tools/bin/ffmpeg.exe
 resources/tools/bin/ffprobe.exe
+resources/tools/bin/yt-dlp.exe
+# macOS 工具（构建时下载）
+resources/tools/bin/ffmpeg
+resources/tools/bin/ffprobe
+resources/tools/bin/yt-dlp
 # 注意: 这些工具应在运行时下载或包含在发布包中
 
 backend/tools/models/         # AI 模型(运行时下载)

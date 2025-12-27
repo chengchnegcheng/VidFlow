@@ -222,8 +222,11 @@ logger.info(f"  BUNDLED_BIN_DIR exists: {BUNDLED_BIN_DIR.exists()}")
 TOOL_URLS = {
     "ffmpeg": {
         "Windows": "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip",
-        "Darwin": "https://evermeet.cx/pub/ffmpeg-7.1.zip",
+        "Darwin": "https://evermeet.cx/ffmpeg/ffmpeg-7.1.zip",  # 使用稳定版本（带 ffprobe）
         "Linux": "https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz"
+    },
+    "ffprobe": {
+        "Darwin": "https://evermeet.cx/ffmpeg/ffprobe-7.1.zip",  # Mac 需要单独下载 ffprobe
     },
     "yt-dlp": {
         "Windows": "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe",
@@ -238,7 +241,7 @@ class ToolManager:
     HEAD_TIMEOUT = 10
     CONNECT_TIMEOUT = 15
     TOTAL_TIMEOUT = 180
-    AUTO_UPDATE_INITIAL_DELAY = 5
+    AUTO_UPDATE_INITIAL_DELAY = 2  # 缩短至 2 秒，尽快完成首次更新检查
     AUTO_UPDATE_MIN_INTERVAL = 3600
     CHUNK_SIZE = 8192
     DOWNLOAD_PROGRESS_MAX = 80
@@ -786,7 +789,7 @@ class ToolManager:
                     await self._safe_remove_file(candidate, max_retries=3, retry_delay=0.5)
 
                 try:
-                    await self._download_with_progress(url, candidate, "ffmpeg")
+                    await self._download_with_progress(url, candidate, "ffmpeg", progress_max=40)
                     logger.info(f"FFmpeg downloaded to {candidate}")
 
                     # 校验 ZIP 完整性，失败则重试一次
@@ -801,8 +804,28 @@ class ToolManager:
                     if not replace_success:
                         raise RuntimeError(f"Failed to replace file: {candidate} -> {download_path} (file may be in use)")
 
-                    await self._notify_progress("ffmpeg", 80, "下载完成，开始解压...")
+                    await self._notify_progress("ffmpeg", 50, "FFmpeg 下载完成，开始解压...")
                     await self.extract_ffmpeg(download_path)
+
+                    # Mac 需要单独下载 ffprobe
+                    if self.system == "Darwin":
+                        await self._notify_progress("ffmpeg", 60, "开始下载 ffprobe...")
+                        ffprobe_url = TOOL_URLS["ffprobe"].get("Darwin")
+                        if ffprobe_url:
+                            ffprobe_download_path = TOOLS_DIR / "ffprobe_download.zip"
+                            ffprobe_temp_path = ffprobe_download_path.with_suffix(ffprobe_download_path.suffix + ".tmp")
+
+                            try:
+                                await self._download_with_progress(ffprobe_url, ffprobe_temp_path, "ffmpeg", progress_max=20)
+                                await self._safe_replace_file(ffprobe_temp_path, ffprobe_download_path, max_retries=3, retry_delay=0.5)
+                                await self._notify_progress("ffmpeg", 90, "ffprobe 下载完成，开始解压...")
+                                await self.extract_ffmpeg(ffprobe_download_path)
+                                # 清理 ffprobe 下载文件
+                                if ffprobe_download_path.exists():
+                                    await self._safe_remove_file(ffprobe_download_path, max_retries=3, retry_delay=0.5)
+                            except Exception as e:
+                                logger.warning(f"Failed to download ffprobe: {e}, continuing without it")
+
                     await self._notify_progress("ffmpeg", 100, "安装完成")
                     last_error = None
                     break
@@ -897,8 +920,14 @@ class ToolManager:
 
                     shutil.rmtree(extract_dir, ignore_errors=True)
 
-                    if not ffmpeg_found or not ffprobe_found:
-                        raise RuntimeError("FFmpeg package missing ffmpeg/ffprobe executable")
+                    # Mac 分两次下载 ffmpeg 和 ffprobe，所以只要找到一个即可
+                    if self.system == "Darwin":
+                        if not ffmpeg_found and not ffprobe_found:
+                            raise RuntimeError("FFmpeg package missing ffmpeg/ffprobe executable")
+                    else:
+                        # Windows/Linux 要求同时找到 ffmpeg 和 ffprobe
+                        if not ffmpeg_found or not ffprobe_found:
+                            raise RuntimeError("FFmpeg package missing ffmpeg/ffprobe executable")
                 finally:
                     # 确保 ZIP 文件被关闭
                     if zip_ref is not None:
@@ -934,8 +963,14 @@ class ToolManager:
                             else:
                                 ffprobe_found = True
 
-                    if not ffmpeg_found or not ffprobe_found:
-                        raise RuntimeError("FFmpeg package missing ffmpeg/ffprobe executable")
+                    # Mac 分两次下载 ffmpeg 和 ffprobe，所以只要找到一个即可
+                    if self.system == "Darwin":
+                        if not ffmpeg_found and not ffprobe_found:
+                            raise RuntimeError("FFmpeg package missing ffmpeg/ffprobe executable")
+                    else:
+                        # Windows/Linux 要求同时找到 ffmpeg 和 ffprobe
+                        if not ffmpeg_found or not ffprobe_found:
+                            raise RuntimeError("FFmpeg package missing ffmpeg/ffprobe executable")
             
             # 清理临时目录
             for item in TOOLS_DIR.iterdir():
@@ -964,23 +999,46 @@ class ToolManager:
         url = TOOL_URLS["yt-dlp"].get(self.system)
         if not url:
             raise RuntimeError(f"No yt-dlp download URL for {self.system}")
-        
+
         exe_name = "yt-dlp.exe" if self.system == "Windows" else "yt-dlp"
         target_path = BIN_DIR / exe_name
-        
+
         try:
             await self._notify_progress("ytdlp", 0, "开始下载 yt-dlp...")
-            
-            # 通用下载
+            logger.info(f"[yt-dlp] Downloading from: {url}")
+            logger.info(f"[yt-dlp] Target path: {target_path}")
+
+            # 先删除可能存在的旧文件（包括 Mac 的 yt-dlp_macos）
+            if self.system == "Darwin":
+                old_mac_file = BIN_DIR / "yt-dlp_macos"
+                if old_mac_file.exists():
+                    try:
+                        await self._safe_remove_file(old_mac_file, max_retries=3, retry_delay=0.5)
+                        logger.info(f"[yt-dlp] Removed old Mac file: {old_mac_file}")
+                    except Exception as e:
+                        logger.warning(f"[yt-dlp] Failed to remove old Mac file: {e}")
+
+            # 删除旧的 yt-dlp 文件
+            if target_path.exists():
+                await self._safe_remove_file(target_path, max_retries=3, retry_delay=0.5)
+
+            # 通用下载 - 直接保存为目标文件名
             await self._download_with_progress(url, target_path, "ytdlp", progress_max=100)
-            
-            logger.info(f"yt-dlp downloaded to {target_path}")
-            await self._notify_progress("ytdlp", 100, "安装完成")
-            
-            # 设置可执行权限
+
+            # 验证文件是否成功下载
+            if not target_path.exists():
+                raise RuntimeError(f"yt-dlp download failed: file not found at {target_path}")
+
+            file_size = target_path.stat().st_size
+            logger.info(f"[yt-dlp] Downloaded successfully: {target_path} ({file_size} bytes)")
+
+            # 设置可执行权限（非 Windows 平台）
             if self.system != "Windows":
                 os.chmod(target_path, 0o755)
-        
+                logger.info(f"[yt-dlp] Set executable permission for {target_path}")
+
+            await self._notify_progress("ytdlp", 100, "安装完成")
+
         except Exception as e:
             logger.error(f"Failed to download yt-dlp: {e}")
             raise
@@ -1032,11 +1090,21 @@ class ToolManager:
         if self.ytdlp_path:
             logger.debug(f"[yt-dlp] Using cached path: {self.ytdlp_path}")
             return self.ytdlp_path
-        
+
         # 否则尝试查找（同步版本，用于快速检测）
         exe_name = "yt-dlp.exe" if self.system == "Windows" else "yt-dlp"
         logger.info(f"[yt-dlp] Searching for {exe_name}...")
-        
+
+        # Mac 特殊处理：如果存在旧的 yt-dlp_macos 文件，删除它
+        if self.system == "Darwin":
+            old_mac_file = BIN_DIR / "yt-dlp_macos"
+            if old_mac_file.exists():
+                try:
+                    old_mac_file.unlink()
+                    logger.info(f"[yt-dlp] Removed old Mac file: {old_mac_file}")
+                except Exception as e:
+                    logger.warning(f"[yt-dlp] Failed to remove old Mac file: {e}")
+
         # 1. 检查打包的内置版本
         bundled_path = BUNDLED_BIN_DIR / exe_name
         logger.info(f"[yt-dlp] Checking bundled: {bundled_path} (exists: {bundled_path.exists()})")
@@ -1044,7 +1112,7 @@ class ToolManager:
             self.ytdlp_path = bundled_path
             logger.info(f"[yt-dlp] ✓ Found bundled version: {bundled_path}")
             return bundled_path
-        
+
         # 2. 检查已下载的版本
         builtin_path = BIN_DIR / exe_name
         logger.info(f"[yt-dlp] Checking downloaded: {builtin_path} (exists: {builtin_path.exists()})")
@@ -1753,11 +1821,28 @@ async def initialize_tools():
             logger.info(f"[OK] {tool}: {result['path']}")
         else:
             logger.warning(f"[FAIL] {tool}: {result.get('error', 'Failed')}")
-    
+
     # 启动自动更新任务（可通过环境变量关闭）
     if tool_manager.auto_update_enabled:
         interval = max(1, tool_manager.auto_update_interval_hours)
         logger.info(f"[Tools] Auto-update enabled, interval: {interval}h")
+
+        # 🔥 新增：启动时立即执行一次更新检查，确保工具是最新版本
+        logger.info("[Tools] Performing initial update check on startup...")
+        try:
+            # 强制重新下载 yt-dlp（删除旧元数据，强制更新）
+            if "yt-dlp" in tool_manager.tools_meta:
+                logger.info("[Tools] Clearing yt-dlp metadata to force update check")
+                del tool_manager.tools_meta["yt-dlp"]
+                tool_manager._save_tools_meta()
+
+            await tool_manager.check_and_update_tool("yt-dlp")
+            await tool_manager.check_and_update_tool("ffmpeg")
+            logger.info("[Tools] Initial update check completed")
+        except Exception as e:
+            logger.warning(f"[Tools] Initial update check failed (will retry later): {e}")
+
+        # 启动后台自动更新循环
         try:
             if tool_manager._auto_update_task is None or tool_manager._auto_update_task.done():
                 tool_manager._auto_update_task = asyncio.create_task(tool_manager.run_auto_update_loop(interval))

@@ -108,6 +108,76 @@ fi
 echo ""
 
 # ============================================================================
+# 步骤 1.5: 下载 macOS 版本的工具（ffmpeg, ffprobe, yt-dlp）
+# ============================================================================
+log_header "步骤 1.5/6: 下载 macOS 工具"
+
+TOOLS_BIN_DIR="$PROJECT_ROOT/resources/tools/bin"
+mkdir -p "$TOOLS_BIN_DIR"
+
+# 下载 ffmpeg (macOS)
+if [ ! -f "$TOOLS_BIN_DIR/ffmpeg" ]; then
+    log_info "下载 ffmpeg (macOS)..."
+    FFMPEG_URL="https://evermeet.cx/ffmpeg/ffmpeg-7.1.zip"
+    FFMPEG_ZIP="$TOOLS_BIN_DIR/ffmpeg.zip"
+    
+    if curl -L -o "$FFMPEG_ZIP" "$FFMPEG_URL"; then
+        unzip -o "$FFMPEG_ZIP" -d "$TOOLS_BIN_DIR"
+        rm -f "$FFMPEG_ZIP"
+        chmod +x "$TOOLS_BIN_DIR/ffmpeg"
+        log_success "ffmpeg 下载完成"
+    else
+        log_warning "ffmpeg 下载失败，将在运行时自动下载"
+    fi
+else
+    log_success "ffmpeg 已存在"
+fi
+
+# 下载 ffprobe (macOS)
+if [ ! -f "$TOOLS_BIN_DIR/ffprobe" ]; then
+    log_info "下载 ffprobe (macOS)..."
+    FFPROBE_URL="https://evermeet.cx/ffmpeg/ffprobe-7.1.zip"
+    FFPROBE_ZIP="$TOOLS_BIN_DIR/ffprobe.zip"
+    
+    if curl -L -o "$FFPROBE_ZIP" "$FFPROBE_URL"; then
+        unzip -o "$FFPROBE_ZIP" -d "$TOOLS_BIN_DIR"
+        rm -f "$FFPROBE_ZIP"
+        chmod +x "$TOOLS_BIN_DIR/ffprobe"
+        log_success "ffprobe 下载完成"
+    else
+        log_warning "ffprobe 下载失败，将在运行时自动下载"
+    fi
+else
+    log_success "ffprobe 已存在"
+fi
+
+# 下载 yt-dlp (macOS)
+if [ ! -f "$TOOLS_BIN_DIR/yt-dlp" ]; then
+    log_info "下载 yt-dlp (macOS)..."
+    YTDLP_URL="https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos"
+    
+    if curl -L -o "$TOOLS_BIN_DIR/yt-dlp" "$YTDLP_URL"; then
+        chmod +x "$TOOLS_BIN_DIR/yt-dlp"
+        log_success "yt-dlp 下载完成"
+    else
+        log_warning "yt-dlp 下载失败，将在运行时自动下载"
+    fi
+else
+    log_success "yt-dlp 已存在"
+fi
+
+# 验证工具
+log_info "验证工具..."
+if [ -f "$TOOLS_BIN_DIR/ffmpeg" ] && [ -f "$TOOLS_BIN_DIR/ffprobe" ] && [ -f "$TOOLS_BIN_DIR/yt-dlp" ]; then
+    log_success "所有 macOS 工具已就绪"
+    ls -la "$TOOLS_BIN_DIR"
+else
+    log_warning "部分工具缺失，应用将在首次运行时自动下载"
+fi
+
+echo ""
+
+# ============================================================================
 # 步骤 2: 安装依赖
 # ============================================================================
 log_header "步骤 2/6: 安装依赖"
@@ -157,7 +227,7 @@ echo ""
 # ============================================================================
 # 步骤 3: 生成 macOS 图标
 # ============================================================================
-log_header "步骤 3/6: 生成图标"
+log_header "步骤 3/7: 生成图标"
 
 if [ ! -f "resources/icon.icns" ]; then
     log_info "生成 macOS .icns 图标..."
@@ -177,7 +247,7 @@ echo ""
 # ============================================================================
 # 步骤 4: 构建前端
 # ============================================================================
-log_header "步骤 4/6: 构建前端"
+log_header "步骤 4/7: 构建前端"
 
 log_info "正在构建前端资源..."
 cd frontend
@@ -197,7 +267,7 @@ echo ""
 # ============================================================================
 # 步骤 5: 构建后端
 # ============================================================================
-log_header "步骤 5/6: 构建后端"
+log_header "步骤 5/7: 构建后端"
 
 log_info "正在打包 Python 后端..."
 cd backend
@@ -248,7 +318,7 @@ echo ""
 # ============================================================================
 # 步骤 6: 打包 Electron 应用
 # ============================================================================
-log_header "步骤 6/6: 打包 macOS 应用"
+log_header "步骤 6/7: 打包 macOS 应用"
 
 log_info "正在打包 Electron 应用..."
 
