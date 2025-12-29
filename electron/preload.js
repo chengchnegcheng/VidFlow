@@ -34,6 +34,7 @@ contextBridge.exposeInMainWorld('electron', {
       'update-downloaded',
       'update-error',
       'window-state-changed',
+      'backend-ready',
       'backend-error',
       'backend-disconnected'
     ];
@@ -53,6 +54,7 @@ contextBridge.exposeInMainWorld('electron', {
       'update-downloaded',
       'update-error',
       'window-state-changed',
+      'backend-ready',
       'backend-error',
       'backend-disconnected'
     ];

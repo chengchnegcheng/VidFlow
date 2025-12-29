@@ -101,6 +101,22 @@ hiddenimports = [
     'webdriver_manager.microsoft',
     'webdriver_manager.firefox',
     'webdriver_manager.core',
+    # Playwright（抖音下载，浏览器需要用户单独安装）
+    'playwright',
+    'playwright.sync_api',
+    'playwright.async_api',
+    'playwright._impl',
+    'playwright._impl._api_types',
+    'playwright._impl._browser',
+    'playwright._impl._browser_context',
+    'playwright._impl._browser_type',
+    'playwright._impl._connection',
+    'playwright._impl._driver',
+    'playwright._impl._element_handle',
+    'playwright._impl._frame',
+    'playwright._impl._helper',
+    'playwright._impl._page',
+    'playwright._impl._transport',
 ]
 
 # 收集 pip 的所有内容（用于 -m pip 模式）
@@ -152,6 +168,19 @@ try:
     print(f"已收集 webdriver-manager 数据文件和模块")
 except Exception as e:
     print(f"警告: 收集 webdriver-manager 失败 - {e}")
+
+# 收集 Playwright 的数据文件（不包含浏览器，浏览器需要用户单独安装）
+try:
+    playwright_datas, playwright_binaries, playwright_hiddenimports = collect_all('playwright')
+    # 过滤掉浏览器二进制文件（太大，用户需要单独安装）
+    playwright_datas = [(src, dst) for src, dst in playwright_datas if 'chromium' not in src.lower() and 'firefox' not in src.lower() and 'webkit' not in src.lower()]
+    playwright_binaries = [(src, dst) for src, dst in playwright_binaries if 'chromium' not in src.lower() and 'firefox' not in src.lower() and 'webkit' not in src.lower()]
+    datas += playwright_datas
+    binaries += playwright_binaries
+    hiddenimports += playwright_hiddenimports
+    print(f"已收集 Playwright 数据文件和模块（不含浏览器）")
+except Exception as e:
+    print(f"警告: 收集 Playwright 失败 - {e}")
 
 # 排除 AI 组件（作为可选工具，用户按需安装）
 excludes = [

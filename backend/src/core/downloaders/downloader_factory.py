@@ -62,6 +62,47 @@ class DownloaderFactory:
             logger.info(f"Registered downloader: {downloader_class.__name__}")
     
     @classmethod
+    def get_generic_downloader(cls, output_dir: str = "./data/downloads") -> GenericDownloader:
+        """
+        获取通用下载器（不使用 Cookie，用于首次尝试）
+        
+        Args:
+            output_dir: 输出目录
+            
+        Returns:
+            通用下载器实例（禁用 Cookie）
+        """
+        downloader = GenericDownloader(output_dir)
+        # 通用下载器在智能回退模式下不使用 Cookie
+        downloader._use_cookie_in_smart_mode = False
+        logger.info("Created GenericDownloader for smart fallback (no cookie)")
+        return downloader
+    
+    @classmethod
+    def get_specialized_downloader(cls, url: str, output_dir: str = "./data/downloads") -> BaseDownloader:
+        """
+        获取专用下载器（支持 Cookie，用于回退时使用）
+        
+        Args:
+            url: 视频链接
+            output_dir: 输出目录
+            
+        Returns:
+            专用下载器实例（启用 Cookie）
+        """
+        # 遍历专用下载器，找到支持该 URL 的
+        for downloader_class in cls._downloaders:
+            if downloader_class.supports_url(url):
+                downloader = downloader_class(output_dir)
+                logger.info(f"Created {downloader_class.__name__} for smart fallback (with cookie)")
+                return downloader
+        
+        # 如果没有专用下载器，返回带 Cookie 的通用下载器
+        downloader = GenericDownloader(output_dir)
+        logger.info("Created GenericDownloader for smart fallback (with cookie)")
+        return downloader
+    
+    @classmethod
     def detect_platform(cls, url: str) -> str:
         """
         检测URL对应的平台

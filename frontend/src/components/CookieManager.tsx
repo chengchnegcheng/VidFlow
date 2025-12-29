@@ -25,6 +25,8 @@ interface CookiePlatform {
 
 interface CookieManagerProps {
   onCookieUpdate?: () => void;
+  targetPlatform?: string | null;
+  onTargetPlatformHandled?: () => void;
 }
 
 interface CookieValidationResult {
@@ -140,7 +142,7 @@ const validateNetscapeCookieContent = (content: string): CookieValidationResult 
   return { isValid: true, cookieLines };
 };
 
-export const CookieManager: React.FC<CookieManagerProps> = ({ onCookieUpdate }) => {
+export const CookieManager: React.FC<CookieManagerProps> = ({ onCookieUpdate, targetPlatform, onTargetPlatformHandled }) => {
   const [platforms, setPlatforms] = useState<CookiePlatform[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedPlatform, setSelectedPlatform] = useState<string | null>(null);
@@ -209,6 +211,13 @@ export const CookieManager: React.FC<CookieManagerProps> = ({ onCookieUpdate }) 
       if (response?.status === 'success') {
         setCookieContent(response.content || '');
         setSelectedPlatform(platform);
+        // 滚动到编辑器区域
+        setTimeout(() => {
+          const editorElement = document.getElementById('cookie-editor');
+          if (editorElement) {
+            editorElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }
+        }, 100);
       }
     } catch (error: any) {
       console.error('Failed to load cookie content:', error);
@@ -319,6 +328,14 @@ export const CookieManager: React.FC<CookieManagerProps> = ({ onCookieUpdate }) 
       const loginUrl = startResult?.url ? String(startResult.url) : '';
       const currentUrl = startResult?.current_url ? String(startResult.current_url) : '';
       const navigationOk = startResult?.navigation_ok;
+
+      // 滚动到操作面板
+      setTimeout(() => {
+        const panelElement = document.getElementById('auto-get-cookie-panel');
+        if (panelElement) {
+          panelElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }, 100);
 
       if (navigationOk === false) {
         showMessage(
@@ -485,6 +502,36 @@ export const CookieManager: React.FC<CookieManagerProps> = ({ onCookieUpdate }) 
     loadCookiesStatus();
   }, []);
 
+  // 当有目标平台时，展开对应分类并滚动到目标平台卡片
+  useEffect(() => {
+    if (targetPlatform && platforms.length > 0) {
+      // 找到目标平台的分类
+      const targetPlatformData = platforms.find(p => p.platform === targetPlatform);
+      if (targetPlatformData) {
+        // 展开对应分类
+        setExpandedCategories(prev => ({
+          ...prev,
+          [targetPlatformData.category]: true
+        }));
+        
+        // 延迟滚动，等待分类展开动画完成
+        setTimeout(() => {
+          const element = document.getElementById(`cookie-platform-${targetPlatform}`);
+          if (element) {
+            element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            // 添加高亮效果
+            element.classList.add('ring-2', 'ring-primary', 'ring-offset-2');
+            setTimeout(() => {
+              element.classList.remove('ring-2', 'ring-primary', 'ring-offset-2');
+            }, 2000);
+          }
+          // 通知父组件已处理完目标平台
+          onTargetPlatformHandled?.();
+        }, 100);
+      }
+    }
+  }, [targetPlatform, platforms, onTargetPlatformHandled]);
+
   // 取消编辑
   const handleCancel = () => {
     setSelectedPlatform(null);
@@ -595,7 +642,7 @@ export const CookieManager: React.FC<CookieManagerProps> = ({ onCookieUpdate }) 
               {expandedCategories.short_video && (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {platforms.filter(p => p.category === 'short_video').map((platform) => (
-                  <Card key={platform.platform}>
+                  <Card key={platform.platform} id={`cookie-platform-${platform.platform}`} className="transition-all duration-300">
                     <CardHeader>
                       <div className="flex items-start justify-between">
                         <div className="flex-1">
@@ -698,7 +745,7 @@ export const CookieManager: React.FC<CookieManagerProps> = ({ onCookieUpdate }) 
               {expandedCategories.video_platform && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {platforms.filter(p => p.category === 'video_platform').map((platform) => (
-                  <Card key={platform.platform}>
+                  <Card key={platform.platform} id={`cookie-platform-${platform.platform}`} className="transition-all duration-300">
                     <CardHeader>
                       <div className="flex items-start justify-between">
                         <div className="flex-1">
@@ -774,7 +821,7 @@ export const CookieManager: React.FC<CookieManagerProps> = ({ onCookieUpdate }) 
               {expandedCategories.social_media && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {platforms.filter(p => p.category === 'social_media').map((platform) => (
-                  <Card key={platform.platform}>
+                  <Card key={platform.platform} id={`cookie-platform-${platform.platform}`} className="transition-all duration-300">
                     <CardHeader>
                       <div className="flex items-start justify-between">
                         <div className="flex-1">
@@ -842,7 +889,7 @@ export const CookieManager: React.FC<CookieManagerProps> = ({ onCookieUpdate }) 
 
       {/* 自动获取Cookie流程提示 */}
       {autoGetMode && browserRunning && (
-        <Alert className="border-green-600 bg-green-50 dark:bg-green-900/20">
+        <Alert id="auto-get-cookie-panel" className="border-green-600 bg-green-50 dark:bg-green-900/20">
           <CheckCircle2 className="h-4 w-4 text-green-600 animate-pulse" />
           <AlertDescription>
             <div className="space-y-4">
@@ -898,7 +945,7 @@ export const CookieManager: React.FC<CookieManagerProps> = ({ onCookieUpdate }) 
 
       {/* Cookie 编辑器 */}
       {selectedPlatform && !autoGetMode && (
-        <Card>
+        <Card id="cookie-editor">
           <CardHeader>
             <div className="flex items-center justify-between">
               <CardTitle>

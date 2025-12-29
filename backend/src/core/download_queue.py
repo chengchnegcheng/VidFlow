@@ -105,6 +105,142 @@ class DownloadQueue:
             self.max_concurrent = max(1, max_concurrent)
             logger.info(f"Max concurrent updated: {old_value} -> {self.max_concurrent}")
 
+    async def add_task(self, task_id: str, priority: int = 0) -> bool:
+        """
+        添加任务到队列
+        
+        Args:
+            task_id: 任务ID
+            priority: 优先级（数字越大优先级越高）
+            
+        Returns:
+            是否成功添加
+        """
+        async with self._lock:
+            # 检查任务是否已存在
+            if task_id in self.task_info:
+                logger.warning(f"Task {task_id} already in queue")
+                return False
+            
+            # 检查是否已取消
+            if task_id in self.cancelled_tasks:
+                logger.warning(f"Task {task_id} was cancelled, not adding to queue")
+                return False
+            
+            # 创建任务信息
+            queue_task = QueueTask(task_id=task_id, priority=priority)
+            self.task_info[task_id] = queue_task
+            
+            # 添加到等待队列
+            await self.pending_queue.put(task_id)
+            
+            logger.info(f"Task {task_id} added to queue. Pending: {self.pending_queue.qsize()}")
+            return True
+
+    async def start_next_task(self) -> str | None:
+        """
+        启动下一个等待中的任务
+        
+        Returns:
+            启动的任务ID，如果没有可启动的任务则返回 None
+        """
+        async with self._lock:
+            # 检查是否有空闲槽位
+            if len(self.active_tasks) >= self.max_concurrent:
+                logger.debug(f"No available slots. Active: {len(self.active_tasks)}/{self.max_concurrent}")
+                return None
+            
+            # 检查是否有等待中的任务
+            if self.pending_queue.empty():
+                logger.debug("No pending tasks in queue")
+                return None
+            
+            # 获取下一个任务
+            try:
+                task_id = self.pending_queue.get_nowait()
+            except asyncio.QueueEmpty:
+                return None
+            
+            # 检查任务是否已取消
+            if task_id in self.cancelled_tasks:
+                logger.info(f"Task {task_id} was cancelled, skipping")
+                if task_id in self.task_info:
+                    del self.task_info[task_id]
+                # 递归获取下一个任务
+                return await self._start_next_task_unlocked()
+            
+            # 将任务标记为活跃
+            self.active_tasks.add(task_id)
+            
+            logger.info(f"Task {task_id} started. Active: {len(self.active_tasks)}/{self.max_concurrent}")
+            return task_id
+
+    async def _start_next_task_unlocked(self) -> str | None:
+        """内部方法：在已持有锁的情况下启动下一个任务"""
+        # 检查是否有空闲槽位
+        if len(self.active_tasks) >= self.max_concurrent:
+            return None
+        
+        # 检查是否有等待中的任务
+        if self.pending_queue.empty():
+            return None
+        
+        # 获取下一个任务
+        try:
+            task_id = self.pending_queue.get_nowait()
+        except asyncio.QueueEmpty:
+            return None
+        
+        # 检查任务是否已取消
+        if task_id in self.cancelled_tasks:
+            if task_id in self.task_info:
+                del self.task_info[task_id]
+            # 递归获取下一个任务
+            return await self._start_next_task_unlocked()
+        
+        # 将任务标记为活跃
+        self.active_tasks.add(task_id)
+        
+        logger.info(f"Task {task_id} started. Active: {len(self.active_tasks)}/{self.max_concurrent}")
+        return task_id
+
+    async def complete_task(self, task_id: str):
+        """
+        标记任务完成并从队列中移除
+        
+        Args:
+            task_id: 任务ID
+        """
+        async with self._lock:
+            # 从活跃任务中移除
+            if task_id in self.active_tasks:
+                self.active_tasks.remove(task_id)
+                logger.info(f"Task {task_id} completed. Active: {len(self.active_tasks)}/{self.max_concurrent}")
+            
+            # 从任务信息中移除
+            if task_id in self.task_info:
+                del self.task_info[task_id]
+            
+            # 从运行中任务中移除
+            if task_id in self.running_tasks:
+                del self.running_tasks[task_id]
+            
+            # 从取消列表中移除（如果存在）
+            self.cancelled_tasks.discard(task_id)
+
+    async def is_task_cancelled(self, task_id: str) -> bool:
+        """
+        检查任务是否已被取消
+        
+        Args:
+            task_id: 任务ID
+            
+        Returns:
+            是否已取消
+        """
+        async with self._lock:
+            return task_id in self.cancelled_tasks
+
 
 # 全局队列实例
 _download_queue: DownloadQueue | None = None

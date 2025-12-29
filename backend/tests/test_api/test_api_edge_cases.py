@@ -34,8 +34,8 @@ class TestAPIEdgeCases:
                 json={"url": long_url}
             )
         
-        # 可能返回422或500
-        assert response.status_code in [422, status.HTTP_500_INTERNAL_SERVER_ERROR]
+        # 可能返回400、422或500
+        assert response.status_code in [400, 422, status.HTTP_500_INTERNAL_SERVER_ERROR]
     
     @pytest.mark.asyncio
     async def test_special_characters_in_url(self):
@@ -52,9 +52,10 @@ class TestAPIEdgeCases:
                     "/api/v1/downloads/info",
                     json={"url": url}
                 )
-                # 应该能处理或返回错误
+                # 应该能处理或返回错误（400是智能下载器返回的用户友好错误）
                 assert response.status_code in [
                     status.HTTP_200_OK,
+                    400,
                     422,
                     status.HTTP_500_INTERNAL_SERVER_ERROR
                 ]

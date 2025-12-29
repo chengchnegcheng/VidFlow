@@ -42,6 +42,7 @@ webdriver-manager>=4.0.0  # 自动管理ChromeDriver下载和版本匹配
 browser-cookie3>=0.19.1  # 从浏览器提取Cookie
 pycryptodomex>=3.19.0  # Cookie 解密支持
 pywin32>=306; sys_platform == 'win32'  # Windows Cookie 解密支持（仅 Windows）
+playwright>=1.40.0  # 抖音视频下载（绕过反爬虫）
 
 # Build & Packaging
 pyinstaller>=6.0.0

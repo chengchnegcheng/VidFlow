@@ -971,6 +971,12 @@ app.whenReady().then(async () => {
     const port = await startPythonBackend();
     console.log('✅ Backend started successfully on port:', port);
 
+    // 通知渲染进程后端已就绪
+    if (mainWindow && mainWindow.webContents) {
+      mainWindow.webContents.send('backend-ready', { port });
+      console.log('📢 Sent backend-ready event to renderer');
+    }
+
   } catch (error) {
     console.error('❌ Failed to start backend:', error);
 

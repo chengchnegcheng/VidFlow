@@ -59,6 +59,15 @@ function AppContent() {
   const [checkingProxy, setCheckingProxy] = useState(false);
   const [appVersion, setAppVersion] = useState<string>(packageJson.version);
   const [isMaximized, setIsMaximized] = useState(false);
+  const [targetCookiePlatform, setTargetCookiePlatform] = useState<string | null>(null);
+
+  // 导航到设置页面的 Cookie 配置
+  const handleNavigateToSettings = (platform?: string) => {
+    if (platform) {
+      setTargetCookiePlatform(platform);
+    }
+    setActiveTab('settings');
+  };
 
   // 导航项
   const navigationItems = [
@@ -412,12 +421,18 @@ function AppContent() {
 
             {/* Main Content */}
             <div className="flex-1 overflow-auto">
-              {activeTab === 'download' && <DownloadManager onNavigateToSettings={() => setActiveTab('settings')} />}
+              {activeTab === 'download' && <DownloadManager onNavigateToSettings={handleNavigateToSettings} />}
               {activeTab === 'tasks' && <TaskManager />}
               {activeTab === 'subtitle' && <SubtitleProcessor />}
               {activeTab === 'burn' && <BurnSubtitle />}
               {activeTab === 'logs' && <LogViewer />}
-              {activeTab === 'settings' && <SettingsPanel appVersion={appVersion} />}
+              {activeTab === 'settings' && (
+                <SettingsPanel 
+                  appVersion={appVersion} 
+                  targetCookiePlatform={targetCookiePlatform}
+                  onCookiePlatformHandled={() => setTargetCookiePlatform(null)}
+                />
+              )}
             </div>
           </div>
         </div>

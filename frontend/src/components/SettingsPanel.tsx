@@ -32,15 +32,25 @@ import {
 
 interface SettingsPanelProps {
   appVersion: string;
+  targetCookiePlatform?: string | null;
+  onCookiePlatformHandled?: () => void;
 }
 
-export function SettingsPanel({ appVersion }: SettingsPanelProps) {
+export function SettingsPanel({ appVersion, targetCookiePlatform, onCookiePlatformHandled }: SettingsPanelProps) {
   const { settings, updateSettings, resetSettings } = useSettings();
   const [localSettings, setLocalSettings] = useState<Settings>(settings);
   const [hasChanges, setHasChanges] = useState(false);
   const [storageInfo, setStorageInfo] = useState<any>(null);
   const [clearingCache, setClearingCache] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [activeSettingsTab, setActiveSettingsTab] = useState('download');
+
+  // 当有目标 Cookie 平台时，自动切换到 cookies 标签页
+  useEffect(() => {
+    if (targetCookiePlatform) {
+      setActiveSettingsTab('cookies');
+    }
+  }, [targetCookiePlatform]);
 
   useEffect(() => {
     if (!hasChanges) {
@@ -288,7 +298,7 @@ export function SettingsPanel({ appVersion }: SettingsPanelProps) {
       </div>
 
       {/* Tabs */}
-      <Tabs defaultValue="download" className="flex-1 flex flex-col">
+      <Tabs value={activeSettingsTab} onValueChange={setActiveSettingsTab} className="flex-1 flex flex-col">
         <TabsList className="w-full justify-start rounded-none border-b bg-transparent px-6 h-auto p-0">
           <TabsTrigger 
             value="download" 
@@ -635,7 +645,11 @@ export function SettingsPanel({ appVersion }: SettingsPanelProps) {
         {/* Cookie 管理 */}
         <TabsContent value="cookies" className="flex-1 overflow-auto data-[state=inactive]:hidden" forceMount>
           <div className="p-6 max-w-6xl" data-tab="cookies">
-            <CookieManager onCookieUpdate={fetchStorageInfo} />
+            <CookieManager 
+              onCookieUpdate={fetchStorageInfo} 
+              targetPlatform={targetCookiePlatform}
+              onTargetPlatformHandled={onCookiePlatformHandled}
+            />
           </div>
         </TabsContent>
       </Tabs>

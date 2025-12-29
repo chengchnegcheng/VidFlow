@@ -99,19 +99,26 @@ async def get_video_info(request: VideoInfoRequest):
 
         # 优先检查通用错误（适用于所有平台）
 
-        # 1. Cookie 新鲜度错误
+        # 1. Cookie 新鲜度错误（抖音特殊处理）
         if 'Fresh cookies' in error_msg or 'fresh cookies' in error_msg.lower():
             platform_name = "该平台"
-            if 'douyin.com' in request.url.lower() or 'v.douyin.com' in request.url.lower():
+            is_douyin = 'douyin.com' in request.url.lower() or 'v.douyin.com' in request.url.lower()
+            
+            if is_douyin:
                 platform_name = "抖音"
+                # 抖音的 "Fresh cookies" 错误通常是反爬机制导致的，不一定是 Cookie 过期
+                detail_msg = f"抖音视频获取失败。\n\n💡 可能原因：\n1. 抖音反爬机制限制（最常见）\n2. Cookie 已过期\n\n解决方法：\n1. 稍后重试（等待几分钟）\n2. 如果持续失败，尝试重新获取 Cookie\n3. 使用浏览器直接访问视频页面"
             elif 'tiktok.com' in request.url.lower():
                 platform_name = "TikTok"
+                detail_msg = f"{platform_name} Cookie 已过期或不够新鲜。\n\n💡 解决方法：\n1. 打开「Cookie 管理」\n2. 重新获取 {platform_name} Cookie（需要重新登录）\n3. 保存后重试"
             elif 'bilibili.com' in request.url.lower():
                 platform_name = "B站"
+                detail_msg = f"{platform_name} Cookie 已过期或不够新鲜。\n\n💡 解决方法：\n1. 打开「Cookie 管理」\n2. 重新获取 {platform_name} Cookie（需要重新登录）\n3. 保存后重试"
             elif 'xiaohongshu.com' in request.url.lower():
                 platform_name = "小红书"
-
-            detail_msg = f"{platform_name} Cookie 已过期或不够新鲜。\n\n💡 解决方法：\n1. 打开「Cookie 管理」\n2. 重新获取 {platform_name} Cookie（需要重新登录）\n3. 保存后重试"
+                detail_msg = f"{platform_name} Cookie 已过期或不够新鲜。\n\n💡 解决方法：\n1. 打开「Cookie 管理」\n2. 重新获取 {platform_name} Cookie（需要重新登录）\n3. 保存后重试"
+            else:
+                detail_msg = f"{platform_name} Cookie 已过期或不够新鲜。\n\n💡 解决方法：\n1. 打开「Cookie 管理」\n2. 重新获取 {platform_name} Cookie（需要重新登录）\n3. 保存后重试"
 
         # 2. 网络连接错误（可能需要代理）
         elif any(keyword in error_msg.lower() for keyword in ['connection', 'timeout', 'timed out', 'unreachable', 'network']):

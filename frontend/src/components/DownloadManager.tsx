@@ -42,6 +42,10 @@ interface VideoInfo {
   thumbnail?: string;
   quality?: string[];
   formats: { ext: string }[];
+  // 智能下载器信息
+  downloader_used?: string;
+  fallback_used?: boolean;
+  fallback_reason?: string;
 }
 
 // 格式化时长（秒 -> 分:秒 或 时:分:秒）
@@ -117,7 +121,7 @@ function detectPlatform(url: string): string {
 }
 
 interface DownloadManagerProps {
-  onNavigateToSettings?: () => void;
+  onNavigateToSettings?: (targetPlatform?: string) => void;
 }
 
 export function DownloadManager({ onNavigateToSettings }: DownloadManagerProps = {}) {
@@ -457,8 +461,7 @@ export function DownloadManager({ onNavigateToSettings }: DownloadManagerProps =
                       variant="outline"
                       className="bg-white dark:bg-gray-900"
                       onClick={() => {
-                        onNavigateToSettings?.();
-                        toast.info('请在系统设置 > Cookie管理 中配置');
+                        onNavigateToSettings?.(cookieWarning.platform);
                       }}
                     >
                       <Settings className="size-3 mr-2" />
@@ -530,6 +533,19 @@ export function DownloadManager({ onNavigateToSettings }: DownloadManagerProps =
                     })()}
                     {videoInfo.duration && <span>时长: {formatDuration(videoInfo.duration)}</span>}
                   </div>
+                  {/* 智能下载器信息 */}
+                  {videoInfo.downloader_used && (
+                    <div className="flex items-center gap-2 text-xs">
+                      <Badge variant={videoInfo.fallback_used ? "secondary" : "outline"} className="text-xs">
+                        {videoInfo.downloader_used === 'generic' ? '通用下载器' : `${videoInfo.downloader_used} 专用下载器`}
+                      </Badge>
+                      {videoInfo.fallback_used && (
+                        <span className="text-amber-600 dark:text-amber-400">
+                          (已自动回退)
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
               

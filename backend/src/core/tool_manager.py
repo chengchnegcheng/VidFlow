@@ -203,12 +203,9 @@ _process_ai_cleanup_queue()
 
 # 内置工具目录（打包时包含的预下载工具）
 # 开发环境: VidFlow-Desktop/resources/tools/bin
-# 打包后: {_MEIPASS}/resources/tools/bin
+# 打包后: dist/VidFlow/resources/tools/bin
 BUNDLED_TOOLS_DIR = PROJECT_ROOT / "resources" / "tools"
 BUNDLED_BIN_DIR = BUNDLED_TOOLS_DIR / "bin"
-
-# 兼容旧的打包路径（backend/tools/bin -> {_MEIPASS}/tools/bin）
-LEGACY_BUNDLED_BIN_DIR = PROJECT_ROOT / "tools" / "bin"
 
 # 创建目录
 for directory in [TOOLS_DIR, BIN_DIR, MODELS_DIR]:
@@ -218,19 +215,14 @@ for directory in [TOOLS_DIR, BIN_DIR, MODELS_DIR]:
 logger.info(f"Tool Manager initialized:")
 logger.info(f"  BASE_DIR: {BASE_DIR}")
 logger.info(f"  PROJECT_ROOT: {PROJECT_ROOT}")
-logger.info(f"  BIN_DIR: {BIN_DIR}")
 logger.info(f"  BUNDLED_BIN_DIR: {BUNDLED_BIN_DIR}")
 logger.info(f"  BUNDLED_BIN_DIR exists: {BUNDLED_BIN_DIR.exists()}")
-logger.info(f"  LEGACY_BUNDLED_BIN_DIR: {LEGACY_BUNDLED_BIN_DIR}")
-logger.info(f"  LEGACY_BUNDLED_BIN_DIR exists: {LEGACY_BUNDLED_BIN_DIR.exists()}")
 
 # 工具下载链接
 TOOL_URLS = {
     "ffmpeg": {
         "Windows": "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip",
-        # macOS: evermeet.cx 提供 Intel 版本，Apple Silicon 通过 Rosetta 2 运行
-        # 如果需要原生 ARM64 版本，可以使用 Homebrew: brew install ffmpeg
-        "Darwin": "https://evermeet.cx/ffmpeg/ffmpeg-7.1.zip",
+        "Darwin": "https://evermeet.cx/ffmpeg/ffmpeg-7.1.zip",  # 使用稳定版本（带 ffprobe）
         "Linux": "https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz"
     },
     "ffprobe": {
@@ -238,7 +230,6 @@ TOOL_URLS = {
     },
     "yt-dlp": {
         "Windows": "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe",
-        # macOS: yt-dlp_macos 是 Universal Binary，支持 Intel 和 Apple Silicon
         "Darwin": "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos",
         "Linux": "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp"
     }
@@ -653,27 +644,19 @@ class ToolManager:
             logger.info(f"Using downloaded FFmpeg: {builtin_path}")
             return builtin_path
         
-        # 2. 检查打包的内置版本（resources/tools/bin）
+        # 2. 检查打包的内置版本（备用）
         bundled_path = BUNDLED_BIN_DIR / exe_name
-        logger.debug(f"Checking bundled FFmpeg: {bundled_path} (exists: {bundled_path.exists()})")
         if bundled_path.exists():
             logger.info(f"[OK] Using bundled FFmpeg: {bundled_path}")
             return bundled_path
         
-        # 3. 检查旧的打包路径（tools/bin，兼容旧版本）
-        legacy_bundled_path = LEGACY_BUNDLED_BIN_DIR / exe_name
-        logger.debug(f"Checking legacy bundled FFmpeg: {legacy_bundled_path} (exists: {legacy_bundled_path.exists()})")
-        if legacy_bundled_path.exists():
-            logger.info(f"[OK] Using legacy bundled FFmpeg: {legacy_bundled_path}")
-            return legacy_bundled_path
-        
-        # 4. 检查系统安装
+        # 3. 检查系统安装
         system_path = shutil.which("ffmpeg")
         if system_path:
             logger.info(f"Using system FFmpeg: {system_path}")
             return Path(system_path)
         
-        # 5. 最后才自动下载（开发模式）
+        # 4. 最后才自动下载（开发模式）
         logger.info("No FFmpeg found, downloading...")
         await self.download_ffmpeg()
         
@@ -695,9 +678,8 @@ class ToolManager:
                 os.chmod(builtin_path, 0o755)
             return builtin_path
         
-        # 2. 检查打包的内置版本（resources/tools/bin）
+        # 2. 检查打包的内置版本（备用版本）
         bundled_path = BUNDLED_BIN_DIR / exe_name
-        logger.debug(f"Checking bundled yt-dlp: {bundled_path} (exists: {bundled_path.exists()})")
         if bundled_path.exists():
             logger.info(f"[OK] Using bundled yt-dlp: {bundled_path}")
             # 确保可执行
@@ -705,23 +687,13 @@ class ToolManager:
                 os.chmod(bundled_path, 0o755)
             return bundled_path
         
-        # 3. 检查旧的打包路径（tools/bin，兼容旧版本）
-        legacy_bundled_path = LEGACY_BUNDLED_BIN_DIR / exe_name
-        logger.debug(f"Checking legacy bundled yt-dlp: {legacy_bundled_path} (exists: {legacy_bundled_path.exists()})")
-        if legacy_bundled_path.exists():
-            logger.info(f"[OK] Using legacy bundled yt-dlp: {legacy_bundled_path}")
-            # 确保可执行
-            if self.system != "Windows":
-                os.chmod(legacy_bundled_path, 0o755)
-            return legacy_bundled_path
-        
-        # 4. 检查系统安装
+        # 3. 检查系统安装
         system_path = shutil.which("yt-dlp")
         if system_path:
             logger.info(f"Using system yt-dlp: {system_path}")
             return Path(system_path)
         
-        # 5. 最后才自动下载（开发模式）
+        # 4. 最后才自动下载（开发模式）
         logger.info("No yt-dlp found, downloading...")
         await self.download_ytdlp()
         
@@ -750,40 +722,21 @@ class ToolManager:
 
                 total_size = int(response.headers.get('content-length', 0))
                 downloaded = 0
-                last_progress = -1
-                last_update_time = 0
 
                 with open(target_path, 'wb') as f:
                     async for chunk in response.content.iter_chunked(self.CHUNK_SIZE):
                         f.write(chunk)
                         downloaded += len(chunk)
 
-                        # 计算进度
                         if total_size > 0:
                             progress = int((downloaded / total_size) * progress_max)
                         else:
                             progress = min(progress_max, downloaded // (512 * 1024))
-
-                        # 节流：只有满足以下条件之一时才更新进度
-                        # 1. 进度变化至少 1%
-                        # 2. 距离上次更新超过 0.5 秒
-                        # 3. 下载完成
-                        current_time = asyncio.get_event_loop().time()
-                        should_update = (
-                            progress != last_progress and
-                            (progress - last_progress >= 1 or
-                             current_time - last_update_time >= 0.5 or
-                             downloaded == total_size)
+                        await self._notify_progress(
+                            tool_id,
+                            progress,
+                            f"下载中... {downloaded // 1024 // 1024}MB / {max(1, total_size // 1024 // 1024)}MB"
                         )
-
-                        if should_update:
-                            await self._notify_progress(
-                                tool_id,
-                                progress,
-                                f"下载中... {downloaded // 1024 // 1024}MB / {max(1, total_size // 1024 // 1024)}MB"
-                            )
-                            last_progress = progress
-                            last_update_time = current_time
 
         # 直连优先
         if not self.proxy:
@@ -1107,25 +1060,19 @@ class ToolManager:
         # 否则尝试查找（同步版本，用于快速检测）
         exe_name = "ffmpeg.exe" if self.system == "Windows" else "ffmpeg"
         
-        # 1. 检查已下载的版本（用户数据目录）
-        builtin_path = BIN_DIR / exe_name
-        if builtin_path.exists():
-            self.ffmpeg_path = builtin_path
-            return builtin_path
-        
-        # 2. 检查打包的内置版本（resources/tools/bin）
+        # 1. 检查打包的内置版本
         bundled_path = BUNDLED_BIN_DIR / exe_name
         if bundled_path.exists():
             self.ffmpeg_path = bundled_path
             return bundled_path
         
-        # 3. 检查旧的打包路径（tools/bin，兼容旧版本）
-        legacy_bundled_path = LEGACY_BUNDLED_BIN_DIR / exe_name
-        if legacy_bundled_path.exists():
-            self.ffmpeg_path = legacy_bundled_path
-            return legacy_bundled_path
+        # 2. 检查已下载的版本
+        builtin_path = BIN_DIR / exe_name
+        if builtin_path.exists():
+            self.ffmpeg_path = builtin_path
+            return builtin_path
         
-        # 4. 检查系统安装
+        # 3. 检查系统安装
         system_path = shutil.which("ffmpeg")
         if system_path:
             self.ffmpeg_path = Path(system_path)
@@ -1158,31 +1105,23 @@ class ToolManager:
                 except Exception as e:
                     logger.warning(f"[yt-dlp] Failed to remove old Mac file: {e}")
 
-        # 1. 检查已下载的版本（用户数据目录）
-        builtin_path = BIN_DIR / exe_name
-        logger.info(f"[yt-dlp] Checking downloaded: {builtin_path} (exists: {builtin_path.exists()})")
-        if builtin_path.exists():
-            self.ytdlp_path = builtin_path
-            logger.info(f"[yt-dlp] ✓ Found downloaded version: {builtin_path}")
-            return builtin_path
-
-        # 2. 检查打包的内置版本（resources/tools/bin）
+        # 1. 检查打包的内置版本
         bundled_path = BUNDLED_BIN_DIR / exe_name
         logger.info(f"[yt-dlp] Checking bundled: {bundled_path} (exists: {bundled_path.exists()})")
         if bundled_path.exists():
             self.ytdlp_path = bundled_path
             logger.info(f"[yt-dlp] ✓ Found bundled version: {bundled_path}")
             return bundled_path
+
+        # 2. 检查已下载的版本
+        builtin_path = BIN_DIR / exe_name
+        logger.info(f"[yt-dlp] Checking downloaded: {builtin_path} (exists: {builtin_path.exists()})")
+        if builtin_path.exists():
+            self.ytdlp_path = builtin_path
+            logger.info(f"[yt-dlp] ✓ Found downloaded version: {builtin_path}")
+            return builtin_path
         
-        # 3. 检查旧的打包路径（tools/bin，兼容旧版本）
-        legacy_bundled_path = LEGACY_BUNDLED_BIN_DIR / exe_name
-        logger.info(f"[yt-dlp] Checking legacy bundled: {legacy_bundled_path} (exists: {legacy_bundled_path.exists()})")
-        if legacy_bundled_path.exists():
-            self.ytdlp_path = legacy_bundled_path
-            logger.info(f"[yt-dlp] ✓ Found legacy bundled version: {legacy_bundled_path}")
-            return legacy_bundled_path
-        
-        # 4. 检查系统安装
+        # 3. 检查系统安装
         system_path = shutil.which("yt-dlp")
         logger.info(f"[yt-dlp] Checking system PATH: {system_path}")
         if system_path:
@@ -1839,6 +1778,403 @@ else:
                 "download_size": "约 1 GB",
                 "install_time": "5-10 分钟",
                 "compatible": "需要 NVIDIA 显卡"
+            }
+    
+    # ==================== Playwright 安装支持 ====================
+    
+    async def check_playwright_status(self) -> dict:
+        """
+        检查 Playwright 和 Chromium 浏览器的安装状态
+        
+        Returns:
+            dict: {
+                "installed": bool,  # 是否完全安装（包+浏览器）
+                "package_installed": bool,  # playwright 包是否安装
+                "browser_installed": bool,  # Chromium 浏览器是否安装
+                "version": str | None,  # playwright 版本
+                "browser_path": str | None,  # Chromium 路径
+                "error": str | None  # 错误信息
+            }
+        """
+        result = {
+            "installed": False,
+            "package_installed": False,
+            "browser_installed": False,
+            "version": None,
+            "browser_path": None,
+            "error": None
+        }
+        
+        try:
+            # 检查 playwright 包是否安装
+            try:
+                from importlib.metadata import version as get_version, PackageNotFoundError
+            except ImportError:
+                from importlib_metadata import version as get_version, PackageNotFoundError
+            
+            try:
+                pw_version = get_version("playwright")
+                result["package_installed"] = True
+                result["version"] = pw_version
+                logger.info(f"[Playwright] Package installed: v{pw_version}")
+            except PackageNotFoundError:
+                result["package_installed"] = False
+                logger.info("[Playwright] Package not installed")
+                return result
+            
+            # 检查 Chromium 浏览器是否安装
+            # 需要检查多个可能的位置
+            try:
+                # 可能的浏览器路径列表
+                possible_browser_paths = []
+                
+                # 1. 用户目录（标准安装位置）
+                if sys.platform == 'win32':
+                    user_pw_path = Path.home() / 'AppData' / 'Local' / 'ms-playwright'
+                elif sys.platform == 'darwin':
+                    user_pw_path = Path.home() / 'Library' / 'Caches' / 'ms-playwright'
+                else:
+                    user_pw_path = Path.home() / '.cache' / 'ms-playwright'
+                possible_browser_paths.append(user_pw_path)
+                
+                # 2. 打包环境中 Playwright 的 .local-browsers 目录
+                if getattr(sys, 'frozen', False):
+                    if hasattr(sys, '_MEIPASS'):
+                        internal_path = Path(sys._MEIPASS)
+                    else:
+                        internal_path = Path(sys.executable).parent / '_internal'
+                    
+                    playwright_local = internal_path / 'playwright' / 'driver' / 'package' / '.local-browsers'
+                    possible_browser_paths.append(playwright_local)
+                
+                logger.info(f"[Playwright] Checking browser paths: {possible_browser_paths}")
+                
+                # 检查每个可能的路径
+                for pw_browsers_path in possible_browser_paths:
+                    if not pw_browsers_path.exists():
+                        continue
+                    
+                    # 查找 chromium 或 chromium_headless_shell 目录
+                    chromium_patterns = ['chromium-*', 'chromium_headless_shell-*']
+                    for pattern in chromium_patterns:
+                        chromium_dirs = list(pw_browsers_path.glob(pattern))
+                        if chromium_dirs:
+                            chromium_dir = sorted(chromium_dirs, reverse=True)[0]
+                            
+                            # 查找可执行文件 - 支持多种目录结构
+                            chrome_exe = None
+                            if sys.platform == 'win32':
+                                possible_exes = [
+                                    chromium_dir / 'chrome-win64' / 'chrome.exe',
+                                    chromium_dir / 'chrome-win' / 'chrome.exe',
+                                    chromium_dir / 'chrome-headless-shell-win64' / 'chrome-headless-shell.exe',
+                                ]
+                            elif sys.platform == 'darwin':
+                                possible_exes = [
+                                    chromium_dir / 'chrome-mac' / 'Chromium.app' / 'Contents' / 'MacOS' / 'Chromium',
+                                    chromium_dir / 'chrome-mac-arm64' / 'Chromium.app' / 'Contents' / 'MacOS' / 'Chromium',
+                                ]
+                            else:
+                                possible_exes = [
+                                    chromium_dir / 'chrome-linux' / 'chrome',
+                                ]
+                            
+                            for exe_path in possible_exes:
+                                if exe_path.exists():
+                                    chrome_exe = exe_path
+                                    break
+                            
+                            if chrome_exe:
+                                result["browser_installed"] = True
+                                result["browser_path"] = str(chrome_exe)
+                                result["installed"] = True
+                                logger.info(f"[Playwright] Chromium installed: {chrome_exe}")
+                                return result
+                
+                # 没有找到浏览器
+                result["browser_installed"] = False
+                logger.info("[Playwright] No chromium browser found in any location")
+                    
+            except Exception as e:
+                result["browser_installed"] = False
+                result["error"] = f"浏览器检查失败: {str(e)}"
+                logger.warning(f"[Playwright] Browser check failed: {e}")
+                
+        except Exception as e:
+            result["error"] = str(e)
+            logger.error(f"[Playwright] Status check failed: {e}")
+        
+        return result
+    
+    def _get_python_executable_for_pip(self) -> str:
+        """
+        获取用于 pip 安装的 Python 可执行文件路径
+        
+        Returns:
+            str: Python 可执行文件路径
+        
+        Raises:
+            RuntimeError: 如果在打包环境中找不到嵌入式 Python
+        """
+        if getattr(sys, 'frozen', False):
+            # 打包后环境：寻找嵌入式 Python
+            # PyInstaller 打包后的目录结构：
+            # - VidFlow-Backend.exe
+            # - _internal/ (sys._MEIPASS 指向这里)
+            #   - python/
+            #     - python.exe
+            
+            python_name = 'python.exe' if sys.platform == 'win32' else 'python'
+            
+            # 可能的嵌入式 Python 路径
+            possible_paths = []
+            
+            # 1. _MEIPASS/python (PyInstaller 解压目录)
+            if hasattr(sys, '_MEIPASS'):
+                possible_paths.append(Path(sys._MEIPASS) / 'python' / python_name)
+            
+            # 2. exe 同级目录的 _internal/python
+            exe_dir = Path(sys.executable).parent
+            possible_paths.append(exe_dir / '_internal' / 'python' / python_name)
+            
+            # 3. exe 同级目录的 python
+            possible_paths.append(exe_dir / 'python' / python_name)
+            
+            for path in possible_paths:
+                if path.exists():
+                    logger.info(f"[Playwright] Using embedded Python: {path}")
+                    return str(path)
+            
+            # 如果都找不到，抛出错误
+            searched_paths = '\n'.join(str(p) for p in possible_paths)
+            error_msg = f"未找到嵌入式 Python\n\n已搜索路径:\n{searched_paths}\n\n请确保 python_embedded 目录已正确打包"
+            logger.error(f"[Playwright] {error_msg}")
+            raise RuntimeError(error_msg)
+        else:
+            # 开发环境
+            return sys.executable
+    
+    async def _call_progress_callback(self, callback, percent: int, message: str):
+        """调用进度回调，支持同步和异步回调函数"""
+        if callback is None:
+            return
+        try:
+            result = callback(percent, message)
+            # 如果返回的是协程，则 await 它
+            if asyncio.iscoroutine(result):
+                await result
+        except Exception as e:
+            logger.warning(f"[Playwright] Progress callback error: {e}")
+    
+    async def install_playwright(self, progress_callback=None) -> dict:
+        """
+        安装 Playwright 和 Chromium 浏览器
+        
+        Args:
+            progress_callback: 进度回调函数 callback(percent, message)，支持同步或异步函数
+        
+        Returns:
+            dict: {
+                "success": bool,
+                "message": str,
+                "version": str | None,
+                "error": str | None
+            }
+        """
+        try:
+            # 检查是否已安装
+            status = await self.check_playwright_status()
+            if status["installed"]:
+                logger.info("[Playwright] Already installed, skipping")
+                return {
+                    "success": True,
+                    "message": f"Playwright 已安装 (v{status['version']})",
+                    "version": status["version"],
+                    "already_installed": True
+                }
+            
+            try:
+                python_exe = self._get_python_executable_for_pip()
+            except RuntimeError as e:
+                return {
+                    "success": False,
+                    "error": f"无法安装 Playwright: {str(e)}\n\n请重新安装应用程序"
+                }
+            
+            logger.info(f"[Playwright] Using Python: {python_exe}")
+            
+            # 确定安装目标目录
+            if getattr(sys, 'frozen', False):
+                target_dir = AI_PACKAGES_DIR
+                pip_target_args = ['--target', str(target_dir)]
+                logger.info(f"[Playwright] Installing to: {target_dir}")
+            else:
+                target_dir = None
+                pip_target_args = []
+                logger.info("[Playwright] Installing to system Python")
+            
+            # 步骤 1: 安装 playwright 包 (0% - 50%)
+            await self._call_progress_callback(progress_callback, 0, "开始安装 Playwright...")
+            
+            if not status["package_installed"]:
+                await self._call_progress_callback(progress_callback, 5, "下载 Playwright 包...")
+                
+                pip_cmd = [
+                    python_exe, '-m', 'pip', 'install',
+                    *pip_target_args,
+                    'playwright',
+                    '--upgrade',
+                    '--no-warn-script-location',
+                    '-i', 'https://mirrors.aliyun.com/pypi/simple/',
+                    '--default-timeout=300',
+                ]
+                
+                logger.info(f"[Playwright] Running: {' '.join(pip_cmd)}")
+                
+                process = await asyncio.create_subprocess_exec(
+                    *pip_cmd,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.STDOUT
+                )
+                
+                output_lines = []
+                current_progress = 5
+                
+                while True:
+                    line = await process.stdout.readline()
+                    if not line:
+                        break
+                    
+                    line_text = line.decode('utf-8', errors='ignore').strip()
+                    if line_text:
+                        output_lines.append(line_text)
+                        logger.info(f"[Playwright pip] {line_text}")
+                        
+                        # 更新进度
+                        lower_text = line_text.lower()
+                        if 'downloading' in lower_text or 'collecting' in lower_text:
+                            current_progress = min(current_progress + 5, 40)
+                        elif 'installing' in lower_text:
+                            current_progress = min(current_progress + 5, 45)
+                        elif 'successfully installed' in lower_text:
+                            current_progress = 50
+                        
+                        await self._call_progress_callback(progress_callback, current_progress, "安装 Playwright 包...")
+                
+                await process.wait()
+                
+                if process.returncode != 0:
+                    error_output = '\n'.join(output_lines[-10:])
+                    logger.error(f"[Playwright] pip install failed: {error_output}")
+                    return {
+                        "success": False,
+                        "error": f"Playwright 包安装失败\n\n{error_output[:300]}"
+                    }
+                
+                logger.info("[Playwright] Package installed successfully")
+            else:
+                logger.info("[Playwright] Package already installed, skipping pip install")
+                await self._call_progress_callback(progress_callback, 50, "Playwright 包已安装")
+            
+            # 步骤 2: 安装 Chromium 浏览器 (50% - 100%)
+            await self._call_progress_callback(progress_callback, 50, "开始下载 Chromium 浏览器...")
+            
+            # 构建 playwright install 命令
+            if getattr(sys, 'frozen', False) and target_dir:
+                # 打包环境：需要设置 PYTHONPATH
+                env = os.environ.copy()
+                env["PYTHONPATH"] = str(target_dir) + (os.pathsep + env.get("PYTHONPATH", ""))
+                playwright_cmd = [python_exe, '-m', 'playwright', 'install', 'chromium']
+            else:
+                env = None
+                playwright_cmd = [python_exe, '-m', 'playwright', 'install', 'chromium']
+            
+            logger.info(f"[Playwright] Running: {' '.join(playwright_cmd)}")
+            
+            process = await asyncio.create_subprocess_exec(
+                *playwright_cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+                env=env
+            )
+            
+            output_lines = []
+            current_progress = 50
+            
+            while True:
+                line = await process.stdout.readline()
+                if not line:
+                    break
+                
+                line_text = line.decode('utf-8', errors='ignore').strip()
+                if line_text:
+                    output_lines.append(line_text)
+                    logger.info(f"[Playwright browser] {line_text}")
+                    
+                    # 解析下载进度
+                    lower_text = line_text.lower()
+                    if 'downloading' in lower_text or '%' in line_text:
+                        # 尝试提取百分比
+                        import re
+                        match = re.search(r'(\d+)%', line_text)
+                        if match:
+                            browser_progress = int(match.group(1))
+                            # 映射到 50-95 范围
+                            current_progress = 50 + int(browser_progress * 0.45)
+                        else:
+                            current_progress = min(current_progress + 2, 90)
+                    elif 'chromium' in lower_text and ('installed' in lower_text or 'downloaded' in lower_text):
+                        current_progress = 95
+                    
+                    await self._call_progress_callback(progress_callback, current_progress, "下载 Chromium 浏览器...")
+            
+            await process.wait()
+            
+            if process.returncode != 0:
+                error_output = '\n'.join(output_lines[-10:])
+                logger.error(f"[Playwright] Browser install failed: {error_output}")
+                
+                # 检查常见错误
+                error_lower = error_output.lower()
+                if 'disk' in error_lower or 'space' in error_lower:
+                    return {
+                        "success": False,
+                        "error": "磁盘空间不足，Chromium 浏览器需要约 200MB 空间"
+                    }
+                elif 'network' in error_lower or 'timeout' in error_lower or 'connection' in error_lower:
+                    return {
+                        "success": False,
+                        "error": "网络连接超时，请检查网络后重试"
+                    }
+                
+                return {
+                    "success": False,
+                    "error": f"Chromium 浏览器安装失败\n\n{error_output[:300]}"
+                }
+            
+            await self._call_progress_callback(progress_callback, 100, "Playwright 安装完成！")
+            
+            # 验证安装
+            final_status = await self.check_playwright_status()
+            if final_status["installed"]:
+                logger.info(f"[Playwright] Installation completed: v{final_status['version']}")
+                return {
+                    "success": True,
+                    "message": f"Playwright 安装成功 (v{final_status['version']})",
+                    "version": final_status["version"]
+                }
+            else:
+                logger.error("[Playwright] Installation verification failed")
+                return {
+                    "success": False,
+                    "error": "安装验证失败，请重试"
+                }
+                
+        except Exception as e:
+            logger.error(f"[Playwright] Installation error: {e}", exc_info=True)
+            return {
+                "success": False,
+                "error": f"安装出错: {str(e)}"
             }
     
     # 保留旧方法以兼容现有代码

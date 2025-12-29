@@ -36,6 +36,10 @@ export interface DownloadTask {
   error_message?: string;
   file_size?: string;
   filesize?: number;
+  // 智能下载器信息
+  downloader_used?: string;  // 使用的下载器名称
+  fallback_used?: boolean;   // 是否使用了回退
+  fallback_reason?: string;  // 回退原因
 }
 
 export interface SubtitleTask {

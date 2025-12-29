@@ -88,10 +88,11 @@ class BackendConfigManager {
           // 验证后端健康
           try {
             const axios = (await import('axios')).default;
-            const healthUrl = `${this.getApiBaseUrl()}/api/v1/system/health`;
+            // 使用正确的健康检查端点
+            const healthUrl = `${this.getApiBaseUrl()}/health`;
             console.log('🔍 Verifying backend health:', healthUrl);
 
-            const response = await axios.get(healthUrl, { timeout: 3000 });
+            const response = await axios.get(healthUrl, { timeout: 5000 });
             if (response.status === 200) {
               this.initialized = true;
               this.initializing = false;
@@ -101,11 +102,14 @@ class BackendConfigManager {
             }
           } catch (healthError: any) {
             console.error('❌ Backend health check failed:', healthError.message);
-            this.updateConfig({
-              ready: false,
-              status: 'failed',
-              error: '后端健康检查失败',
-            });
+            // 不要立即标记为失败，可能后端还在启动中
+            if (this.initAttempts >= this.MAX_ATTEMPTS) {
+              this.updateConfig({
+                ready: false,
+                status: 'failed',
+                error: '后端健康检查失败',
+              });
+            }
           }
         } else if (electronConfig.status === 'failed') {
           console.error('❌ Backend startup failed:', electronConfig.error);

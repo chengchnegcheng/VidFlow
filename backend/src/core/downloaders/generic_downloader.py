@@ -21,6 +21,8 @@ class GenericDownloader(BaseDownloader):
     def __init__(self, output_dir: str = "./data/downloads"):
         super().__init__(output_dir)
         self.platform_name = "generic"
+        # 智能回退模式下是否使用 Cookie（由 DownloaderFactory 设置）
+        self._use_cookie_in_smart_mode = True
     
     @staticmethod
     def supports_url(url: str) -> bool:
@@ -43,42 +45,37 @@ class GenericDownloader(BaseDownloader):
                 'quiet': True,
                 'no_warnings': True,
                 'extract_flat': False,
-                # 增强反爬配置
+                # 通用反爬配置
                 'http_headers': {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-                    'Accept-Language': 'en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.7',
-                    'Accept-Encoding': 'gzip, deflate, br',
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+                    'Accept-Language': 'zh-CN,zh;q=0.9,en-US,en;q=0.8',
+                    # 注意：不要设置 Accept-Encoding，让 yt-dlp 自动处理压缩
                     'DNT': '1',
                     'Connection': 'keep-alive',
                     'Upgrade-Insecure-Requests': '1',
-                    'Sec-Fetch-Dest': 'document',
-                    'Sec-Fetch-Mode': 'navigate',
-                    'Sec-Fetch-Site': 'none',
-                    'Sec-Fetch-User': '?1',
-                    'Sec-Ch-Ua': '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
-                    'Sec-Ch-Ua-Mobile': '?0',
-                    'Sec-Ch-Ua-Platform': '"Windows"',
                 },
-                # 超时和重试配置
+                # 超时配置
                 'socket_timeout': 30,
-                'extractor_retries': 3,
-                'fragment_retries': 3,
             }
 
             # 针对国内平台优化
-            if platform in ['xiaohongshu', 'douyin', 'weixin', 'tencent', 'youku', 'iqiyi']:
+            if platform in ['xiaohongshu', 'douyin', 'weixin', 'tencent', 'youku', 'iqiyi', 'bilibili']:
                 ydl_opts['geo_bypass'] = True
                 ydl_opts['geo_bypass_country'] = 'CN'
                 # 添加 Referer 避免403
                 if platform == 'xiaohongshu':
                     ydl_opts['http_headers']['Referer'] = 'https://www.xiaohongshu.com/'
+                elif platform == 'bilibili':
+                    ydl_opts['http_headers']['Referer'] = 'https://www.bilibili.com/'
                 elif platform in ['tencent', 'youku', 'iqiyi']:
                     # 国内视频平台通用 Referer
                     ydl_opts['http_headers']['Referer'] = url.split('?')[0]  # 使用当前页面作为 Referer
 
-            # 为特定平台添加 Cookie 支持
-            cookie_path = self._get_platform_cookie_path(url)
+            # 为特定平台添加 Cookie 支持（仅在非智能回退模式或允许使用 Cookie 时）
+            cookie_path = None
+            if getattr(self, '_use_cookie_in_smart_mode', True):
+                cookie_path = self._get_platform_cookie_path(url)
 
             loop = asyncio.get_event_loop()
 
@@ -155,7 +152,7 @@ class GenericDownloader(BaseDownloader):
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
                     'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
                     'Accept-Language': 'zh-CN,zh;q=0.9,en-US,en;q=0.8',
-                    'Accept-Encoding': 'gzip, deflate, br',
+                    # 注意：不要设置 Accept-Encoding，让 yt-dlp 自动处理压缩
                     'DNT': '1',
                     'Connection': 'keep-alive',
                 },
@@ -172,9 +169,6 @@ class GenericDownloader(BaseDownloader):
             ffmpeg_path = tool_mgr.get_ffmpeg_path()
             if ffmpeg_path:
                 ydl_opts['ffmpeg_location'] = str(Path(ffmpeg_path).parent)
-                logger.info(f"Using ffmpeg from: {ffmpeg_path}")
-            else:
-                logger.warning("FFmpeg not found! Video/audio merging may fail. Please check system settings to install FFmpeg.")
 
             if output_format == 'mp3':
                 ydl_opts.pop('merge_output_format', None)
@@ -185,17 +179,21 @@ class GenericDownloader(BaseDownloader):
                 }]
 
             # 针对国内平台优化
-            if platform in ['xiaohongshu', 'douyin', 'weixin', 'tencent', 'youku', 'iqiyi']:
+            if platform in ['xiaohongshu', 'douyin', 'weixin', 'tencent', 'youku', 'iqiyi', 'bilibili']:
                 ydl_opts['geo_bypass'] = True
                 ydl_opts['geo_bypass_country'] = 'CN'
                 # 添加 Referer 避免403
                 if platform == 'xiaohongshu':
                     ydl_opts['http_headers']['Referer'] = 'https://www.xiaohongshu.com/'
+                elif platform == 'bilibili':
+                    ydl_opts['http_headers']['Referer'] = 'https://www.bilibili.com/'
                 elif platform in ['tencent', 'youku', 'iqiyi']:
                     ydl_opts['http_headers']['Referer'] = url.split('?')[0]
 
-            # 为特定平台添加 Cookie 支持
-            cookie_path = self._get_platform_cookie_path(url)
+            # 为特定平台添加 Cookie 支持（仅在非智能回退模式或允许使用 Cookie 时）
+            cookie_path = None
+            if getattr(self, '_use_cookie_in_smart_mode', True):
+                cookie_path = self._get_platform_cookie_path(url)
             
             # 添加进度钩子
             if progress_callback:

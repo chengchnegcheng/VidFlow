@@ -46,12 +46,8 @@ async function initializeBackendPort(): Promise<boolean> {
         // 验证后端真的可以响应
         console.log('🔍 Verifying backend health...');
         try {
-          let healthCheck;
-          try {
-            healthCheck = await api.get('/api/v1/system/health', { timeout: 5000 });
-          } catch {
-            healthCheck = await api.get('/health', { timeout: 5000 });
-          }
+          // 使用正确的健康检查端点 /health
+          const healthCheck = await api.get('/health', { timeout: 5000 });
           if (healthCheck.status === 200) {
             portInitialized = true;
             initializationInProgress = false;

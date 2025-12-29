@@ -16,7 +16,7 @@ from pydantic import BaseModel
 from typing import Dict, Any, List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.models.database import get_session
-from src.core.cookie_storage import read_cookie_file, write_cookie_file
+from src.core.cookie_storage import read_cookie_file, write_cookie_file, validate_netscape_cookie_format, clean_cookie_content
 
 logger = logging.getLogger(__name__)
 
@@ -571,6 +571,21 @@ async def check_tools_status():
         incompatible_reason=whisper_reason
     ))
     
+    # 检查 Playwright（用于抖音/TikTok下载）
+    playwright_status = await tool_mgr.check_playwright_status()
+    tools.append(ToolStatus(
+        id="playwright",
+        name="Playwright",
+        description="抖音/TikTok 下载支持",
+        installed=playwright_status.get("installed", False),
+        version=playwright_status.get("version"),
+        path=playwright_status.get("browser_path"),
+        required=False,
+        official_url="https://playwright.dev",
+        compatible=True,
+        incompatible_reason=playwright_status.get("error")
+    ))
+    
     return tools
 
 @router.get("/storage")
@@ -885,6 +900,90 @@ async def install_ytdlp():
     except Exception as e:
         logger.error(f"[Tools] yt-dlp install error: {type(e).__name__}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"安装失败: {str(e)}")
+
+@router.post("/tools/install/playwright")
+async def install_playwright(background_tasks: BackgroundTasks = None):
+    """
+    安装 Playwright 和 Chromium 浏览器（用于抖音/TikTok下载）
+    使用后台任务，立即返回，通过 WebSocket 推送进度
+    """
+    try:
+        from src.core.tool_manager import get_tool_manager
+        from src.core.websocket_manager import get_ws_manager
+        
+        tool_mgr = get_tool_manager()
+        ws_manager = get_ws_manager()
+        
+        # 先检查是否已安装
+        status = await tool_mgr.check_playwright_status()
+        if status.get("installed"):
+            return {
+                "success": True,
+                "message": f"Playwright 已安装 (v{status.get('version')})",
+                "version": status.get("version"),
+                "already_installed": True
+            }
+        
+        # 后台安装任务
+        async def install_task():
+            try:
+                # 进度回调
+                async def progress_callback(percent, message):
+                    await ws_manager.send_tool_progress("playwright", percent, message)
+                
+                await ws_manager.send_tool_progress("playwright", 0, "开始安装 Playwright...")
+                result = await tool_mgr.install_playwright(progress_callback)
+                
+                if result.get("success"):
+                    await ws_manager.send_tool_progress("playwright", 100, result.get("message", "安装完成"))
+                else:
+                    await ws_manager.send_message({
+                        "type": "tool_install_error",
+                        "tool_id": "playwright",
+                        "error": result.get("error", "安装失败")
+                    })
+            except Exception as e:
+                logger.error(f"Background Playwright install task failed: {e}")
+                await ws_manager.send_message({
+                    "type": "tool_install_error",
+                    "tool_id": "playwright",
+                    "error": str(e)
+                })
+        
+        # 添加到后台任务
+        if background_tasks:
+            background_tasks.add_task(install_task)
+        else:
+            import asyncio
+            t = asyncio.create_task(install_task())
+            t.add_done_callback(_handle_task_exception)
+        
+        return {
+            "success": True,
+            "message": "Playwright 安装任务已启动，请通过 WebSocket 查看进度",
+            "status": "started"
+        }
+    
+    except Exception as e:
+        logger.error(f"Install Playwright failed: {e}")
+        raise HTTPException(status_code=500, detail=f"安装失败: {str(e)}")
+
+@router.get("/tools/playwright/status")
+async def get_playwright_status():
+    """获取 Playwright 安装状态"""
+    try:
+        from src.core.tool_manager import get_tool_manager
+        
+        tool_mgr = get_tool_manager()
+        status = await tool_mgr.check_playwright_status()
+        
+        return {
+            "status": "success",
+            **status
+        }
+    except Exception as e:
+        logger.error(f"Failed to get Playwright status: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/tools/ytdlp/download")
 async def download_ytdlp():
@@ -1856,6 +1955,24 @@ async def save_cookie_content(platform: str, cookie_data: CookieContent):
         
         cookies_dir = get_cookies_dir()
         cookie_file = cookies_dir / SUPPORTED_PLATFORMS[platform]["filename"]
+        
+        # 验证 Cookie 格式
+        is_valid, errors, cleaned_content = validate_netscape_cookie_format(cookie_data.content)
+        
+        if errors:
+            # 有格式错误，返回详细错误信息
+            error_summary = f"Cookie 格式存在 {len(errors)} 个错误:\n" + "\n".join(errors[:5])
+            if len(errors) > 5:
+                error_summary += f"\n... 还有 {len(errors) - 5} 个错误"
+            
+            raise HTTPException(
+                status_code=400, 
+                detail={
+                    "message": error_summary,
+                    "errors": errors,
+                    "error_count": len(errors)
+                }
+            )
         
         # 保存Cookie内容
         write_cookie_file(cookie_file, cookie_data.content)
