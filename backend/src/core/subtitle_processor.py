@@ -8,12 +8,40 @@ import importlib.util
 import asyncio
 import logging
 import re
+import shutil
 from pathlib import Path
 from typing import Optional, List, Dict
 from datetime import datetime
 from importlib.metadata import version as get_version, PackageNotFoundError
 
 logger = logging.getLogger(__name__)
+
+
+def _cleanup_conflicting_packages():
+    """
+    处理 AI 包目录中与打包环境可能冲突的包（numpy 等）
+    错误: ImportError: cannot load module more than once per process
+    
+    这个问题发生在 PyInstaller 打包的应用中：
+    1. 主应用已经内置了 numpy（作为依赖）
+    2. AI 包目录中又安装了另一个版本的 numpy
+    3. 当 faster-whisper/torch 尝试导入 numpy 时，C 扩展模块冲突
+    
+    新策略：预先导入内置的 numpy，这样后续导入会复用已加载的模块
+    """
+    if not getattr(sys, 'frozen', False):
+        return  # 只在打包环境中执行
+    
+    # 预先导入内置的 numpy
+    try:
+        import numpy
+        logger.info(f"[SubtitleProcessor] Pre-loaded numpy {numpy.__version__} from {numpy.__file__}")
+    except ImportError as e:
+        logger.warning(f"[SubtitleProcessor] Failed to pre-load numpy: {e}")
+
+
+# 在模块加载时清理冲突的包
+_cleanup_conflicting_packages()
 
 class SubtitleProcessor:
     """字幕处理器"""
@@ -26,6 +54,31 @@ class SubtitleProcessor:
     async def initialize_model(self, model_name: str = "base", device: str = "auto"):
         """初始化 Whisper 模型"""
         try:
+            # 在打包环境中，确保内置 numpy 优先于 AI 包目录中的 numpy
+            # 这可以避免 "cannot load module more than once per process" 错误
+            if getattr(sys, 'frozen', False):
+                try:
+                    # 临时将 AI 包目录从 sys.path 开头移到后面
+                    from src.core.tool_manager import AI_PACKAGES_DIR
+                    ai_pkg_str = str(AI_PACKAGES_DIR)
+                    
+                    # 先导入内置 numpy（在调整 sys.path 之前它应该已经可用）
+                    # 如果内置 numpy 不在 sys.path 中，我们需要找到它
+                    if ai_pkg_str in sys.path:
+                        # 临时移除 AI 包目录
+                        sys.path.remove(ai_pkg_str)
+                        try:
+                            import numpy
+                            logger.info(f"[Model Init] Pre-loaded numpy {numpy.__version__} from {numpy.__file__}")
+                        except ImportError:
+                            logger.warning("[Model Init] Built-in numpy not found")
+                        finally:
+                            # 恢复 AI 包目录到 sys.path（但放到后面而不是开头）
+                            if ai_pkg_str not in sys.path:
+                                sys.path.append(ai_pkg_str)
+                except Exception as e:
+                    logger.warning(f"[Model Init] Failed to adjust sys.path for numpy: {e}")
+            
             # Windows 平台修复：让 ctranslate2 能找到 PyTorch 的 CUDA 库
             if sys.platform == 'win32':
                 try:

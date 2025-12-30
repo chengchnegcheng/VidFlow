@@ -595,7 +595,7 @@ export function ToolsConfig() {
   };
 
   // 分组工具
-  const externalTools = tools.filter(t => t.id === 'ffmpeg' || t.id === 'ytdlp');
+  const externalTools = tools.filter(t => t.id === 'ffmpeg' || t.id === 'ytdlp' || t.id === 'playwright');
 
   // Loading 状态
   if (loading) {

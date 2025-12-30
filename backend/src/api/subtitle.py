@@ -5,6 +5,7 @@ import asyncio
 import json
 import logging
 import shlex
+import sys
 import uuid
 import re
 from datetime import datetime, timezone
@@ -86,6 +87,159 @@ def _validate_subtitle_path(path: Path) -> Path:
         raise HTTPException(status_code=400, detail="字幕文件不存在")
 
     return path.resolve()
+
+
+async def _get_video_duration(ffmpeg_path: str, video_path: str) -> float:
+    """使用 ffprobe 获取视频时长"""
+    import json as json_module
+    
+    # 尝试使用 ffprobe（与 ffmpeg 同目录）
+    ffprobe_path = Path(ffmpeg_path).parent / ("ffprobe.exe" if sys.platform == "win32" else "ffprobe")
+    
+    logger.debug(f"[Duration] ffprobe path: {ffprobe_path}, exists: {ffprobe_path.exists()}")
+    
+    if not ffprobe_path.exists():
+        # 如果 ffprobe 不存在，使用 ffmpeg 获取时长
+        cmd = [
+            str(ffmpeg_path),
+            '-i', str(video_path),
+            '-f', 'null', '-'
+        ]
+        logger.debug(f"[Duration] Using ffmpeg fallback: {' '.join(cmd)}")
+        
+        try:
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            _, stderr = await asyncio.wait_for(process.communicate(), timeout=60)
+            
+            # 从 ffmpeg 输出中解析时长 (格式: Duration: 00:05:30.12)
+            stderr_text = stderr.decode('utf-8', errors='ignore')
+            duration_match = re.search(r'Duration:\s*(\d+):(\d+):(\d+\.?\d*)', stderr_text)
+            if duration_match:
+                h, m, s = duration_match.groups()
+                duration = int(h) * 3600 + int(m) * 60 + float(s)
+                logger.debug(f"[Duration] Parsed from ffmpeg: {duration}s")
+                return duration
+        except Exception as e:
+            logger.warning(f"[Duration] ffmpeg fallback failed: {e}")
+        return 0
+    
+    # 使用 ffprobe
+    cmd = [
+        str(ffprobe_path),
+        '-v', 'quiet',
+        '-print_format', 'json',
+        '-show_format',
+        str(video_path)
+    ]
+    logger.debug(f"[Duration] Using ffprobe: {' '.join(cmd)}")
+    
+    try:
+        process = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=30)
+        
+        logger.debug(f"[Duration] ffprobe returncode: {process.returncode}")
+        
+        if process.returncode == 0 and stdout:
+            output = stdout.decode('utf-8', errors='ignore').strip()
+            logger.debug(f"[Duration] ffprobe output: {output[:200]}...")
+            
+            if output.startswith('{'):
+                # JSON 格式（ffprobe）
+                data = json_module.loads(output)
+                duration = float(data.get('format', {}).get('duration', 0))
+                logger.debug(f"[Duration] Parsed from JSON: {duration}s")
+                return duration
+            else:
+                # CSV 格式
+                duration = float(output) if output else 0
+                logger.debug(f"[Duration] Parsed from CSV: {duration}s")
+                return duration
+        else:
+            stderr_text = stderr.decode('utf-8', errors='ignore') if stderr else ''
+            logger.warning(f"[Duration] ffprobe failed: {stderr_text[:200]}")
+    except Exception as e:
+        logger.warning(f"[Duration] Failed to get video duration: {e}")
+    
+    return 0
+
+
+async def _detect_gpu_encoder(ffmpeg_path: str) -> Optional[str]:
+    """
+    检测可用的 GPU 编码器
+    
+    返回:
+        - 'h264_nvenc': NVIDIA GPU (Windows/Linux)
+        - 'h264_videotoolbox': Apple Silicon/Intel Mac
+        - None: 使用 CPU 编码
+    """
+    import platform
+    
+    system = platform.system()
+    
+    # macOS: 使用 VideoToolbox
+    if system == "Darwin":
+        # 检查 VideoToolbox 是否可用
+        try:
+            process = await asyncio.create_subprocess_exec(
+                str(ffmpeg_path),
+                '-hide_banner', '-encoders',
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            stdout, _ = await asyncio.wait_for(process.communicate(), timeout=10)
+            
+            if b'h264_videotoolbox' in stdout:
+                logger.info("[GPU] VideoToolbox encoder available (macOS)")
+                return 'h264_videotoolbox'
+        except Exception as e:
+            logger.debug(f"VideoToolbox check failed: {e}")
+        return None
+    
+    # Windows/Linux: 检查 NVIDIA NVENC
+    if system in ("Windows", "Linux"):
+        try:
+            # 检查 FFmpeg 是否支持 nvenc
+            process = await asyncio.create_subprocess_exec(
+                str(ffmpeg_path),
+                '-hide_banner', '-encoders',
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            stdout, _ = await asyncio.wait_for(process.communicate(), timeout=10)
+            
+            if b'h264_nvenc' not in stdout:
+                logger.debug("[GPU] h264_nvenc not available in FFmpeg")
+                return None
+            
+            # 测试 NVENC 是否真的能用（有些系统有驱动但没有 GPU）
+            process = await asyncio.create_subprocess_exec(
+                str(ffmpeg_path),
+                '-f', 'lavfi', '-i', 'nullsrc=s=256x256:d=1',
+                '-c:v', 'h264_nvenc', '-f', 'null', '-',
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            _, stderr = await asyncio.wait_for(process.communicate(), timeout=15)
+            
+            if process.returncode == 0:
+                logger.info("[GPU] NVIDIA NVENC encoder available")
+                return 'h264_nvenc'
+            else:
+                stderr_text = stderr.decode('utf-8', errors='ignore')
+                if 'Cannot load' in stderr_text or 'No NVENC' in stderr_text:
+                    logger.debug(f"[GPU] NVENC not available: {stderr_text[:200]}")
+        except Exception as e:
+            logger.debug(f"NVENC check failed: {e}")
+    
+    return None
 
 
 def _handle_task_exception(task: asyncio.Task):
@@ -714,6 +868,19 @@ async def process_burn_subtitle_task(task_id: str, request: CreateBurnSubtitleTa
                 if not ffmpeg_path:
                     raise Exception("FFmpeg 未安装")
 
+                # 获取视频时长用于进度计算
+                duration = await _get_video_duration(ffmpeg_path, request.video_path)
+                logger.info(f"[Burn] Video duration: {duration}s (type: {type(duration).__name__})")
+                
+                # 如果获取时长失败，使用估算值（假设 5 分钟）
+                if not duration or duration <= 0:
+                    duration = 300.0  # 默认 5 分钟
+                    logger.warning(f"[Burn] Could not get video duration, using fallback: {duration}s")
+
+                # 检测 GPU 加速支持
+                gpu_encoder = await _detect_gpu_encoder(ffmpeg_path)
+                logger.info(f"Using encoder: {gpu_encoder or 'libx264 (CPU)'}")
+
                 # 校验字幕路径
                 subtitle_path = _validate_subtitle_path(Path(request.subtitle_path))
                 
@@ -728,16 +895,29 @@ async def process_burn_subtitle_task(task_id: str, request: CreateBurnSubtitleTa
                 # : 需要转义为 \:
                 subtitle_filename_escaped = subtitle_filename.replace("'", r"'\''").replace(":", r"\:")
 
-                cmd = [
-                    str(ffmpeg_path),
-                    '-i', str(request.video_path),
-                    '-vf', f"subtitles='{subtitle_filename_escaped}'",
-                    '-c:a', 'copy',
-                    '-y',
-                    str(task.output_path)
-                ]
-
-                # ... (中间代码省略)
+                # 构建 FFmpeg 命令（支持 GPU 加速编码）
+                # 注意：subtitles 滤镜必须在 CPU 上运行，所以不使用 hwaccel 解码
+                # GPU 加速主要体现在编码阶段，可以提升 2-3 倍速度
+                cmd = [str(ffmpeg_path)]
+                cmd.extend(['-i', str(request.video_path)])
+                
+                # 视频滤镜（字幕烧录）- 始终在 CPU 上处理
+                cmd.extend(['-vf', f"subtitles='{subtitle_filename_escaped}'"])
+                
+                # 视频编码器
+                if gpu_encoder:
+                    cmd.extend(['-c:v', gpu_encoder])
+                    # GPU 编码质量设置
+                    if gpu_encoder == 'h264_nvenc':
+                        cmd.extend(['-preset', 'p4', '-cq', '23'])  # p4 是较快的预设
+                    elif gpu_encoder == 'h264_videotoolbox':
+                        cmd.extend(['-q:v', '65'])  # VideoToolbox 质量参数
+                else:
+                    # CPU 编码
+                    cmd.extend(['-c:v', 'libx264', '-preset', 'medium', '-crf', '23'])
+                
+                # 音频直接复制
+                cmd.extend(['-c:a', 'copy', '-y', str(task.output_path)])
 
                 # 执行烧录（设置 cwd 为字幕目录）
                 logger.info(f"Burning subtitle (cwd={subtitle_dir}): {' '.join(cmd)}")
@@ -749,6 +929,7 @@ async def process_burn_subtitle_task(task_id: str, request: CreateBurnSubtitleTa
                 )
 
                 time_pattern = re.compile(r"time=(\d+):(\d+):(\d+\.\d+)")
+                last_progress_log = 0
 
                 while True:
                     line = await process.stderr.readline()
@@ -756,10 +937,16 @@ async def process_burn_subtitle_task(task_id: str, request: CreateBurnSubtitleTa
                         break
                     text = line.decode(errors="ignore").strip()
                     match = time_pattern.search(text)
-                    if match and duration:
+                    if match and duration > 0:
                         h, m, s = match.groups()
                         current_time = int(h) * 3600 + int(m) * 60 + float(s)
                         progress = round(min(current_time / duration * 100, 99.0), 1)
+                        
+                        # 每 10% 记录一次日志
+                        if progress - last_progress_log >= 10:
+                            logger.info(f"[Burn] Progress: {progress}% (time={current_time:.1f}s / {duration:.1f}s)")
+                            last_progress_log = progress
+                        
                         task.progress = progress
                         await db.commit()
                         await ws_manager.send_burn_progress(task_id, {

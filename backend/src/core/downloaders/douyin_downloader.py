@@ -97,8 +97,9 @@ def check_playwright_available() -> tuple:
             if not pw_browsers_path.exists():
                 continue
                 
-            # 查找 chromium 或 chromium_headless_shell 目录
-            chromium_patterns = ['chromium-*', 'chromium_headless_shell-*']
+            # 查找 chromium_headless_shell 或 chromium 目录
+            # 优先检查 chromium_headless_shell，因为这是我们默认安装的（更小）
+            chromium_patterns = ['chromium_headless_shell-*', 'chromium-*']
             for pattern in chromium_patterns:
                 chromium_dirs = list(pw_browsers_path.glob(pattern))
                 logger.info(f"[Playwright] Pattern {pattern} found dirs: {chromium_dirs}")
@@ -109,17 +110,20 @@ def check_playwright_available() -> tuple:
                     chrome_exe = None
                     if sys.platform == 'win32':
                         possible_exes = [
+                            chromium_dir / 'chrome-headless-shell-win64' / 'chrome-headless-shell.exe',
                             chromium_dir / 'chrome-win64' / 'chrome.exe',
                             chromium_dir / 'chrome-win' / 'chrome.exe',
-                            chromium_dir / 'chrome-headless-shell-win64' / 'chrome-headless-shell.exe',
                         ]
                     elif sys.platform == 'darwin':
                         possible_exes = [
+                            chromium_dir / 'chrome-headless-shell-mac-arm64' / 'chrome-headless-shell',
+                            chromium_dir / 'chrome-headless-shell-mac' / 'chrome-headless-shell',
                             chromium_dir / 'chrome-mac' / 'Chromium.app' / 'Contents' / 'MacOS' / 'Chromium',
                             chromium_dir / 'chrome-mac-arm64' / 'Chromium.app' / 'Contents' / 'MacOS' / 'Chromium',
                         ]
                     else:
                         possible_exes = [
+                            chromium_dir / 'chrome-headless-shell-linux' / 'chrome-headless-shell',
                             chromium_dir / 'chrome-linux' / 'chrome',
                         ]
                     
@@ -305,6 +309,46 @@ class DouyinDownloader(BaseDownloader):
             os.environ['PLAYWRIGHT_BROWSERS_PATH'] = str(user_pw_path)
             logger.info(f"[Playwright] Set PLAYWRIGHT_BROWSERS_PATH to: {user_pw_path}")
         
+        # 查找可用的浏览器可执行文件
+        # Playwright 1.49+ 默认使用 chromium_headless_shell，但用户可能安装的是 chromium
+        # 我们需要找到实际存在的浏览器并指定 executable_path
+        browser_exe_path = None
+        if user_pw_path.exists():
+            # 按优先级查找浏览器
+            chromium_patterns = ['chromium_headless_shell-*', 'chromium-*']
+            for pattern in chromium_patterns:
+                chromium_dirs = list(user_pw_path.glob(pattern))
+                if chromium_dirs:
+                    chromium_dir = sorted(chromium_dirs, reverse=True)[0]
+                    
+                    if sys.platform == 'win32':
+                        possible_exes = [
+                            chromium_dir / 'chrome-headless-shell-win64' / 'chrome-headless-shell.exe',
+                            chromium_dir / 'chrome-win64' / 'chrome.exe',
+                            chromium_dir / 'chrome-win' / 'chrome.exe',
+                        ]
+                    elif sys.platform == 'darwin':
+                        possible_exes = [
+                            chromium_dir / 'chrome-headless-shell-mac-arm64' / 'chrome-headless-shell',
+                            chromium_dir / 'chrome-headless-shell-mac' / 'chrome-headless-shell',
+                            chromium_dir / 'chrome-mac-arm64' / 'Chromium.app' / 'Contents' / 'MacOS' / 'Chromium',
+                            chromium_dir / 'chrome-mac' / 'Chromium.app' / 'Contents' / 'MacOS' / 'Chromium',
+                        ]
+                    else:
+                        possible_exes = [
+                            chromium_dir / 'chrome-headless-shell-linux' / 'chrome-headless-shell',
+                            chromium_dir / 'chrome-linux' / 'chrome',
+                        ]
+                    
+                    for exe_path in possible_exes:
+                        if exe_path.exists():
+                            browser_exe_path = str(exe_path)
+                            logger.info(f"[Playwright] Found browser executable: {browser_exe_path}")
+                            break
+                    
+                    if browser_exe_path:
+                        break
+        
         # 获取 Cookie
         cookie_path = self._get_douyin_cookie_path()
         cookies = []
@@ -318,7 +362,13 @@ class DouyinDownloader(BaseDownloader):
         video_data = None
         
         async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=True)
+            # 使用找到的浏览器可执行文件路径，解决版本不匹配问题
+            launch_options = {"headless": True}
+            if browser_exe_path:
+                launch_options["executable_path"] = browser_exe_path
+                logger.info(f"[Playwright] Launching with executable_path: {browser_exe_path}")
+            
+            browser = await p.chromium.launch(**launch_options)
             context = await browser.new_context(
                 user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
                 viewport={'width': 1920, 'height': 1080},

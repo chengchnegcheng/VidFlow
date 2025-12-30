@@ -121,7 +121,12 @@ def _set_ai_packages_dir(new_dir: Path):
     except Exception:
         pass
 
-    sys.path.insert(0, str(new_dir))
+    # 在打包环境中，不要把 AI 包目录放在 sys.path 最前面
+    # 这样可以让内置的 numpy 等包优先被加载，避免冲突
+    if getattr(sys, 'frozen', False):
+        sys.path.append(str(new_dir))
+    else:
+        sys.path.insert(0, str(new_dir))
     AI_PACKAGES_DIR = new_dir
 
     try:
@@ -131,7 +136,16 @@ def _set_ai_packages_dir(new_dir: Path):
         logger.warning(f"[AI] Failed to save ai_packages pointer: {e}")
 
 if str(AI_PACKAGES_DIR) not in sys.path:
-    sys.path.insert(0, str(AI_PACKAGES_DIR))
+    # 在打包环境中，不要把 AI 包目录放在 sys.path 最前面
+    # 这样可以让内置的 numpy 等包优先被加载，避免冲突
+    # 错误: ImportError: cannot load module more than once per process
+    if getattr(sys, 'frozen', False):
+        # 打包环境：放到 sys.path 末尾
+        sys.path.append(str(AI_PACKAGES_DIR))
+        logger.info(f"[AI] Added AI_PACKAGES_DIR to end of sys.path (frozen mode): {AI_PACKAGES_DIR}")
+    else:
+        # 开发环境：放到 sys.path 开头（保持原有行为）
+        sys.path.insert(0, str(AI_PACKAGES_DIR))
 
 AI_CLEANUP_QUEUE_PATH = DATA_DIR / "ai_cleanup_queue.json"
 
@@ -199,7 +213,33 @@ def _process_ai_cleanup_queue():
     except Exception as e:
         logger.warning(f"[AI] Cleanup queue processing failed: {e}")
 
+
+def _cleanup_conflicting_ai_packages():
+    """
+    处理 AI 包目录中与打包环境可能冲突的包（如 numpy）
+    
+    问题: ImportError: cannot load module more than once per process
+    
+    原因: PyInstaller 打包的应用已经内置了 numpy，当 AI 包目录中
+    又安装了另一个版本的 numpy 时，C 扩展模块会冲突。
+    
+    新策略: 不删除 numpy，而是通过预先导入内置 numpy 来避免冲突。
+    这样 AI 包中的 torch/faster-whisper 导入 numpy 时会使用已加载的版本。
+    """
+    if not getattr(sys, 'frozen', False):
+        return  # 只在打包环境中执行
+    
+    # 策略：预先导入内置的 numpy，这样后续 AI 包导入时会复用已加载的模块
+    try:
+        import numpy
+        logger.info(f"[AI] Pre-loaded numpy {numpy.__version__} from {numpy.__file__}")
+    except ImportError as e:
+        logger.warning(f"[AI] Failed to pre-load numpy: {e}")
+
 _process_ai_cleanup_queue()
+
+# 清理 AI 包目录中与打包环境冲突的包（如 numpy）
+_cleanup_conflicting_ai_packages()
 
 # 内置工具目录（打包时包含的预下载工具）
 # 开发环境: VidFlow-Desktop/resources/tools/bin
@@ -1692,6 +1732,9 @@ else:
                 if previous_dir and previous_dir.exists() and previous_dir != staging_dir:
                     _enqueue_ai_cleanup(previous_dir)
 
+                # 注意：不再删除 AI 包目录中的 numpy
+                # 新策略是在模块加载时预先导入内置 numpy，避免冲突
+
                 if progress_callback:
                     await progress_callback(100, "安装完成！")
 
@@ -1854,8 +1897,9 @@ else:
                     if not pw_browsers_path.exists():
                         continue
                     
-                    # 查找 chromium 或 chromium_headless_shell 目录
-                    chromium_patterns = ['chromium-*', 'chromium_headless_shell-*']
+                    # 查找 chromium_headless_shell 或 chromium 目录
+                    # 优先检查 chromium_headless_shell，因为这是我们默认安装的（更小）
+                    chromium_patterns = ['chromium_headless_shell-*', 'chromium-*']
                     for pattern in chromium_patterns:
                         chromium_dirs = list(pw_browsers_path.glob(pattern))
                         if chromium_dirs:
@@ -1865,17 +1909,20 @@ else:
                             chrome_exe = None
                             if sys.platform == 'win32':
                                 possible_exes = [
+                                    chromium_dir / 'chrome-headless-shell-win64' / 'chrome-headless-shell.exe',
                                     chromium_dir / 'chrome-win64' / 'chrome.exe',
                                     chromium_dir / 'chrome-win' / 'chrome.exe',
-                                    chromium_dir / 'chrome-headless-shell-win64' / 'chrome-headless-shell.exe',
                                 ]
                             elif sys.platform == 'darwin':
                                 possible_exes = [
+                                    chromium_dir / 'chrome-headless-shell-mac-arm64' / 'chrome-headless-shell',
+                                    chromium_dir / 'chrome-headless-shell-mac' / 'chrome-headless-shell',
                                     chromium_dir / 'chrome-mac' / 'Chromium.app' / 'Contents' / 'MacOS' / 'Chromium',
                                     chromium_dir / 'chrome-mac-arm64' / 'Chromium.app' / 'Contents' / 'MacOS' / 'Chromium',
                                 ]
                             else:
                                 possible_exes = [
+                                    chromium_dir / 'chrome-headless-shell-linux' / 'chrome-headless-shell',
                                     chromium_dir / 'chrome-linux' / 'chrome',
                                 ]
                             
@@ -2080,14 +2127,16 @@ else:
             await self._call_progress_callback(progress_callback, 50, "开始下载 Chromium 浏览器...")
             
             # 构建 playwright install 命令
+            # 注意：Playwright 1.49+ 默认使用 chromium-headless-shell 进行 headless 模式
+            # 我们安装 chromium-headless-shell 因为它更小（~50MB vs ~200MB）且足够用于抓取
             if getattr(sys, 'frozen', False) and target_dir:
                 # 打包环境：需要设置 PYTHONPATH
                 env = os.environ.copy()
                 env["PYTHONPATH"] = str(target_dir) + (os.pathsep + env.get("PYTHONPATH", ""))
-                playwright_cmd = [python_exe, '-m', 'playwright', 'install', 'chromium']
+                playwright_cmd = [python_exe, '-m', 'playwright', 'install', 'chromium-headless-shell']
             else:
                 env = None
-                playwright_cmd = [python_exe, '-m', 'playwright', 'install', 'chromium']
+                playwright_cmd = [python_exe, '-m', 'playwright', 'install', 'chromium-headless-shell']
             
             logger.info(f"[Playwright] Running: {' '.join(playwright_cmd)}")
             
