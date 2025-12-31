@@ -57,6 +57,13 @@ class YoutubeDownloader(BaseDownloader):
                 logger.debug(f"Using cached info for: {url}")
                 return cached_info
             
+            # 获取代理配置
+            proxy_opts = get_ydl_proxy_opts()
+            if proxy_opts.get('proxy'):
+                logger.info(f"[YouTube] Using proxy: {proxy_opts['proxy']}")
+            else:
+                logger.info("[YouTube] No proxy configured")
+            
             ydl_opts = {
                 'quiet': True,
                 'no_warnings': True,
@@ -72,7 +79,7 @@ class YoutubeDownloader(BaseDownloader):
                 },
                 'socket_timeout': 30,
                 # 代理配置
-                **get_ydl_proxy_opts(),
+                **proxy_opts,
             }
             
             # 添加 Cookie 支持（仅在用户已配置时使用）
