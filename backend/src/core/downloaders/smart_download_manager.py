@@ -80,18 +80,12 @@ class SmartDownloadManager:
             # 未知错误，尝试回退（可能是网络问题等）
             logger.info(f"[SmartDownload] Unknown error type, attempting fallback anyway")
         
-        # Step 3: 检查 Cookie 是否配置
-        if not has_cookie_for_platform(platform):
-            # Cookie 未配置，返回友好错误提示
-            friendly_error = create_friendly_cookie_error(platform, error_msg)
-            logger.info(f"[SmartDownload] Cookie not configured for {platform}")
-            raise Exception(friendly_error)
-        
-        # Step 4: 使用专用下载器重试（带 Cookie）
+        # Step 3: 先尝试专用下载器（即使没有 Cookie，专用下载器可能有更好的处理逻辑）
+        # 例如 YouTube 专用下载器有 player_client 回退机制
         specialized = DownloaderFactory.get_specialized_downloader(url, self.output_dir)
         
         try:
-            logger.info(f"[SmartDownload] Trying {specialized.platform_name} downloader (with cookie)...")
+            logger.info(f"[SmartDownload] Trying {specialized.platform_name} downloader...")
             result = await specialized.get_video_info(url)
             
             # 成功，添加元信息
@@ -102,13 +96,26 @@ class SmartDownloadManager:
             return result
             
         except Exception as e:
-            # 专用下载器也失败，返回综合错误
-            logger.error(f"[SmartDownload] Specialized downloader also failed: {str(e)[:200]}")
-            raise Exception(
-                f"下载失败。\n\n"
-                f"🔹 通用下载器错误:\n{str(generic_error)[:300]}\n\n"
-                f"🔹 专用下载器错误:\n{str(e)[:300]}"
-            )
+            specialized_error = e
+            logger.warning(f"[SmartDownload] Specialized downloader also failed: {str(e)[:200]}")
+        
+        # Step 4: 专用下载器也失败，检查是否需要 Cookie
+        specialized_error_msg = str(specialized_error)
+        
+        # 如果是认证错误且没有配置 Cookie，提示用户配置
+        if error_type == 'auth_required' or classify_error(specialized_error_msg, platform) == 'auth_required':
+            if not has_cookie_for_platform(platform):
+                friendly_error = create_friendly_cookie_error(platform, specialized_error_msg)
+                logger.info(f"[SmartDownload] Cookie not configured for {platform}, auth required")
+                raise Exception(friendly_error)
+        
+        # 返回综合错误
+        logger.error(f"[SmartDownload] All downloaders failed")
+        raise Exception(
+            f"下载失败。\n\n"
+            f"🔹 通用下载器错误:\n{str(generic_error)[:300]}\n\n"
+            f"🔹 专用下载器错误:\n{str(specialized_error)[:300]}"
+        )
     
     async def download_with_fallback(
         self,
@@ -183,20 +190,15 @@ class SmartDownloadManager:
                 })
             raise generic_error
         
-        # Step 3: 检查 Cookie 是否配置
-        if not has_cookie_for_platform(platform):
-            # Cookie 未配置，返回友好错误提示
-            friendly_error = create_friendly_cookie_error(platform, error_msg)
-            logger.info(f"[SmartDownload] Cookie not configured for {platform}")
-            if progress_callback and task_id:
-                await progress_callback({
-                    'task_id': task_id,
-                    'status': 'error',
-                    'error': friendly_error
-                })
-            raise Exception(friendly_error)
+        if error_type != 'auth_required':
+            # 未知错误，尝试回退（可能是网络问题等）
+            logger.info(f"[SmartDownload] Unknown error type, attempting fallback anyway")
         
-        # Step 4: 通知用户正在回退
+        # Step 3: 先尝试专用下载器（即使没有 Cookie，专用下载器可能有更好的处理逻辑）
+        # 例如 YouTube 专用下载器有 player_client 回退机制，可以处理公开视频
+        specialized = DownloaderFactory.get_specialized_downloader(url, self.output_dir)
+        
+        # 通知用户正在回退
         if progress_callback and task_id:
             platform_name = get_platform_display_name(platform)
             await progress_callback({
@@ -205,11 +207,8 @@ class SmartDownloadManager:
                 'message': f'正在使用 {platform_name} 专用下载器重试...'
             })
         
-        # Step 5: 使用专用下载器重试（带 Cookie）
-        specialized = DownloaderFactory.get_specialized_downloader(url, self.output_dir)
-        
         try:
-            logger.info(f"[SmartDownload] Trying {specialized.platform_name} downloader (with cookie)...")
+            logger.info(f"[SmartDownload] Trying {specialized.platform_name} downloader...")
             result = await specialized.download_video(
                 url=url,
                 quality=quality,
@@ -228,20 +227,39 @@ class SmartDownloadManager:
             return result
             
         except Exception as e:
-            # 专用下载器也失败，返回综合错误
-            logger.error(f"[SmartDownload] Specialized downloader also failed: {str(e)[:200]}")
-            combined_error = (
-                f"下载失败。\n\n"
-                f"🔹 通用下载器错误:\n{str(generic_error)[:300]}\n\n"
-                f"🔹 专用下载器错误:\n{str(e)[:300]}"
-            )
-            if progress_callback and task_id:
-                await progress_callback({
-                    'task_id': task_id,
-                    'status': 'error',
-                    'error': combined_error
-                })
-            raise Exception(combined_error)
+            specialized_error = e
+            logger.warning(f"[SmartDownload] Specialized downloader also failed: {str(e)[:200]}")
+        
+        # Step 4: 专用下载器也失败，检查是否需要 Cookie
+        specialized_error_msg = str(specialized_error)
+        
+        # 如果是认证错误且没有配置 Cookie，提示用户配置
+        if error_type == 'auth_required' or classify_error(specialized_error_msg, platform) == 'auth_required':
+            if not has_cookie_for_platform(platform):
+                friendly_error = create_friendly_cookie_error(platform, specialized_error_msg)
+                logger.info(f"[SmartDownload] Cookie not configured for {platform}, auth required")
+                if progress_callback and task_id:
+                    await progress_callback({
+                        'task_id': task_id,
+                        'status': 'error',
+                        'error': friendly_error
+                    })
+                raise Exception(friendly_error)
+        
+        # 返回综合错误
+        logger.error(f"[SmartDownload] All downloaders failed")
+        combined_error = (
+            f"下载失败。\n\n"
+            f"🔹 通用下载器错误:\n{str(generic_error)[:300]}\n\n"
+            f"🔹 专用下载器错误:\n{str(specialized_error)[:300]}"
+        )
+        if progress_callback and task_id:
+            await progress_callback({
+                'task_id': task_id,
+                'status': 'error',
+                'error': combined_error
+            })
+        raise Exception(combined_error)
 
 
 # 全局单例

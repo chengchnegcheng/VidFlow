@@ -12,6 +12,7 @@ import yt_dlp
 from src.core.tool_manager import get_tool_manager
 from src.core.cookie_storage import cookiefile_for_ytdlp
 from .base_downloader import BaseDownloader
+from .proxy_config import get_ydl_proxy_opts
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +71,8 @@ class YoutubeDownloader(BaseDownloader):
                     'Sec-Fetch-Site': 'none',
                 },
                 'socket_timeout': 30,
+                # 代理配置
+                **get_ydl_proxy_opts(),
             }
             
             # 添加 Cookie 支持（仅在用户已配置时使用）
@@ -233,6 +236,8 @@ class YoutubeDownloader(BaseDownloader):
                 'skip_unavailable_fragments': True,
                 'concurrent_fragment_downloads': 4,
                 'http_chunk_size': 10485760,
+                # 代理配置
+                **get_ydl_proxy_opts(),
             }
 
             po_token = os.environ.get('YTDLP_YOUTUBE_PO_TOKEN')

@@ -17,6 +17,7 @@ import httpx
 
 from src.core.cookie_storage import cookiefile_for_ytdlp, write_cookie_file
 from .base_downloader import BaseDownloader
+from .proxy_config import get_proxy_url
 
 logger = logging.getLogger(__name__)
 
@@ -574,7 +575,10 @@ class DouyinDownloader(BaseDownloader):
                 'Referer': 'https://www.douyin.com/',
             }
             
-            async with httpx.AsyncClient(headers=headers, follow_redirects=True, timeout=300) as client:
+            # TikTok 需要代理，抖音不需要
+            proxy_url = get_proxy_url() if 'tiktok.com' in url.lower() else None
+            
+            async with httpx.AsyncClient(headers=headers, follow_redirects=True, timeout=300, proxy=proxy_url) as client:
                 async with client.stream('GET', video_url) as response:
                     total_size = int(response.headers.get('content-length', 0))
                     downloaded = 0
@@ -637,8 +641,11 @@ class DouyinDownloader(BaseDownloader):
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
                     'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
                 }
+                
+                # TikTok 短链接需要代理
+                proxy_url = get_proxy_url() if 'tiktok.com' in url.lower() else None
 
-                async with httpx.AsyncClient(follow_redirects=True, timeout=10.0, headers=headers) as client:
+                async with httpx.AsyncClient(follow_redirects=True, timeout=10.0, headers=headers, proxy=proxy_url) as client:
                     response = await client.get(url)
                     resolved_url = str(response.url)
                     self._url_cache[url] = resolved_url

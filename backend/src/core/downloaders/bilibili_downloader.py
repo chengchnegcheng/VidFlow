@@ -11,6 +11,7 @@ import yt_dlp
 from src.core.tool_manager import get_tool_manager
 from src.core.cookie_storage import cookiefile_for_ytdlp
 from .base_downloader import BaseDownloader
+from .proxy_config import get_ydl_proxy_opts
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +64,8 @@ class BilibiliDownloader(BaseDownloader):
                     'Referer': 'https://www.bilibili.com/',
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
                 },
+                # 代理配置（B站国内不需要，但保持一致性）
+                **get_ydl_proxy_opts(),
             }
 
             # 添加 Cookie 支持（用于访问大会员内容、登录专享等）
@@ -146,6 +149,8 @@ class BilibiliDownloader(BaseDownloader):
                 'concurrent_fragment_downloads': 3,
                 # B站需要处理分P视频
                 'noplaylist': False,  # 如果是多P视频，下载所有分P
+                # 代理配置（B站国内不需要，但保持一致性）
+                **get_ydl_proxy_opts(),
             }
 
             tool_mgr = get_tool_manager()

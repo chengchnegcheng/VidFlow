@@ -11,6 +11,7 @@ import yt_dlp
 from src.core.tool_manager import get_tool_manager
 from src.core.cookie_storage import cookiefile_for_ytdlp
 from .base_downloader import BaseDownloader
+from .proxy_config import get_ydl_proxy_opts
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +58,8 @@ class GenericDownloader(BaseDownloader):
                 },
                 # 超时配置
                 'socket_timeout': 30,
+                # 代理配置
+                **get_ydl_proxy_opts(),
             }
 
             # 针对国内平台优化
@@ -163,6 +166,8 @@ class GenericDownloader(BaseDownloader):
                 'skip_unavailable_fragments': True,
                 'concurrent_fragment_downloads': 3,
                 'http_chunk_size': 10485760,
+                # 代理配置
+                **get_ydl_proxy_opts(),
             }
 
             tool_mgr = get_tool_manager()
