@@ -115,8 +115,18 @@ class YoutubeDownloader(BaseDownloader):
                     except Exception as e:
                         last_error = e
                         err_lower = str(e).lower()
-                        if 'failed to extract any player response' in err_lower or 'please sign in' in err_lower:
-                            logger.warning(f"YouTube info extraction failed (player_client={player_clients}), retrying...")
+                        # 可重试的错误关键词（这些错误可能通过切换 player_client 解决）
+                        retryable_keywords = [
+                            'failed to extract any player response',
+                            'please sign in',
+                            'sign in',
+                            "confirm you're not a bot",
+                            'confirm your age',
+                            'http error 403',
+                            'forbidden',
+                        ]
+                        if any(keyword in err_lower for keyword in retryable_keywords):
+                            logger.warning(f"YouTube info extraction failed (player_client={player_clients}), retrying with different client...")
                             continue
                         raise
 
