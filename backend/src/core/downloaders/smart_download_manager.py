@@ -15,8 +15,30 @@ from .cookie_manager import (
     create_friendly_cookie_error,
     get_platform_display_name,
 )
+from .proxy_config import get_proxy_url, disable_proxy_temporarily, enable_proxy
 
 logger = logging.getLogger(__name__)
+
+
+def is_bot_detection_error(error_msg: str) -> bool:
+    """
+    检查是否是 bot 检测错误（可能由代理导致）
+    
+    Args:
+        error_msg: 错误信息
+        
+    Returns:
+        是否是 bot 检测错误
+    """
+    bot_keywords = [
+        "sign in to confirm you're not a bot",
+        "confirm you're not a bot",
+        "sign in to confirm",
+        "please sign in",
+        "http error 403",
+    ]
+    error_lower = error_msg.lower()
+    return any(keyword in error_lower for keyword in bot_keywords)
 
 
 class SmartDownloadManager:
@@ -48,6 +70,9 @@ class SmartDownloadManager:
         platform = DownloaderFactory.detect_platform(url)
         logger.info(f"[SmartDownload] Getting info for URL: {url}, platform: {platform}")
         
+        # 检查是否有系统代理（用于后续的无代理重试）
+        current_proxy = get_proxy_url()
+        
         # Step 1: 尝试通用下载器（无 Cookie）
         generic = DownloaderFactory.get_generic_downloader(self.output_dir)
         generic_error = None
@@ -67,8 +92,35 @@ class SmartDownloadManager:
             generic_error = e
             logger.warning(f"[SmartDownload] GenericDownloader failed: {str(e)[:200]}")
         
-        # Step 2: 判断是否需要回退
+        # Step 1.5: 如果是 bot 检测错误且有代理，尝试不使用代理重试
         error_msg = str(generic_error)
+        if current_proxy and is_bot_detection_error(error_msg):
+            logger.info(f"[SmartDownload] Bot detection error with proxy ({current_proxy}), trying without proxy...")
+            try:
+                # 临时禁用代理
+                disable_proxy_temporarily()
+                
+                # 创建新的下载器实例（不使用代理）
+                generic_no_proxy = DownloaderFactory.get_generic_downloader(self.output_dir)
+                result = await generic_no_proxy.get_video_info(url)
+                
+                # 恢复代理
+                enable_proxy()
+                
+                # 成功，添加元信息
+                result['downloader_used'] = 'generic_no_proxy'
+                result['fallback_used'] = True
+                result['fallback_reason'] = 'Bot detection bypassed by disabling proxy'
+                logger.info(f"[SmartDownload] GenericDownloader succeeded without proxy")
+                return result
+                
+            except Exception as e2:
+                # 恢复代理
+                enable_proxy()
+                logger.warning(f"[SmartDownload] GenericDownloader without proxy also failed: {str(e2)[:200]}")
+                # 继续使用原来的错误进行后续处理
+        
+        # Step 2: 判断是否需要回退
         error_type = classify_error(error_msg, platform)
         
         if error_type == 'non_retryable':
@@ -148,6 +200,9 @@ class SmartDownloadManager:
         platform = DownloaderFactory.detect_platform(url)
         logger.info(f"[SmartDownload] Downloading URL: {url}, platform: {platform}, quality: {quality}")
         
+        # 检查是否有系统代理（用于后续的无代理重试）
+        current_proxy = get_proxy_url()
+        
         # Step 1: 尝试通用下载器（无 Cookie）
         generic = DownloaderFactory.get_generic_downloader(self.output_dir)
         generic_error = None
@@ -175,8 +230,43 @@ class SmartDownloadManager:
             generic_error = e
             logger.warning(f"[SmartDownload] GenericDownloader download failed: {str(e)[:200]}")
         
-        # Step 2: 判断是否需要回退
+        # Step 1.5: 如果是 bot 检测错误且有代理，尝试不使用代理重试
         error_msg = str(generic_error)
+        if current_proxy and is_bot_detection_error(error_msg):
+            logger.info(f"[SmartDownload] Bot detection error with proxy ({current_proxy}), trying download without proxy...")
+            try:
+                # 临时禁用代理
+                disable_proxy_temporarily()
+                
+                # 创建新的下载器实例（不使用代理）
+                generic_no_proxy = DownloaderFactory.get_generic_downloader(self.output_dir)
+                result = await generic_no_proxy.download_video(
+                    url=url,
+                    quality=quality,
+                    output_path=output_path,
+                    format_id=format_id,
+                    progress_callback=progress_callback,
+                    task_id=task_id,
+                    **kwargs
+                )
+                
+                # 恢复代理
+                enable_proxy()
+                
+                # 成功，添加元信息
+                result['downloader_used'] = 'generic_no_proxy'
+                result['fallback_used'] = True
+                result['fallback_reason'] = 'Bot detection bypassed by disabling proxy'
+                logger.info(f"[SmartDownload] GenericDownloader download succeeded without proxy")
+                return result
+                
+            except Exception as e2:
+                # 恢复代理
+                enable_proxy()
+                logger.warning(f"[SmartDownload] GenericDownloader without proxy also failed: {str(e2)[:200]}")
+                # 继续使用原来的错误进行后续处理
+        
+        # Step 2: 判断是否需要回退
         error_type = classify_error(error_msg, platform)
         
         if error_type == 'non_retryable':

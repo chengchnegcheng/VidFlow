@@ -10,6 +10,28 @@ from typing import Optional, Dict, Any
 
 logger = logging.getLogger(__name__)
 
+# 全局标志：是否临时禁用代理
+_proxy_disabled = False
+
+
+def disable_proxy_temporarily():
+    """临时禁用代理（用于绕过 bot 检测）"""
+    global _proxy_disabled
+    _proxy_disabled = True
+    logger.info("[Proxy] Proxy temporarily disabled")
+
+
+def enable_proxy():
+    """重新启用代理"""
+    global _proxy_disabled
+    _proxy_disabled = False
+    logger.info("[Proxy] Proxy re-enabled")
+
+
+def is_proxy_disabled() -> bool:
+    """检查代理是否被临时禁用"""
+    return _proxy_disabled
+
 
 def get_macos_system_proxy() -> Optional[str]:
     """
@@ -117,6 +139,11 @@ def get_proxy_url() -> Optional[str]:
         代理 URL 字符串，如 "http://127.0.0.1:7890"
         如果代理未启用或配置无效，返回 None
     """
+    # 检查是否临时禁用代理
+    if _proxy_disabled:
+        logger.debug("[Proxy] Proxy is temporarily disabled, returning None")
+        return None
+    
     try:
         from src.core.config_manager import get_config_manager
         config = get_config_manager()

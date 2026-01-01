@@ -94,13 +94,18 @@ class YoutubeDownloader(BaseDownloader):
                     ydl_opts['cookiefile'] = str(ytdlp_cookie_path)
                     logger.info(f"Using YouTube cookies from: {cookie_path}")
 
+                # 2025年更新：YouTube 强制要求 PO Token，优先使用不需要 PO Token 的客户端
+                # 参考: https://github.com/yt-dlp/yt-dlp/wiki/PO-Token-Guide
                 player_client_attempts = [
-                    ['android_sdkless', 'web_safari'],  # 新版 yt-dlp 默认配置
+                    ['tv_embedded'],           # 不需要 PO Token，但只支持可嵌入视频
+                    ['mweb'],                  # 移动端，需要 Cookie + PO Token
+                    ['web_safari'],            # 提供 HLS 格式，GVS 暂不需要 PO Token
+                    ['android_vr'],            # 不需要 PO Token，但 YouTube Kids 视频不可用
+                    ['tv'],                    # 不需要 PO Token，但可能有 DRM
+                    ['android_sdkless', 'web_safari'],
                     ['android_sdkless'],
-                    ['web_safari'],
-                    None,
                     ['ios'],
-                    ['android'],
+                    None,                      # 默认客户端
                 ]
 
                 info = None
@@ -186,13 +191,19 @@ class YoutubeDownloader(BaseDownloader):
             ]
 
             if any(keyword in error_msg.lower() for keyword in needs_cookie_keywords):
-                # 真正需要 Cookie 的情况
+                # 真正需要 Cookie/PO Token 的情况
                 friendly_error = (
-                    "该视频需要登录才能访问。\n\n"
-                    "💡 解决方法：\n"
-                    "1. 在「系统设置 → Cookie 管理」中配置 YouTube Cookie\n"
-                    "2. 使用浏览器扩展（如 Cookie Editor）导出 Cookie\n"
-                    "3. 或使用自动获取 Cookie 功能（需要关闭 Chrome）"
+                    "YouTube 检测到机器人行为，需要验证身份。\n\n"
+                    "💡 这是 YouTube 2025 年新增的 PO Token 验证机制导致的。\n\n"
+                    "✅ 解决方法（按推荐顺序）：\n"
+                    "1. 尝试更换代理/VPN 节点后重试\n"
+                    "2. 在「系统设置 → Cookie 管理」中配置 YouTube Cookie\n"
+                    "   - 使用浏览器扩展（如 Cookie Editor）导出 Cookie\n"
+                    "   - 确保已登录 YouTube 账号\n"
+                    "3. 如果使用代理，尝试暂时关闭代理直连\n"
+                    "4. 等待几分钟后重试（IP 可能被临时限制）\n\n"
+                    "📖 技术说明：YouTube 正在逐步强制要求 PO Token (Proof of Origin)，\n"
+                    "   某些 IP/代理可能被标记为可疑流量。"
                 )
             elif 'failed to extract any player response' in error_msg.lower():
                 friendly_error = (
