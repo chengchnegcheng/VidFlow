@@ -95,6 +95,9 @@ class YoutubeDownloader(BaseDownloader):
                     logger.info(f"Using YouTube cookies from: {cookie_path}")
 
                 player_client_attempts = [
+                    ['android_sdkless', 'web_safari'],  # 新版 yt-dlp 默认配置
+                    ['android_sdkless'],
+                    ['web_safari'],
                     None,
                     ['ios'],
                     ['android'],
@@ -325,6 +328,9 @@ class YoutubeDownloader(BaseDownloader):
             # 执行下载
             loop = asyncio.get_event_loop()
             player_client_attempts = [
+                ['android_sdkless', 'web_safari'],  # 新版 yt-dlp 默认配置
+                ['android_sdkless'],
+                ['web_safari'],
                 None,
                 ['ios'],
                 ['android'],
