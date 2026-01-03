@@ -36,6 +36,11 @@ def is_bot_detection_error(error_msg: str) -> bool:
         "sign in to confirm",
         "please sign in",
         "http error 403",
+        # 中文关键词（YouTube 专用下载器返回的友好错误信息）
+        "检测到机器人",
+        "机器人行为",
+        "需要验证身份",
+        "po token",
     ]
     error_lower = error_msg.lower()
     return any(keyword in error_lower for keyword in bot_keywords)
@@ -95,6 +100,27 @@ class SmartDownloadManager:
         # 检查是否有系统代理（用于后续的无代理重试）
         current_proxy = get_proxy_url()
         
+        # YouTube 特殊处理：代理更容易触发 bot 检测，优先尝试直连
+        # 对于其他平台（如国内平台），保持原有逻辑
+        youtube_no_proxy_first = platform == 'youtube' and current_proxy
+        
+        if youtube_no_proxy_first:
+            logger.info(f"[SmartDownload] YouTube detected with proxy, trying direct connection first...")
+            try:
+                disable_proxy_temporarily()
+                generic_no_proxy = DownloaderFactory.get_generic_downloader(self.output_dir)
+                result = await generic_no_proxy.get_video_info(url)
+                enable_proxy()
+                
+                result['downloader_used'] = 'generic_no_proxy'
+                result['fallback_used'] = False
+                result['fallback_reason'] = None
+                logger.info(f"[SmartDownload] YouTube direct connection succeeded")
+                return result
+            except Exception as e:
+                enable_proxy()
+                logger.warning(f"[SmartDownload] YouTube direct connection failed: {str(e)[:200]}, will try with proxy...")
+        
         # Step 1: 尝试通用下载器（无 Cookie）
         generic = DownloaderFactory.get_generic_downloader(self.output_dir)
         generic_error = None
@@ -115,8 +141,13 @@ class SmartDownloadManager:
             logger.warning(f"[SmartDownload] GenericDownloader failed: {str(e)[:200]}")
         
         # Step 1.5: 如果是 bot 检测错误或 SSL 错误且有代理，尝试不使用代理重试
+        # （对于 YouTube，如果上面已经尝试过直连，这里跳过）
         error_msg = str(generic_error)
-        should_retry_without_proxy = current_proxy and (is_bot_detection_error(error_msg) or is_ssl_proxy_error(error_msg))
+        should_retry_without_proxy = (
+            current_proxy and 
+            not youtube_no_proxy_first and  # YouTube 已经在上面尝试过直连了
+            (is_bot_detection_error(error_msg) or is_ssl_proxy_error(error_msg))
+        )
         
         if should_retry_without_proxy:
             retry_reason = "Bot detection" if is_bot_detection_error(error_msg) else "SSL error"
@@ -255,6 +286,34 @@ class SmartDownloadManager:
         # 检查是否有系统代理（用于后续的无代理重试）
         current_proxy = get_proxy_url()
         
+        # YouTube 特殊处理：代理更容易触发 bot 检测，优先尝试直连
+        youtube_no_proxy_first = platform == 'youtube' and current_proxy
+        
+        if youtube_no_proxy_first:
+            logger.info(f"[SmartDownload] YouTube detected with proxy, trying direct download first...")
+            try:
+                disable_proxy_temporarily()
+                generic_no_proxy = DownloaderFactory.get_generic_downloader(self.output_dir)
+                result = await generic_no_proxy.download_video(
+                    url=url,
+                    quality=quality,
+                    output_path=output_path,
+                    format_id=format_id,
+                    progress_callback=progress_callback,
+                    task_id=task_id,
+                    **kwargs
+                )
+                enable_proxy()
+                
+                result['downloader_used'] = 'generic_no_proxy'
+                result['fallback_used'] = False
+                result['fallback_reason'] = None
+                logger.info(f"[SmartDownload] YouTube direct download succeeded")
+                return result
+            except Exception as e:
+                enable_proxy()
+                logger.warning(f"[SmartDownload] YouTube direct download failed: {str(e)[:200]}, will try with proxy...")
+        
         # Step 1: 尝试通用下载器（无 Cookie）
         generic = DownloaderFactory.get_generic_downloader(self.output_dir)
         generic_error = None
@@ -283,8 +342,13 @@ class SmartDownloadManager:
             logger.warning(f"[SmartDownload] GenericDownloader download failed: {str(e)[:200]}")
         
         # Step 1.5: 如果是 bot 检测错误或 SSL 错误且有代理，尝试不使用代理重试
+        # （对于 YouTube，如果上面已经尝试过直连，这里跳过）
         error_msg = str(generic_error)
-        should_retry_without_proxy = current_proxy and (is_bot_detection_error(error_msg) or is_ssl_proxy_error(error_msg))
+        should_retry_without_proxy = (
+            current_proxy and 
+            not youtube_no_proxy_first and
+            (is_bot_detection_error(error_msg) or is_ssl_proxy_error(error_msg))
+        )
         
         if should_retry_without_proxy:
             retry_reason = "Bot detection" if is_bot_detection_error(error_msg) else "SSL error"

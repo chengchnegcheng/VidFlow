@@ -968,6 +968,33 @@ app.whenReady().then(async () => {
   console.log('App is ready, starting initialization...');
   console.log('========================================');
   
+  // macOS: 设置 Dock 图标
+  if (process.platform === 'darwin' && app.dock) {
+    const isDev = !app.isPackaged;
+    // Dock 图标使用 PNG 格式（nativeImage 更好支持）
+    const dockIconPath = isDev 
+      ? path.join(__dirname, '../resources/icons/icon.png')
+      : path.join(process.resourcesPath, 'icons', 'icon.png');
+    
+    console.log('Setting macOS Dock icon:', dockIconPath);
+    if (fs.existsSync(dockIconPath)) {
+      try {
+        const { nativeImage } = require('electron');
+        const dockIcon = nativeImage.createFromPath(dockIconPath);
+        if (!dockIcon.isEmpty()) {
+          app.dock.setIcon(dockIcon);
+          console.log('Dock icon set successfully');
+        } else {
+          console.warn('Dock icon image is empty');
+        }
+      } catch (err) {
+        console.error('Failed to set Dock icon:', err);
+      }
+    } else {
+      console.warn('Dock icon file not found:', dockIconPath);
+    }
+  }
+  
   // 移除应用菜单栏
   Menu.setApplicationMenu(null);
   console.log('Menu removed');
