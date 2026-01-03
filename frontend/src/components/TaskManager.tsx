@@ -20,6 +20,7 @@ import {
   Ban,
   Trash2,
   Pause,
+  Play,
   RotateCcw,
   FolderOpen,
   Calendar,
@@ -97,6 +98,45 @@ export function TaskManager() {
       refreshDownloads();
     } catch (error) {
       toast.error('删除失败', {
+        description: error instanceof Error ? error.message : '操作失败'
+      });
+    }
+  };
+
+  // 暂停任务
+  const handlePauseTask = async (taskId: string) => {
+    try {
+      await invoke('pause_download_task', { task_id: taskId });
+      toast.success('下载已暂停');
+      refreshDownloads();
+    } catch (error) {
+      toast.error('暂停失败', {
+        description: error instanceof Error ? error.message : '操作失败'
+      });
+    }
+  };
+
+  // 恢复任务
+  const handleResumeTask = async (taskId: string) => {
+    try {
+      await invoke('resume_download_task', { task_id: taskId });
+      toast.success('下载已恢复');
+      refreshDownloads();
+    } catch (error) {
+      toast.error('恢复失败', {
+        description: error instanceof Error ? error.message : '操作失败'
+      });
+    }
+  };
+
+  // 取消任务
+  const handleCancelTask = async (taskId: string) => {
+    try {
+      await invoke('cancel_download_task', { task_id: taskId });
+      toast.success('已发送取消请求');
+      refreshDownloads();
+    } catch (error) {
+      toast.error('取消失败', {
         description: error instanceof Error ? error.message : '操作失败'
       });
     }
@@ -241,6 +281,7 @@ export function TaskManager() {
       all: tasks.length,
       completed: tasks.filter(t => t.status === 'completed').length,
       downloading: tasks.filter(t => t.status === 'downloading').length,
+      paused: tasks.filter(t => t.status === 'paused').length,
       failed: tasks.filter(t => t.status === 'failed').length,
       pending: tasks.filter(t => t.status === 'pending').length
     };
@@ -645,6 +686,24 @@ export function TaskManager() {
                           </div>
                         )}
 
+                        {/* Paused Progress */}
+                        {task.status === 'paused' && (
+                          <div className="mb-2">
+                            <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
+                              <span>下载进度（已暂停）</span>
+                              <span>{task.progress?.toFixed(1) || 0}%</span>
+                            </div>
+                            <Progress value={task.progress || 0} className="h-2 [&>div]:bg-amber-500" />
+                            <div className="mt-1 text-[11px] text-amber-600 dark:text-amber-400">
+                              {(task.downloaded !== undefined || task.total !== undefined) && (
+                                <span>
+                                  已下载 {formatBytes(task.downloaded)} / {formatBytes(task.total)}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        )}
+
                         {/* Error Message */}
                         {task.status === 'failed' && (task.error_message || task.error) && (
                           <div className="mb-2 p-3 bg-red-50 border border-red-200 rounded-md">
@@ -660,6 +719,36 @@ export function TaskManager() {
 
                         {/* Actions */}
                         <div className="flex gap-2">
+                          {task.status === 'downloading' && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handlePauseTask(task.task_id)}
+                            >
+                              <Pause className="size-4 mr-2" />
+                              暂停
+                            </Button>
+                          )}
+                          {task.status === 'paused' && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleResumeTask(task.task_id)}
+                            >
+                              <Play className="size-4 mr-2" />
+                              继续
+                            </Button>
+                          )}
+                          {(task.status === 'downloading' || task.status === 'pending' || task.status === 'paused') && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleCancelTask(task.task_id)}
+                            >
+                              <Ban className="size-4 mr-2" />
+                              取消
+                            </Button>
+                          )}
                           {task.status === 'completed' && (
                             <Button
                               size="sm"

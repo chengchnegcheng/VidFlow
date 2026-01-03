@@ -357,6 +357,18 @@ export async function invoke(command: string, args?: any): Promise<any> {
       return { success: true };
     },
 
+    // 暂停任务
+    'pause_download_task': async () => {
+      await api.post(`/api/v1/downloads/tasks/${args?.task_id}/pause`);
+      return { success: true };
+    },
+
+    // 恢复任务
+    'resume_download_task': async () => {
+      await api.post(`/api/v1/downloads/tasks/${args?.task_id}/resume`);
+      return { success: true };
+    },
+
     // 系统信息
     'get_system_info': async () => {
       try {

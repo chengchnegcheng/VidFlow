@@ -37,6 +37,8 @@ class DownloadQueue:
         self.pending_queue: asyncio.Queue = asyncio.Queue()  # 等待队列
         self.task_info: Dict[str, QueueTask] = {}  # 任务信息
         self.cancelled_tasks: Set[str] = set()
+        self.paused_tasks: Set[str] = set()  # 暂停的任务
+        self.paused_task_info: Dict[str, dict] = {}  # 暂停任务的信息（用于恢复）
         self.running_tasks: Dict[str, asyncio.Task] = {}
         self._lock = asyncio.Lock()
         logger.info(f"Download queue initialized with max_concurrent={max_concurrent}")
@@ -55,6 +57,10 @@ class DownloadQueue:
         async with self._lock:
             # 标记为取消
             self.cancelled_tasks.add(task_id)
+            
+            # 从暂停列表中移除（如果存在）
+            self.paused_tasks.discard(task_id)
+            self.paused_task_info.pop(task_id, None)
             
             # 1. 如果任务正在运行，强制取消 asyncio.Task
             if task_id in self.running_tasks:
@@ -76,6 +82,93 @@ class DownloadQueue:
                 logger.info(f"Task {task_id} removed from queue info")
 
             return True
+    
+    async def pause_task(self, task_id: str, task_info: dict = None) -> bool:
+        """
+        暂停任务
+        
+        Args:
+            task_id: 任务ID
+            task_info: 任务信息（用于恢复时重新下载）
+            
+        Returns:
+            是否成功暂停
+        """
+        async with self._lock:
+            # 检查任务是否已取消
+            if task_id in self.cancelled_tasks:
+                logger.warning(f"Task {task_id} is cancelled, cannot pause")
+                return False
+            
+            # 标记为暂停
+            self.paused_tasks.add(task_id)
+            
+            # 保存任务信息用于恢复
+            if task_info:
+                self.paused_task_info[task_id] = task_info
+            
+            # 如果任务正在运行，取消它
+            if task_id in self.running_tasks:
+                task = self.running_tasks[task_id]
+                if not task.done():
+                    task.cancel()
+                    logger.info(f"Sent pause signal to running task {task_id}")
+            
+            # 从活跃任务中移除
+            if task_id in self.active_tasks:
+                self.active_tasks.remove(task_id)
+                logger.info(f"Task {task_id} paused and removed from active tasks")
+            
+            return True
+    
+    async def resume_task(self, task_id: str) -> dict | None:
+        """
+        恢复暂停的任务
+        
+        Args:
+            task_id: 任务ID
+            
+        Returns:
+            任务信息（用于重新开始下载），如果任务不在暂停列表则返回 None
+        """
+        async with self._lock:
+            if task_id not in self.paused_tasks:
+                logger.warning(f"Task {task_id} is not paused")
+                return None
+            
+            # 从暂停列表移除
+            self.paused_tasks.discard(task_id)
+            
+            # 获取保存的任务信息
+            task_info = self.paused_task_info.pop(task_id, None)
+            
+            logger.info(f"Task {task_id} resumed")
+            return task_info
+    
+    async def is_task_paused(self, task_id: str) -> bool:
+        """
+        检查任务是否已暂停
+        
+        Args:
+            task_id: 任务ID
+            
+        Returns:
+            是否已暂停
+        """
+        async with self._lock:
+            return task_id in self.paused_tasks
+    
+    def is_task_paused_sync(self, task_id: str) -> bool:
+        """
+        同步检查任务是否已暂停（用于 progress_hook）
+        
+        Args:
+            task_id: 任务ID
+            
+        Returns:
+            是否已暂停
+        """
+        return task_id in self.paused_tasks
     
     async def get_status(self) -> dict:
         """
@@ -227,6 +320,10 @@ class DownloadQueue:
             
             # 从取消列表中移除（如果存在）
             self.cancelled_tasks.discard(task_id)
+            
+            # 从暂停列表中移除（如果存在）
+            self.paused_tasks.discard(task_id)
+            self.paused_task_info.pop(task_id, None)
 
     async def is_task_cancelled(self, task_id: str) -> bool:
         """

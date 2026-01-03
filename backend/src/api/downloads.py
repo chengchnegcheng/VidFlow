@@ -388,21 +388,28 @@ async def _execute_download(task_id: str, request: DownloadRequest):
             logger.info(f"Download completed: {task_id}")
 
         except asyncio.CancelledError:
-            logger.info(f"Download cancelled: {task_id}")
-            # 重新获取任务对象以更新状态
-            try:
-                # CancelledError 发生时，原 session 可能已关闭或不稳定，重新获取
-                async with AsyncSessionLocal() as cancel_db:
-                    result = await cancel_db.execute(
-                        select(DownloadTask).where(DownloadTask.task_id == task_id)
-                    )
-                    task = result.scalar_one_or_none()
-                    if task:
-                        task.status = 'cancelled'
-                        task.error_message = '用户取消下载'
-                        await cancel_db.commit()
-            except Exception as e:
-                logger.error(f"Error updating task status on cancel: {e}")
+            # 检查是暂停还是取消
+            is_paused = await download_queue.is_task_paused(task_id)
+            
+            if is_paused:
+                logger.info(f"Download paused: {task_id}")
+                # 暂停时不更新状态，因为 pause_task API 已经更新了
+            else:
+                logger.info(f"Download cancelled: {task_id}")
+                # 重新获取任务对象以更新状态
+                try:
+                    # CancelledError 发生时，原 session 可能已关闭或不稳定，重新获取
+                    async with AsyncSessionLocal() as cancel_db:
+                        result = await cancel_db.execute(
+                            select(DownloadTask).where(DownloadTask.task_id == task_id)
+                        )
+                        task = result.scalar_one_or_none()
+                        if task and task.status not in ['paused', 'cancelled']:
+                            task.status = 'cancelled'
+                            task.error_message = '用户取消下载'
+                            await cancel_db.commit()
+                except Exception as e:
+                    logger.error(f"Error updating task status on cancel: {e}")
             raise  # 重新抛出，让外层处理
 
         except Exception as e:
@@ -456,7 +463,7 @@ async def cancel_task(task_id: str):
             )
             task = result.scalar_one_or_none()
             
-            if task and task.status in ['pending', 'downloading']:
+            if task and task.status in ['pending', 'downloading', 'paused']:
                 task.status = 'cancelled'
                 task.error_message = '用户取消下载'
                 await db.commit()
@@ -469,6 +476,121 @@ async def cancel_task(task_id: str):
             
     except Exception as e:
         logger.error(f"Error cancelling task: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/tasks/{task_id}/pause")
+async def pause_task(task_id: str):
+    """
+    暂停下载任务
+    """
+    try:
+        # 获取任务信息
+        async with AsyncSessionLocal() as db:
+            result = await db.execute(
+                select(DownloadTask).where(DownloadTask.task_id == task_id)
+            )
+            task = result.scalar_one_or_none()
+            
+            if not task:
+                raise HTTPException(status_code=404, detail="Task not found")
+            
+            if task.status not in ['pending', 'downloading']:
+                raise HTTPException(status_code=400, detail=f"Cannot pause task with status: {task.status}")
+            
+            # 保存任务信息用于恢复
+            task_info = {
+                'url': task.url,
+                'quality': task.quality,
+                'format_id': task.format_id,
+                'output_path': task.output_path,
+                'progress': task.progress,
+                'downloaded_bytes': task.downloaded_bytes,
+                'total_bytes': task.total_bytes,
+            }
+            
+            # 暂停任务
+            success = await download_queue.pause_task(task_id, task_info)
+            
+            if success:
+                # 更新数据库状态
+                task.status = 'paused'
+                await db.commit()
+                
+                # 通过 WebSocket 通知前端
+                try:
+                    from src.core.websocket_manager import get_ws_manager
+                    ws_manager = get_ws_manager()
+                    await ws_manager.send_download_progress(task_id, {
+                        "progress": task.progress or 0,
+                        "status": "paused",
+                        "message": "下载已暂停"
+                    })
+                except Exception as ws_err:
+                    logger.debug(f"WS notification failed: {ws_err}")
+                
+                return {"status": "success", "message": "Task paused"}
+            else:
+                return {"status": "warning", "message": "Task could not be paused"}
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error pausing task: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/tasks/{task_id}/resume")
+async def resume_task(task_id: str):
+    """
+    恢复暂停的下载任务
+    """
+    try:
+        async with AsyncSessionLocal() as db:
+            result = await db.execute(
+                select(DownloadTask).where(DownloadTask.task_id == task_id)
+            )
+            task = result.scalar_one_or_none()
+            
+            if not task:
+                raise HTTPException(status_code=404, detail="Task not found")
+            
+            if task.status != 'paused':
+                raise HTTPException(status_code=400, detail=f"Cannot resume task with status: {task.status}")
+            
+            # 从队列中恢复任务
+            await download_queue.resume_task(task_id)
+            
+            # 更新状态为 pending，等待重新下载
+            task.status = 'pending'
+            await db.commit()
+            
+            # 重新添加到队列
+            await download_queue.add_task(task_id)
+            
+            # 启动队列处理器
+            import asyncio
+            t = asyncio.create_task(_process_queue())
+            t.add_done_callback(_handle_task_exception)
+            
+            # 通过 WebSocket 通知前端
+            try:
+                from src.core.websocket_manager import get_ws_manager
+                ws_manager = get_ws_manager()
+                await ws_manager.send_download_progress(task_id, {
+                    "progress": task.progress or 0,
+                    "status": "pending",
+                    "message": "下载已恢复，等待中..."
+                })
+            except Exception as ws_err:
+                logger.debug(f"WS notification failed: {ws_err}")
+            
+            return {"status": "success", "message": "Task resumed"}
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error resuming task: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/tasks")

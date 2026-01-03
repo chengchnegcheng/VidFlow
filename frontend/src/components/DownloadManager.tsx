@@ -30,7 +30,9 @@ import {
   Cookie,
   RotateCw,
   AlertTriangle,
-  Settings
+  Settings,
+  Pause,
+  Play
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { getProxiedImageUrl, handleImageError } from '../utils/imageProxy';
@@ -344,6 +346,28 @@ export function DownloadManager({ onNavigateToSettings }: DownloadManagerProps =
     }
   };
 
+  // 暂停任务
+  const handlePauseTask = async (taskId: string) => {
+    try {
+      await invoke('pause_download_task', { task_id: taskId });
+      toast.success('下载已暂停');
+      await refreshDownloads();
+    } catch (error: any) {
+      toast.error(`暂停失败: ${error.message}`);
+    }
+  };
+
+  // 恢复任务
+  const handleResumeTask = async (taskId: string) => {
+    try {
+      await invoke('resume_download_task', { task_id: taskId });
+      toast.success('下载已恢复');
+      await refreshDownloads();
+    } catch (error: any) {
+      toast.error(`恢复失败: ${error.message}`);
+    }
+  };
+
   // 重试失败的任务
   const handleRetryTask = async (task: DownloadTask) => {
     try {
@@ -372,8 +396,10 @@ export function DownloadManager({ onNavigateToSettings }: DownloadManagerProps =
     const badges: Record<string, { variant: any, icon: any, text: string }> = {
       pending: { variant: 'outline' as const, icon: Clock, text: '等待中' },
       downloading: { variant: 'default' as const, icon: Download, text: '下载中' },
+      paused: { variant: 'secondary' as const, icon: Pause, text: '已暂停' },
       completed: { variant: 'default' as const, icon: CheckCircle, text: '已完成' },
       failed: { variant: 'destructive' as const, icon: AlertCircle, text: '失败' },
+      cancelled: { variant: 'outline' as const, icon: AlertCircle, text: '已取消' },
     };
     return badges[status] || badges.pending;
   };
@@ -651,7 +677,40 @@ export function DownloadManager({ onNavigateToSettings }: DownloadManagerProps =
                       </div>
                       
                       {(task.status === 'downloading' || task.status === 'pending') && (
-                        <div className="flex justify-end mb-2">
+                        <div className="flex justify-end gap-2 mb-2">
+                           {task.status === 'downloading' && (
+                             <Button 
+                               variant="outline" 
+                               size="sm" 
+                               className="h-7 text-xs"
+                               onClick={() => handlePauseTask(task.task_id)}
+                             >
+                               <Pause className="size-3 mr-1" />
+                               暂停
+                             </Button>
+                           )}
+                           <Button 
+                             variant="outline" 
+                             size="sm" 
+                             className="h-7 text-xs"
+                             onClick={() => handleCancelTask(task.task_id)}
+                           >
+                             取消下载
+                           </Button>
+                        </div>
+                      )}
+                      
+                      {task.status === 'paused' && (
+                        <div className="flex justify-end gap-2 mb-2">
+                           <Button 
+                             variant="outline" 
+                             size="sm" 
+                             className="h-7 text-xs"
+                             onClick={() => handleResumeTask(task.task_id)}
+                           >
+                             <Play className="size-3 mr-1" />
+                             继续下载
+                           </Button>
                            <Button 
                              variant="outline" 
                              size="sm" 
@@ -679,6 +738,21 @@ export function DownloadManager({ onNavigateToSettings }: DownloadManagerProps =
                             <span className="font-medium">{Math.min(Math.max(task.progress || 0, 0), 100).toFixed(1)}%</span>
                           </div>
                           <Progress value={Math.min(Math.max(task.progress || 0, 0), 100)} className="h-2" />
+                        </div>
+                      )}
+
+                      {task.status === 'paused' && (
+                        <div className="space-y-1">
+                          <div className="flex justify-between items-center text-sm text-muted-foreground">
+                            <div className="flex items-center gap-2">
+                              {task.downloaded && task.total ? (
+                                <span>{formatBytes(task.downloaded)} / {formatBytes(task.total)}</span>
+                              ) : null}
+                              <span className="text-amber-600 dark:text-amber-400">已暂停</span>
+                            </div>
+                            <span className="font-medium">{Math.min(Math.max(task.progress || 0, 0), 100).toFixed(1)}%</span>
+                          </div>
+                          <Progress value={Math.min(Math.max(task.progress || 0, 0), 100)} className="h-2 [&>div]:bg-amber-500" />
                         </div>
                       )}
 
