@@ -84,8 +84,16 @@ class YoutubeDownloader(BaseDownloader):
             
             # 添加 Cookie 支持（仅在用户已配置时使用）
             cookie_path = self._get_youtube_cookie_path()
-            # 不再自动从浏览器获取 Cookie，避免不必要的错误
-            # 如果需要 Cookie，会在下载失败时提示用户配置
+            
+            # 如果没有配置 Cookie 文件，尝试从浏览器直接读取
+            use_browser_cookies = False
+            if not cookie_path:
+                # 检查是否可以从浏览器读取 Cookie
+                import sys
+                if sys.platform == 'darwin':
+                    # macOS: 优先尝试 Safari（不需要关闭浏览器）
+                    use_browser_cookies = 'safari'
+                    logger.info("[YouTube] No cookie file, will try Safari cookies")
 
             loop = asyncio.get_event_loop()
 
@@ -93,6 +101,10 @@ class YoutubeDownloader(BaseDownloader):
                 if ytdlp_cookie_path:
                     ydl_opts['cookiefile'] = str(ytdlp_cookie_path)
                     logger.info(f"Using YouTube cookies from: {cookie_path}")
+                elif use_browser_cookies:
+                    # 使用浏览器 Cookie（yt-dlp 内置功能）
+                    ydl_opts['cookiesfrombrowser'] = (use_browser_cookies,)
+                    logger.info(f"[YouTube] Using cookies from browser: {use_browser_cookies}")
 
                 # 2025年更新：YouTube 强制要求 PO Token，优先使用不需要 PO Token 的客户端
                 # 参考: https://github.com/yt-dlp/yt-dlp/wiki/PO-Token-Guide
@@ -192,19 +204,34 @@ class YoutubeDownloader(BaseDownloader):
 
             if any(keyword in error_msg.lower() for keyword in needs_cookie_keywords):
                 # 真正需要 Cookie/PO Token 的情况
-                friendly_error = (
-                    "YouTube 检测到机器人行为，需要验证身份。\n\n"
-                    "💡 这是 YouTube 2025 年新增的 PO Token 验证机制导致的。\n\n"
-                    "✅ 解决方法（按推荐顺序）：\n"
-                    "1. 尝试更换代理/VPN 节点后重试\n"
-                    "2. 在「系统设置 → Cookie 管理」中配置 YouTube Cookie\n"
-                    "   - 使用浏览器扩展（如 Cookie Editor）导出 Cookie\n"
-                    "   - 确保已登录 YouTube 账号\n"
-                    "3. 如果使用代理，尝试暂时关闭代理直连\n"
-                    "4. 等待几分钟后重试（IP 可能被临时限制）\n\n"
-                    "📖 技术说明：YouTube 正在逐步强制要求 PO Token (Proof of Origin)，\n"
-                    "   某些 IP/代理可能被标记为可疑流量。"
-                )
+                import sys
+                if sys.platform == 'darwin':
+                    # macOS 特殊提示
+                    friendly_error = (
+                        "YouTube 检测到机器人行为，需要验证身份。\n\n"
+                        "💡 这是 YouTube 2025 年新增的 PO Token 验证机制导致的。\n\n"
+                        "✅ 解决方法（按推荐顺序）：\n"
+                        "1. 🔥 使用手机热点连接网络后重试（最有效）\n"
+                        "2. 更换代理/VPN 节点（换一个不同地区的节点）\n"
+                        "3. 在 Safari 浏览器中登录 YouTube（应用会自动读取 Cookie）\n"
+                        "4. 在「系统设置 → Cookie 管理」中手动配置 YouTube Cookie\n"
+                        "5. 等待几分钟后重试（IP 可能被临时限制）\n\n"
+                        "📖 技术说明：您当前的网络 IP 被 YouTube 标记为可疑流量。"
+                    )
+                else:
+                    friendly_error = (
+                        "YouTube 检测到机器人行为，需要验证身份。\n\n"
+                        "💡 这是 YouTube 2025 年新增的 PO Token 验证机制导致的。\n\n"
+                        "✅ 解决方法（按推荐顺序）：\n"
+                        "1. 尝试更换代理/VPN 节点后重试\n"
+                        "2. 在「系统设置 → Cookie 管理」中配置 YouTube Cookie\n"
+                        "   - 使用浏览器扩展（如 Cookie Editor）导出 Cookie\n"
+                        "   - 确保已登录 YouTube 账号\n"
+                        "3. 如果使用代理，尝试暂时关闭代理直连\n"
+                        "4. 等待几分钟后重试（IP 可能被临时限制）\n\n"
+                        "📖 技术说明：YouTube 正在逐步强制要求 PO Token (Proof of Origin)，\n"
+                        "   某些 IP/代理可能被标记为可疑流量。"
+                    )
             elif 'failed to extract any player response' in error_msg.lower():
                 friendly_error = (
                     "YouTube 解析失败：无法提取播放器响应。\n\n"
@@ -290,7 +317,14 @@ class YoutubeDownloader(BaseDownloader):
             
             # 添加 Cookie 支持（仅在用户已配置时使用）
             cookie_path = self._get_youtube_cookie_path()
-            # 不再自动从浏览器获取 Cookie，避免不必要的错误
+            
+            # 如果没有配置 Cookie 文件，尝试从浏览器直接读取
+            use_browser_cookies = False
+            if not cookie_path:
+                import sys
+                if sys.platform == 'darwin':
+                    use_browser_cookies = 'safari'
+                    logger.info("[YouTube] No cookie file, will try Safari cookies for download")
             
             # 取消检查标志（用于在 progress_hook 中检查）
             cancel_checker = None
@@ -370,6 +404,9 @@ class YoutubeDownloader(BaseDownloader):
                 if ytdlp_cookie_path:
                     ydl_opts['cookiefile'] = str(ytdlp_cookie_path)
                     logger.info(f"Using YouTube cookies for download from: {cookie_path}")
+                elif use_browser_cookies:
+                    ydl_opts['cookiesfrombrowser'] = (use_browser_cookies,)
+                    logger.info(f"[YouTube] Using cookies from browser for download: {use_browser_cookies}")
 
                 for player_clients in player_client_attempts:
                     attempt_opts = ydl_opts.copy()

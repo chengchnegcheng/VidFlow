@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="22" height="22" viewBox="0 0 22 22" xmlns="http://www.w3.org/2000/svg">
+  <!-- 简洁的下载图标，适合 macOS 菜单栏 -->
+  <!-- 下载箭头 -->
+  <path d="M11 3 L11 14" stroke="black" stroke-width="2" stroke-linecap="round"/>
+  <path d="M6 10 L11 15 L16 10" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <!-- 底部横线 -->
+  <path d="M5 18 L17 18" stroke="black" stroke-width="2" stroke-linecap="round"/>
+</svg>
