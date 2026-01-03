@@ -644,6 +644,26 @@ export async function invoke(command: string, args?: any): Promise<any> {
       }
     },
 
+    // 暂停字幕任务
+    'pause_subtitle_task': async () => {
+      try {
+        const res = await api.post(`/api/v1/subtitle/tasks/${args?.task_id}/pause`);
+        return res.data;
+      } catch (error: any) {
+        throw new Error(getAxiosErrorMessage(error, '暂停任务失败'));
+      }
+    },
+
+    // 恢复字幕任务
+    'resume_subtitle_task': async () => {
+      try {
+        const res = await api.post(`/api/v1/subtitle/tasks/${args?.task_id}/resume`);
+        return res.data;
+      } catch (error: any) {
+        throw new Error(getAxiosErrorMessage(error, '恢复任务失败'));
+      }
+    },
+
     // 获取可用模型
     'get_subtitle_models': async () => {
       try {
@@ -770,6 +790,26 @@ export async function invoke(command: string, args?: any): Promise<any> {
         return res.data;
       } catch (error: any) {
         throw new Error(getAxiosErrorMessage(error, '取消烧录任务失败'));
+      }
+    },
+
+    // 暂停烧录字幕任务
+    'pause_burn_subtitle_task': async () => {
+      try {
+        const res = await api.post(`/api/v1/subtitle/burn-subtitle-tasks/${args?.task_id}/pause`);
+        return res.data;
+      } catch (error: any) {
+        throw new Error(getAxiosErrorMessage(error, '暂停烧录任务失败'));
+      }
+    },
+
+    // 恢复烧录字幕任务
+    'resume_burn_subtitle_task': async () => {
+      try {
+        const res = await api.post(`/api/v1/subtitle/burn-subtitle-tasks/${args?.task_id}/resume`);
+        return res.data;
+      } catch (error: any) {
+        throw new Error(getAxiosErrorMessage(error, '恢复烧录任务失败'));
       }
     },
 

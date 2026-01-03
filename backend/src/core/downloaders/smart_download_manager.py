@@ -177,10 +177,13 @@ class SmartDownloadManager:
             specialized_error = e
             logger.warning(f"[SmartDownload] Specialized downloader also failed: {str(e)[:200]}")
         
-        # Step 3.5: 如果专用下载器也遇到 SSL 错误，尝试禁用代理重试
+        # Step 3.5: 如果专用下载器也遇到 SSL 错误或 bot 检测错误，尝试禁用代理重试
         specialized_error_msg = str(specialized_error)
-        if current_proxy and is_ssl_proxy_error(specialized_error_msg):
-            logger.info(f"[SmartDownload] SSL error in specialized downloader, trying without proxy...")
+        should_retry_specialized_without_proxy = current_proxy and (is_ssl_proxy_error(specialized_error_msg) or is_bot_detection_error(specialized_error_msg))
+        
+        if should_retry_specialized_without_proxy:
+            retry_reason = "Bot detection" if is_bot_detection_error(specialized_error_msg) else "SSL error"
+            logger.info(f"[SmartDownload] {retry_reason} in specialized downloader, trying without proxy...")
             try:
                 disable_proxy_temporarily()
                 
@@ -373,10 +376,13 @@ class SmartDownloadManager:
             specialized_error = e
             logger.warning(f"[SmartDownload] Specialized downloader also failed: {str(e)[:200]}")
         
-        # Step 3.5: 如果专用下载器也遇到 SSL 错误，尝试禁用代理重试
+        # Step 3.5: 如果专用下载器也遇到 SSL 错误或 bot 检测错误，尝试禁用代理重试
         specialized_error_msg = str(specialized_error)
-        if current_proxy and is_ssl_proxy_error(specialized_error_msg):
-            logger.info(f"[SmartDownload] SSL error in specialized downloader, trying download without proxy...")
+        should_retry_specialized_without_proxy = current_proxy and (is_ssl_proxy_error(specialized_error_msg) or is_bot_detection_error(specialized_error_msg))
+        
+        if should_retry_specialized_without_proxy:
+            retry_reason = "Bot detection" if is_bot_detection_error(specialized_error_msg) else "SSL error"
+            logger.info(f"[SmartDownload] {retry_reason} in specialized downloader, trying download without proxy...")
             try:
                 disable_proxy_temporarily()
                 
@@ -385,7 +391,7 @@ class SmartDownloadManager:
                     await progress_callback({
                         'task_id': task_id,
                         'status': 'fallback',
-                        'message': '检测到代理 SSL 错误，正在禁用代理重试...'
+                        'message': f'检测到代理{retry_reason}错误，正在禁用代理重试...'
                     })
                 
                 # 重新创建专用下载器（不使用代理）
@@ -404,7 +410,7 @@ class SmartDownloadManager:
                 
                 result['downloader_used'] = f'{specialized.platform_name}_no_proxy'
                 result['fallback_used'] = True
-                result['fallback_reason'] = 'SSL error bypassed by disabling proxy'
+                result['fallback_reason'] = f'{retry_reason} bypassed by disabling proxy'
                 logger.info(f"[SmartDownload] Specialized downloader download succeeded without proxy")
                 return result
                 

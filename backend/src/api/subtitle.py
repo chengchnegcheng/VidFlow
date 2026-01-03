@@ -659,6 +659,134 @@ async def cancel_subtitle_task(task_id: str, db: AsyncSession = Depends(get_sess
     })
     return {"success": True, "message": "任务取消中，请稍等..."}
 
+
+# 存储暂停任务的信息（用于恢复）
+_paused_subtitle_tasks: Dict[str, dict] = {}
+_paused_burn_tasks: Dict[str, dict] = {}
+
+
+@router.post("/tasks/{task_id}/pause")
+async def pause_subtitle_task(task_id: str, db: AsyncSession = Depends(get_session)):
+    """暂停字幕生成任务"""
+    result = await db.execute(
+        select(SubtitleTaskModel).where(SubtitleTaskModel.id == task_id)
+    )
+    task = result.scalar_one_or_none()
+    if not task:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "code": "SUBTITLE_TASK_NOT_FOUND",
+                "message": "任务不存在",
+                "hint": "请刷新任务列表",
+            },
+        )
+    if task.status not in ["pending", "processing", "generating", "translating"]:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": "SUBTITLE_TASK_NOT_PAUSABLE",
+                "message": f"任务状态为 {task.status}，无法暂停",
+                "hint": "只能暂停进行中的任务",
+            },
+        )
+
+    # 保存任务信息用于恢复
+    _paused_subtitle_tasks[task_id] = {
+        'video_path': task.video_path,
+        'video_title': task.video_title,
+        'source_language': task.source_language,
+        'target_languages': task.target_languages,
+        'model': task.model,
+        'formats': task.formats,
+        'progress': task.progress,
+    }
+
+    # 更新状态为暂停
+    task.status = "paused"
+    await db.commit()
+
+    # 取消正在运行的任务
+    running = _running_subtitle_tasks.get(task_id)
+    if running and not running.done():
+        running.cancel()
+
+    ws_manager = get_ws_manager()
+    await ws_manager.send_subtitle_progress(
+        task_id,
+        {"progress": task.progress or 0, "message": "已暂停", "status": "paused"}
+    )
+    
+    return {"success": True, "message": "任务已暂停"}
+
+
+@router.post("/tasks/{task_id}/resume")
+async def resume_subtitle_task(task_id: str, db: AsyncSession = Depends(get_session)):
+    """恢复暂停的字幕生成任务"""
+    result = await db.execute(
+        select(SubtitleTaskModel).where(SubtitleTaskModel.id == task_id)
+    )
+    task = result.scalar_one_or_none()
+    if not task:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "code": "SUBTITLE_TASK_NOT_FOUND",
+                "message": "任务不存在",
+                "hint": "请刷新任务列表",
+            },
+        )
+    if task.status != "paused":
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": "SUBTITLE_TASK_NOT_RESUMABLE",
+                "message": f"任务状态为 {task.status}，无法恢复",
+                "hint": "只能恢复已暂停的任务",
+            },
+        )
+
+    # 获取保存的任务信息
+    saved_info = _paused_subtitle_tasks.pop(task_id, None)
+    
+    # 重置任务状态
+    task.status = "pending"
+    task.progress = 0.0
+    task.cancelled = False
+    task.error = None
+    task.output_files = []
+    task.started_at = None
+    task.completed_at = None
+    await db.commit()
+
+    # 重新创建请求对象
+    request = SubtitleGenerateRequest(
+        video_path=task.video_path,
+        video_title=task.video_title,
+        source_language=task.source_language,
+        target_languages=task.target_languages or [],
+        model=task.model,
+        formats=task.formats or ["srt"]
+    )
+
+    # 重新启动任务
+    t = asyncio.create_task(process_subtitle_task(task_id, request))
+    _running_subtitle_tasks[task_id] = t
+
+    def _on_done(done: asyncio.Task):
+        _running_subtitle_tasks.pop(task_id, None)
+        _handle_task_exception(done)
+
+    t.add_done_callback(_on_done)
+
+    ws_manager = get_ws_manager()
+    await ws_manager.send_subtitle_progress(
+        task_id,
+        {"progress": 0, "message": "任务已恢复，重新开始处理...", "status": "pending"}
+    )
+    
+    return {"success": True, "message": "任务已恢复，将从头开始处理"}
+
 @router.delete("/tasks/{task_id}")
 async def delete_subtitle_task(task_id: str, db: AsyncSession = Depends(get_session)):
     """删除字幕任务"""
@@ -1183,6 +1311,124 @@ async def cancel_burn_subtitle_task(task_id: str, db: AsyncSession = Depends(get
         "data": {"task_id": task_id, "success": False, "cancelled": True}
     })
     return {"success": True, "message": "任务取消中，请稍等..."}
+
+
+@router.post("/burn-subtitle-tasks/{task_id}/pause")
+async def pause_burn_subtitle_task(task_id: str, db: AsyncSession = Depends(get_session)):
+    """暂停烧录字幕任务"""
+    result = await db.execute(
+        select(BurnSubtitleTaskModel).where(BurnSubtitleTaskModel.id == task_id)
+    )
+    task = result.scalar_one_or_none()
+    if not task:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "code": "BURN_SUBTITLE_TASK_NOT_FOUND",
+                "message": "任务不存在",
+                "hint": "请刷新任务列表",
+            },
+        )
+    if task.status not in ["pending", "burning"]:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": "BURN_SUBTITLE_TASK_NOT_PAUSABLE",
+                "message": f"任务状态为 {task.status}，无法暂停",
+                "hint": "只能暂停进行中的任务",
+            },
+        )
+
+    # 保存任务信息用于恢复
+    _paused_burn_tasks[task_id] = {
+        'video_path': task.video_path,
+        'subtitle_path': task.subtitle_path,
+        'output_path': task.output_path,
+        'video_title': task.video_title,
+        'progress': task.progress,
+    }
+
+    # 更新状态为暂停
+    task.status = "paused"
+    await db.commit()
+
+    # 取消正在运行的任务
+    running = _running_burn_subtitle_tasks.get(task_id)
+    if running and not running.done():
+        running.cancel()
+
+    ws_manager = get_ws_manager()
+    await ws_manager.send_burn_progress(
+        task_id,
+        {"progress": task.progress or 0, "status": "paused"}
+    )
+    
+    return {"success": True, "message": "任务已暂停"}
+
+
+@router.post("/burn-subtitle-tasks/{task_id}/resume")
+async def resume_burn_subtitle_task(task_id: str, db: AsyncSession = Depends(get_session)):
+    """恢复暂停的烧录字幕任务"""
+    result = await db.execute(
+        select(BurnSubtitleTaskModel).where(BurnSubtitleTaskModel.id == task_id)
+    )
+    task = result.scalar_one_or_none()
+    if not task:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "code": "BURN_SUBTITLE_TASK_NOT_FOUND",
+                "message": "任务不存在",
+                "hint": "请刷新任务列表",
+            },
+        )
+    if task.status != "paused":
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": "BURN_SUBTITLE_TASK_NOT_RESUMABLE",
+                "message": f"任务状态为 {task.status}，无法恢复",
+                "hint": "只能恢复已暂停的任务",
+            },
+        )
+
+    # 获取保存的任务信息
+    _paused_burn_tasks.pop(task_id, None)
+    
+    # 重置任务状态
+    task.status = "pending"
+    task.progress = 0.0
+    task.cancelled = False
+    task.error = None
+    task.started_at = None
+    task.completed_at = None
+    await db.commit()
+
+    # 重新创建请求对象
+    request = CreateBurnSubtitleTaskRequest(
+        video_path=task.video_path,
+        subtitle_path=task.subtitle_path,
+        output_path=task.output_path,
+        video_title=task.video_title
+    )
+
+    # 重新启动任务
+    t = asyncio.create_task(process_burn_subtitle_task(task_id, request))
+    _running_burn_subtitle_tasks[task_id] = t
+
+    def _on_done(done: asyncio.Task):
+        _running_burn_subtitle_tasks.pop(task_id, None)
+        _handle_task_exception(done)
+
+    t.add_done_callback(_on_done)
+
+    ws_manager = get_ws_manager()
+    await ws_manager.send_burn_progress(
+        task_id,
+        {"progress": 0, "status": "pending"}
+    )
+    
+    return {"success": True, "message": "任务已恢复，将从头开始处理"}
 
 
 @router.delete("/burn-subtitle-tasks/{task_id}")

@@ -61,6 +61,14 @@ class GenericDownloader(BaseDownloader):
                 # 代理配置
                 **get_ydl_proxy_opts(),
             }
+            
+            # YouTube 特殊处理：使用不需要 PO Token 的客户端
+            if platform == 'youtube':
+                ydl_opts['extractor_args'] = {
+                    'youtube': {
+                        'player_client': ['tv_embedded', 'web_safari'],
+                    }
+                }
 
             # 针对国内平台优化
             if platform in ['xiaohongshu', 'douyin', 'weixin', 'tencent', 'youku', 'iqiyi', 'bilibili']:
@@ -194,6 +202,14 @@ class GenericDownloader(BaseDownloader):
                     ydl_opts['http_headers']['Referer'] = 'https://www.bilibili.com/'
                 elif platform in ['tencent', 'youku', 'iqiyi']:
                     ydl_opts['http_headers']['Referer'] = url.split('?')[0]
+            
+            # YouTube 特殊处理：使用不需要 PO Token 的客户端
+            if platform == 'youtube':
+                ydl_opts['extractor_args'] = {
+                    'youtube': {
+                        'player_client': ['tv_embedded', 'web_safari'],
+                    }
+                }
 
             # 为特定平台添加 Cookie 支持（仅在非智能回退模式或允许使用 Cookie 时）
             cookie_path = None

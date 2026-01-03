@@ -2,9 +2,9 @@ import { createContext, useContext, useEffect, useRef, useState, ReactNode, useC
 import { invoke } from '../components/TauriIntegration';
 import { subscribeSharedWebSocket, isSharedWebSocketConnected } from './SharedWebSocket';
 
-type DownloadStatus = 'pending' | 'downloading' | 'completed' | 'failed' | 'paused' | string;
-type SubtitleStatus = 'pending' | 'processing' | 'generating' | 'translating' | 'cancelled' | 'completed' | 'failed' | string;
-type BurnStatus = 'pending' | 'burning' | 'cancelled' | 'completed' | 'failed' | string;
+type DownloadStatus = 'pending' | 'downloading' | 'completed' | 'failed' | 'paused' | 'cancelled' | string;
+type SubtitleStatus = 'pending' | 'processing' | 'generating' | 'translating' | 'cancelled' | 'completed' | 'failed' | 'paused' | string;
+type BurnStatus = 'pending' | 'burning' | 'cancelled' | 'completed' | 'failed' | 'paused' | string;
 
 export interface StructuredTaskError {
   code: string;

@@ -178,6 +178,30 @@ export function TaskManager() {
     }
   };
 
+  const handlePauseSubtitleTask = async (taskId: string) => {
+    try {
+      await invoke('pause_subtitle_task', { task_id: taskId });
+      toast.success('任务已暂停');
+      refreshSubtitles();
+    } catch (error) {
+      toast.error('暂停失败', {
+        description: error instanceof Error ? error.message : '操作失败'
+      });
+    }
+  };
+
+  const handleResumeSubtitleTask = async (taskId: string) => {
+    try {
+      await invoke('resume_subtitle_task', { task_id: taskId });
+      toast.success('任务已恢复，将从头开始处理');
+      refreshSubtitles();
+    } catch (error) {
+      toast.error('恢复失败', {
+        description: error instanceof Error ? error.message : '操作失败'
+      });
+    }
+  };
+
   const handleDeleteBurnTask = async (taskId: string) => {
     try {
       await invoke('delete_burn_subtitle_task', { task_id: taskId });
@@ -185,6 +209,30 @@ export function TaskManager() {
       refreshBurns();
     } catch (error) {
       toast.error('删除失败', {
+        description: error instanceof Error ? error.message : '操作失败'
+      });
+    }
+  };
+
+  const handlePauseBurnTask = async (taskId: string) => {
+    try {
+      await invoke('pause_burn_subtitle_task', { task_id: taskId });
+      toast.success('任务已暂停');
+      refreshBurns();
+    } catch (error) {
+      toast.error('暂停失败', {
+        description: error instanceof Error ? error.message : '操作失败'
+      });
+    }
+  };
+
+  const handleResumeBurnTask = async (taskId: string) => {
+    try {
+      await invoke('resume_burn_subtitle_task', { task_id: taskId });
+      toast.success('任务已恢复，将从头开始处理');
+      refreshBurns();
+    } catch (error) {
+      toast.error('恢复失败', {
         description: error instanceof Error ? error.message : '操作失败'
       });
     }
@@ -315,6 +363,8 @@ export function TaskManager() {
       case 'generating':
       case 'translating':
         return <Badge className="bg-blue-500"><Clock className="size-3 mr-1" />处理中</Badge>;
+      case 'paused':
+        return <Badge className="bg-amber-500"><Pause className="size-3 mr-1" />已暂停</Badge>;
       case 'cancelled':
         return <Badge variant="secondary"><Ban className="size-3 mr-1" />已取消</Badge>;
       case 'failed':
@@ -332,6 +382,8 @@ export function TaskManager() {
         return <Badge className="bg-green-500"><CheckCircle className="size-3 mr-1" />已完成</Badge>;
       case 'burning':
         return <Badge className="bg-blue-500"><Film className="size-3 mr-1" />烧录中</Badge>;
+      case 'paused':
+        return <Badge className="bg-amber-500"><Pause className="size-3 mr-1" />已暂停</Badge>;
       case 'cancelled':
         return <Badge variant="secondary"><Ban className="size-3 mr-1" />已取消</Badge>;
       case 'failed':
@@ -882,18 +934,41 @@ export function TaskManager() {
 
                             <div className="flex flex-col gap-2">
                               {(task.status === 'pending' || task.status === 'processing' || task.status === 'generating' || task.status === 'translating') && (
+                                <>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => handlePauseSubtitleTask(task.id)}
+                                    title="暂停任务"
+                                  >
+                                    <Pause className="size-4" />
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => handleCancelSubtitleTask(task.id)}
+                                    title="取消任务"
+                                  >
+                                    <Ban className="size-4" />
+                                  </Button>
+                                </>
+                              )}
+                              {task.status === 'paused' && (
                                 <Button
                                   size="sm"
                                   variant="outline"
-                                  onClick={() => handleCancelSubtitleTask(task.id)}
+                                  onClick={() => handleResumeSubtitleTask(task.id)}
+                                  title="继续任务（从头开始）"
+                                  className="text-amber-600 hover:text-amber-700"
                                 >
-                                  <Ban className="size-4" />
+                                  <Play className="size-4" />
                                 </Button>
                               )}
                               <Button
                                 size="sm"
                                 variant="ghost"
                                 onClick={() => handleDeleteSubtitleTask(task.id)}
+                                title="删除任务"
                               >
                                 <Trash2 className="size-4" />
                               </Button>
@@ -996,18 +1071,41 @@ export function TaskManager() {
 
                             <div className="flex flex-col gap-2">
                               {(task.status === 'pending' || task.status === 'burning') && (
+                                <>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => handlePauseBurnTask(task.id)}
+                                    title="暂停任务"
+                                  >
+                                    <Pause className="size-4" />
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => handleCancelBurnTask(task.id)}
+                                    title="取消任务"
+                                  >
+                                    <Ban className="size-4" />
+                                  </Button>
+                                </>
+                              )}
+                              {task.status === 'paused' && (
                                 <Button
                                   size="sm"
                                   variant="outline"
-                                  onClick={() => handleCancelBurnTask(task.id)}
+                                  onClick={() => handleResumeBurnTask(task.id)}
+                                  title="继续任务（从头开始）"
+                                  className="text-amber-600 hover:text-amber-700"
                                 >
-                                  <Ban className="size-4" />
+                                  <Play className="size-4" />
                                 </Button>
                               )}
                               <Button
                                 size="sm"
                                 variant="ghost"
                                 onClick={() => handleDeleteBurnTask(task.id)}
+                                title="删除任务"
                               >
                                 <Trash2 className="size-4" />
                               </Button>
