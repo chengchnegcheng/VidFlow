@@ -331,16 +331,31 @@ export function TaskProgressProvider({ children }: { children: ReactNode }) {
           setDownloads(prev => {
             const next = [...prev];
             const idx = next.findIndex(t => t.task_id === taskId);
-            const patch = {
-              progress: normalizeProgress(data.progress),
-              downloaded: data.downloaded ?? data.downloaded_bytes,
-              total: data.total ?? data.total_bytes,
-              speed: data.speed,
-              eta: data.eta,
-              status: data.status || 'downloading'
-            } as Partial<DownloadTask>;
+            
             if (idx >= 0) {
-              next[idx] = { ...next[idx], ...patch };
+              const currentTask = next[idx];
+              
+              // 如果任务已经是 paused/cancelled/completed/failed 状态，
+              // 忽略后续的进度更新（可能是延迟到达的旧消息）
+              if (['paused', 'cancelled', 'completed', 'failed'].includes(currentTask.status)) {
+                // 只有当 WebSocket 消息明确包含新状态时才更新
+                if (data.status && data.status !== 'downloading') {
+                  next[idx] = { ...currentTask, status: data.status };
+                }
+                return next;
+              }
+              
+              const patch = {
+                progress: normalizeProgress(data.progress),
+                downloaded: data.downloaded ?? data.downloaded_bytes,
+                total: data.total ?? data.total_bytes,
+                speed: data.speed,
+                eta: data.eta,
+                // 只有当 WebSocket 消息包含 status 时才更新，否则保持当前状态
+                status: data.status || currentTask.status
+              } as Partial<DownloadTask>;
+              
+              next[idx] = { ...currentTask, ...patch };
             } else {
               // 任务不在本地列表时触发一次刷新
               refreshDownloads();

@@ -58,13 +58,21 @@ let updater = null;
 function getIconPath() {
   const isDev = !app.isPackaged;
   if (isDev) {
-    return process.platform === 'win32'
-      ? path.join(__dirname, '../resources/icons/icon.ico')
-      : path.join(__dirname, '../resources/icons/icon.png');
+    if (process.platform === 'win32') {
+      return path.join(__dirname, '../resources/icons/icon.ico');
+    } else if (process.platform === 'darwin') {
+      return path.join(__dirname, '../resources/icon.icns');
+    } else {
+      return path.join(__dirname, '../resources/icons/icon.png');
+    }
   } else {
-    return process.platform === 'win32'
-      ? path.join(process.resourcesPath, 'icons', 'icon.ico')
-      : path.join(process.resourcesPath, 'icons', 'icon.png');
+    if (process.platform === 'win32') {
+      return path.join(process.resourcesPath, 'icons', 'icon.ico');
+    } else if (process.platform === 'darwin') {
+      return path.join(process.resourcesPath, 'icons', 'icon.png');
+    } else {
+      return path.join(process.resourcesPath, 'icons', 'icon.png');
+    }
   }
 }
 
@@ -366,14 +374,25 @@ function createWindow() {
   let iconPath;
   if (isDev) {
     // 开发模式
-    iconPath = process.platform === 'win32'
-      ? path.join(__dirname, '../resources/icons/icon.ico')
-      : path.join(__dirname, '../resources/icons/icon.png');
+    if (process.platform === 'win32') {
+      iconPath = path.join(__dirname, '../resources/icons/icon.ico');
+    } else if (process.platform === 'darwin') {
+      // macOS 使用 .icns 格式
+      iconPath = path.join(__dirname, '../resources/icon.icns');
+    } else {
+      iconPath = path.join(__dirname, '../resources/icons/icon.png');
+    }
   } else {
     // 生产模式
-    iconPath = process.platform === 'win32'
-      ? path.join(process.resourcesPath, 'icons', 'icon.ico')
-      : path.join(process.resourcesPath, 'icons', 'icon.png');
+    if (process.platform === 'win32') {
+      iconPath = path.join(process.resourcesPath, 'icons', 'icon.ico');
+    } else if (process.platform === 'darwin') {
+      // macOS: electron-builder 会自动处理 .icns，但窗口图标需要指定
+      // 在打包后，.icns 会被嵌入到 .app 中，这里使用 png 作为备用
+      iconPath = path.join(process.resourcesPath, 'icons', 'icon.png');
+    } else {
+      iconPath = path.join(process.resourcesPath, 'icons', 'icon.png');
+    }
   }
 
   console.log('Creating main window...');
