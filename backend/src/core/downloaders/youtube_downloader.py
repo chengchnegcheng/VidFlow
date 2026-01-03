@@ -292,12 +292,26 @@ class YoutubeDownloader(BaseDownloader):
             cookie_path = self._get_youtube_cookie_path()
             # 不再自动从浏览器获取 Cookie，避免不必要的错误
             
+            # 取消检查标志（用于在 progress_hook 中检查）
+            cancel_checker = None
+            if task_id:
+                try:
+                    from src.core.download_queue import get_download_queue
+                    cancel_checker = get_download_queue()
+                except Exception:
+                    pass
+            
             # 添加进度钩子
             if progress_callback:
                 # 获取当前事件循环供 progress_hook 使用
                 loop = asyncio.get_event_loop()
                 
                 def progress_hook(d):
+                    # 检查任务是否被取消
+                    if cancel_checker and task_id and cancel_checker.is_task_cancelled_sync(task_id):
+                        logger.info(f"Task {task_id} cancelled, raising exception to stop download")
+                        raise Exception(f"Download cancelled by user")
+                    
                     if d['status'] == 'downloading':
                         try:
                             downloaded = d.get('downloaded_bytes', 0)
@@ -322,6 +336,8 @@ class YoutubeDownloader(BaseDownloader):
                                     loop
                                 )
                         except Exception as e:
+                            if "cancelled" in str(e).lower():
+                                raise  # 重新抛出取消异常
                             logger.error(f"Progress callback error: {e}")
                     
                     elif d['status'] == 'finished':

@@ -240,6 +240,21 @@ class DownloadQueue:
         """
         async with self._lock:
             return task_id in self.cancelled_tasks
+    
+    def is_task_cancelled_sync(self, task_id: str) -> bool:
+        """
+        同步检查任务是否已被取消（用于 yt-dlp 的 progress_hook）
+        
+        注意：这个方法不使用锁，可能有轻微的竞态条件，
+        但对于取消检查来说是可以接受的。
+        
+        Args:
+            task_id: 任务ID
+            
+        Returns:
+            是否已取消
+        """
+        return task_id in self.cancelled_tasks
 
 
 # 全局队列实例

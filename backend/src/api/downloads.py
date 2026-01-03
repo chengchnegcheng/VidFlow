@@ -291,10 +291,25 @@ async def _execute_download(task_id: str, request: DownloadRequest):
 
             # 进度更新的节流控制
             last_db_update = [0.0]  # 使用列表以便在闭包中修改
+            # 取消检查标志
+            cancel_check_interval = 1.0  # 每秒检查一次取消状态
+            last_cancel_check = [0.0]
 
             async def progress_callback(progress_data: dict):
                 """更新任务进度到数据库并通过 WebSocket 推送"""
                 try:
+                    import time
+                    current_time = time.time()
+                    
+                    # 检查任务是否被取消（每秒检查一次）
+                    if current_time - last_cancel_check[0] >= cancel_check_interval:
+                        last_cancel_check[0] = current_time
+                        is_cancelled = await download_queue.is_task_cancelled(task_id)
+                        if is_cancelled:
+                            logger.info(f"Task {task_id} cancellation detected in progress callback")
+                            # 抛出取消异常，这会被 yt-dlp 捕获并停止下载
+                            raise asyncio.CancelledError(f"Task {task_id} was cancelled by user")
+                    
                     if progress_data.get('status') != 'downloading':
                         return
 
@@ -322,8 +337,6 @@ async def _execute_download(task_id: str, request: DownloadRequest):
                         logger.debug(f"WS push failed for {task_id}: {push_err}")
 
                     # 降低数据库写入频率：每2秒或进度变化超过5%才写入数据库
-                    import time
-                    current_time = time.time()
                     should_update_db = (
                         current_time - last_db_update[0] >= 2.0 or  # 每2秒更新一次
                         abs(progress - (task.progress or 0)) >= 5.0  # 进度变化超过5%
@@ -350,6 +363,9 @@ async def _execute_download(task_id: str, request: DownloadRequest):
                                 logger.warning(f"DB update skipped for {task_id}: {db_err}")
                                 await update_db.rollback()
 
+                except asyncio.CancelledError:
+                    # 重新抛出取消异常
+                    raise
                 except Exception as e:
                     logger.error(f"Error updating progress for {task_id}: {e}")
 
@@ -390,15 +406,33 @@ async def _execute_download(task_id: str, request: DownloadRequest):
             raise  # 重新抛出，让外层处理
 
         except Exception as e:
-            logger.error(f"Download failed: {e}")
-            result = await db.execute(
-                select(DownloadTask).where(DownloadTask.task_id == task_id)
-            )
-            task = result.scalar_one_or_none()
-            if task:
-                task.status = 'failed'
-                task.error_message = str(e)
-                await db.commit()
+            error_msg = str(e)
+            
+            # 检查是否是用户取消的下载
+            if 'cancelled by user' in error_msg.lower() or 'download cancelled' in error_msg.lower():
+                logger.info(f"Download cancelled by user: {task_id}")
+                try:
+                    async with AsyncSessionLocal() as cancel_db:
+                        result = await cancel_db.execute(
+                            select(DownloadTask).where(DownloadTask.task_id == task_id)
+                        )
+                        task = result.scalar_one_or_none()
+                        if task:
+                            task.status = 'cancelled'
+                            task.error_message = '用户取消下载'
+                            await cancel_db.commit()
+                except Exception as cancel_err:
+                    logger.error(f"Error updating task status on cancel: {cancel_err}")
+            else:
+                logger.error(f"Download failed: {e}")
+                result = await db.execute(
+                    select(DownloadTask).where(DownloadTask.task_id == task_id)
+                )
+                task = result.scalar_one_or_none()
+                if task:
+                    task.status = 'failed'
+                    task.error_message = error_msg
+                    await db.commit()
         finally:
             # 从队列中移除完成/失败的任务
             await download_queue.complete_task(task_id)
