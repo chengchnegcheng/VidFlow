@@ -1,10 +1,14 @@
 """
 生成 macOS 托盘 Template 图标
 
-这个脚本将现有的托盘图标转换为 macOS Template 格式的黑白图标。
+这个脚本将现有的托盘图标转换为 macOS Template 格式。
+macOS Template 图标要求：
+- 使用黑色作为图形颜色
+- 透明背景
+- 系统会根据菜单栏亮/暗模式自动调整颜色
 """
 
-from PIL import Image, ImageOps
+from PIL import Image
 import os
 
 def generate_mac_tray_template():
@@ -31,57 +35,41 @@ def generate_mac_tray_template():
         if img.mode != 'RGBA':
             img = img.convert('RGBA')
 
-        # 创建标准分辨率版本 (16x16 或 22x22)
-        # macOS 托盘图标通常是 16x16 到 22x22
-        size_1x = (22, 22)
+        # 创建标准分辨率版本 (18x18 是 macOS 推荐的托盘图标尺寸)
+        size_1x = (18, 18)
         img_1x = img.resize(size_1x, Image.Resampling.LANCZOS)
 
-        # 转换为灰度
-        gray_1x = ImageOps.grayscale(img_1x.convert('RGB'))
-
-        # 获取原始 alpha 通道
-        alpha = img_1x.split()[3] if img_1x.mode == 'RGBA' else None
-
-        # 创建黑白版本（高对比度）
-        # 使用点操作提高对比度，使其更接近纯黑白
-        bw_1x = gray_1x.point(lambda x: 0 if x < 128 else 255, mode='1').convert('L')
-
-        # 应用原始 alpha 通道
-        if alpha:
-            result_1x = Image.new('RGBA', size_1x)
-            result_1x.paste(bw_1x, (0, 0))
-            result_1x.putalpha(alpha.resize(size_1x, Image.Resampling.LANCZOS))
-        else:
-            result_1x = bw_1x.convert('RGBA')
+        # macOS Template 图标：保持原始 alpha 通道，将所有非透明像素变成黑色
+        # 这样系统可以根据菜单栏颜色自动调整
+        result_1x = Image.new('RGBA', size_1x, (0, 0, 0, 0))
+        
+        for x in range(size_1x[0]):
+            for y in range(size_1x[1]):
+                r, g, b, a = img_1x.getpixel((x, y))
+                if a > 0:
+                    # 保持 alpha 值，但将颜色设为黑色
+                    result_1x.putpixel((x, y), (0, 0, 0, a))
 
         # 保存标准分辨率
         result_1x.save(output_1x, 'PNG')
-        print(f"✓ 已生成: {output_1x}")
+        print(f"✓ 已生成: {output_1x} ({size_1x[0]}x{size_1x[1]})")
 
         # 创建 Retina 分辨率版本 (2x)
-        size_2x = (44, 44)
+        size_2x = (36, 36)
         img_2x = img.resize(size_2x, Image.Resampling.LANCZOS)
 
-        # 转换为灰度
-        gray_2x = ImageOps.grayscale(img_2x.convert('RGB'))
-
-        # 获取原始 alpha 通道
-        alpha_2x = img_2x.split()[3] if img_2x.mode == 'RGBA' else None
-
-        # 创建黑白版本
-        bw_2x = gray_2x.point(lambda x: 0 if x < 128 else 255, mode='1').convert('L')
-
-        # 应用原始 alpha 通道
-        if alpha_2x:
-            result_2x = Image.new('RGBA', size_2x)
-            result_2x.paste(bw_2x, (0, 0))
-            result_2x.putalpha(alpha_2x.resize(size_2x, Image.Resampling.LANCZOS))
-        else:
-            result_2x = bw_2x.convert('RGBA')
+        result_2x = Image.new('RGBA', size_2x, (0, 0, 0, 0))
+        
+        for x in range(size_2x[0]):
+            for y in range(size_2x[1]):
+                r, g, b, a = img_2x.getpixel((x, y))
+                if a > 0:
+                    # 保持 alpha 值，但将颜色设为黑色
+                    result_2x.putpixel((x, y), (0, 0, 0, a))
 
         # 保存 Retina 分辨率
         result_2x.save(output_2x, 'PNG')
-        print(f"✓ 已生成: {output_2x}")
+        print(f"✓ 已生成: {output_2x} ({size_2x[0]}x{size_2x[1]})")
 
         print("\n✓ macOS Template 图标生成完成！")
         print("这些图标将在 macOS 菜单栏中自动适应亮/暗模式。")
