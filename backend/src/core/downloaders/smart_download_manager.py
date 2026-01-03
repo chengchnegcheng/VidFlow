@@ -41,6 +41,28 @@ def is_bot_detection_error(error_msg: str) -> bool:
     return any(keyword in error_lower for keyword in bot_keywords)
 
 
+def is_ssl_proxy_error(error_msg: str) -> bool:
+    """
+    检查是否是代理导致的 SSL 错误
+    
+    Args:
+        error_msg: 错误信息
+        
+    Returns:
+        是否是 SSL 代理错误
+    """
+    ssl_keywords = [
+        "ssl: unexpected_eof_while_reading",
+        "eof occurred in violation of protocol",
+        "ssl: certificate_verify_failed",
+        "ssl handshake",
+        "connection reset by peer",
+        "connection aborted",
+    ]
+    error_lower = error_msg.lower()
+    return any(keyword in error_lower for keyword in ssl_keywords)
+
+
 class SmartDownloadManager:
     """
     智能下载管理器
@@ -92,10 +114,13 @@ class SmartDownloadManager:
             generic_error = e
             logger.warning(f"[SmartDownload] GenericDownloader failed: {str(e)[:200]}")
         
-        # Step 1.5: 如果是 bot 检测错误且有代理，尝试不使用代理重试
+        # Step 1.5: 如果是 bot 检测错误或 SSL 错误且有代理，尝试不使用代理重试
         error_msg = str(generic_error)
-        if current_proxy and is_bot_detection_error(error_msg):
-            logger.info(f"[SmartDownload] Bot detection error with proxy ({current_proxy}), trying without proxy...")
+        should_retry_without_proxy = current_proxy and (is_bot_detection_error(error_msg) or is_ssl_proxy_error(error_msg))
+        
+        if should_retry_without_proxy:
+            retry_reason = "Bot detection" if is_bot_detection_error(error_msg) else "SSL error"
+            logger.info(f"[SmartDownload] {retry_reason} with proxy ({current_proxy}), trying without proxy...")
             try:
                 # 临时禁用代理
                 disable_proxy_temporarily()
@@ -110,7 +135,7 @@ class SmartDownloadManager:
                 # 成功，添加元信息
                 result['downloader_used'] = 'generic_no_proxy'
                 result['fallback_used'] = True
-                result['fallback_reason'] = 'Bot detection bypassed by disabling proxy'
+                result['fallback_reason'] = f'{retry_reason} bypassed by disabling proxy'
                 logger.info(f"[SmartDownload] GenericDownloader succeeded without proxy")
                 return result
                 
@@ -135,6 +160,7 @@ class SmartDownloadManager:
         # Step 3: 先尝试专用下载器（即使没有 Cookie，专用下载器可能有更好的处理逻辑）
         # 例如 YouTube 专用下载器有 player_client 回退机制
         specialized = DownloaderFactory.get_specialized_downloader(url, self.output_dir)
+        specialized_error = None
         
         try:
             logger.info(f"[SmartDownload] Trying {specialized.platform_name} downloader...")
@@ -151,8 +177,31 @@ class SmartDownloadManager:
             specialized_error = e
             logger.warning(f"[SmartDownload] Specialized downloader also failed: {str(e)[:200]}")
         
-        # Step 4: 专用下载器也失败，检查是否需要 Cookie
+        # Step 3.5: 如果专用下载器也遇到 SSL 错误，尝试禁用代理重试
         specialized_error_msg = str(specialized_error)
+        if current_proxy and is_ssl_proxy_error(specialized_error_msg):
+            logger.info(f"[SmartDownload] SSL error in specialized downloader, trying without proxy...")
+            try:
+                disable_proxy_temporarily()
+                
+                # 重新创建专用下载器（不使用代理）
+                specialized_no_proxy = DownloaderFactory.get_specialized_downloader(url, self.output_dir)
+                result = await specialized_no_proxy.get_video_info(url)
+                
+                enable_proxy()
+                
+                result['downloader_used'] = f'{specialized.platform_name}_no_proxy'
+                result['fallback_used'] = True
+                result['fallback_reason'] = 'SSL error bypassed by disabling proxy'
+                logger.info(f"[SmartDownload] Specialized downloader succeeded without proxy")
+                return result
+                
+            except Exception as e3:
+                enable_proxy()
+                logger.warning(f"[SmartDownload] Specialized downloader without proxy also failed: {str(e3)[:200]}")
+                # 使用原来的错误继续
+        
+        # Step 4: 专用下载器也失败，检查是否需要 Cookie
         
         # 如果是认证错误且没有配置 Cookie，提示用户配置
         if error_type == 'auth_required' or classify_error(specialized_error_msg, platform) == 'auth_required':
@@ -230,10 +279,13 @@ class SmartDownloadManager:
             generic_error = e
             logger.warning(f"[SmartDownload] GenericDownloader download failed: {str(e)[:200]}")
         
-        # Step 1.5: 如果是 bot 检测错误且有代理，尝试不使用代理重试
+        # Step 1.5: 如果是 bot 检测错误或 SSL 错误且有代理，尝试不使用代理重试
         error_msg = str(generic_error)
-        if current_proxy and is_bot_detection_error(error_msg):
-            logger.info(f"[SmartDownload] Bot detection error with proxy ({current_proxy}), trying download without proxy...")
+        should_retry_without_proxy = current_proxy and (is_bot_detection_error(error_msg) or is_ssl_proxy_error(error_msg))
+        
+        if should_retry_without_proxy:
+            retry_reason = "Bot detection" if is_bot_detection_error(error_msg) else "SSL error"
+            logger.info(f"[SmartDownload] {retry_reason} with proxy ({current_proxy}), trying download without proxy...")
             try:
                 # 临时禁用代理
                 disable_proxy_temporarily()
@@ -256,7 +308,7 @@ class SmartDownloadManager:
                 # 成功，添加元信息
                 result['downloader_used'] = 'generic_no_proxy'
                 result['fallback_used'] = True
-                result['fallback_reason'] = 'Bot detection bypassed by disabling proxy'
+                result['fallback_reason'] = f'{retry_reason} bypassed by disabling proxy'
                 logger.info(f"[SmartDownload] GenericDownloader download succeeded without proxy")
                 return result
                 
@@ -287,6 +339,7 @@ class SmartDownloadManager:
         # Step 3: 先尝试专用下载器（即使没有 Cookie，专用下载器可能有更好的处理逻辑）
         # 例如 YouTube 专用下载器有 player_client 回退机制，可以处理公开视频
         specialized = DownloaderFactory.get_specialized_downloader(url, self.output_dir)
+        specialized_error = None
         
         # 通知用户正在回退
         if progress_callback and task_id:
@@ -320,8 +373,47 @@ class SmartDownloadManager:
             specialized_error = e
             logger.warning(f"[SmartDownload] Specialized downloader also failed: {str(e)[:200]}")
         
-        # Step 4: 专用下载器也失败，检查是否需要 Cookie
+        # Step 3.5: 如果专用下载器也遇到 SSL 错误，尝试禁用代理重试
         specialized_error_msg = str(specialized_error)
+        if current_proxy and is_ssl_proxy_error(specialized_error_msg):
+            logger.info(f"[SmartDownload] SSL error in specialized downloader, trying download without proxy...")
+            try:
+                disable_proxy_temporarily()
+                
+                # 通知用户
+                if progress_callback and task_id:
+                    await progress_callback({
+                        'task_id': task_id,
+                        'status': 'fallback',
+                        'message': '检测到代理 SSL 错误，正在禁用代理重试...'
+                    })
+                
+                # 重新创建专用下载器（不使用代理）
+                specialized_no_proxy = DownloaderFactory.get_specialized_downloader(url, self.output_dir)
+                result = await specialized_no_proxy.download_video(
+                    url=url,
+                    quality=quality,
+                    output_path=output_path,
+                    format_id=format_id,
+                    progress_callback=progress_callback,
+                    task_id=task_id,
+                    **kwargs
+                )
+                
+                enable_proxy()
+                
+                result['downloader_used'] = f'{specialized.platform_name}_no_proxy'
+                result['fallback_used'] = True
+                result['fallback_reason'] = 'SSL error bypassed by disabling proxy'
+                logger.info(f"[SmartDownload] Specialized downloader download succeeded without proxy")
+                return result
+                
+            except Exception as e3:
+                enable_proxy()
+                logger.warning(f"[SmartDownload] Specialized downloader without proxy also failed: {str(e3)[:200]}")
+                # 使用原来的错误继续
+        
+        # Step 4: 专用下载器也失败，检查是否需要 Cookie
         
         # 如果是认证错误且没有配置 Cookie，提示用户配置
         if error_type == 'auth_required' or classify_error(specialized_error_msg, platform) == 'auth_required':
