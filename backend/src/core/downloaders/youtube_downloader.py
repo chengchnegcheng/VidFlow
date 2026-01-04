@@ -37,9 +37,9 @@ class YoutubeDownloader(BaseDownloader):
         Returns:
             Cookie 文件路径，如果不存在则返回 None
         """
-        # Cookie 文件存储位置
-        base_dir = Path(__file__).parent.parent.parent.parent
-        cookie_dir = base_dir / "data" / "cookies"
+        # 使用统一的 Cookie 目录获取函数（支持打包环境）
+        from .cookie_manager import get_cookie_base_dir
+        cookie_dir = get_cookie_base_dir()
         cookie_file = cookie_dir / "youtube_cookies.txt"
         
         if cookie_file.exists():

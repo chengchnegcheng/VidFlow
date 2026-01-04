@@ -206,27 +206,34 @@ class CookieBrowserManager:
 
             # 根据浏览器类型选择对应的配置
             if browser == "chrome":
+                logger.info("[DEBUG] Importing Chrome modules...")
                 from selenium.webdriver.chrome.options import Options
                 from selenium.webdriver.chrome.service import Service
+                logger.info("[DEBUG] Importing ChromeDriverManager...")
                 from webdriver_manager.chrome import ChromeDriverManager
+                logger.info("[DEBUG] Chrome modules imported successfully")
 
                 options = Options()
                 options.add_experimental_option("excludeSwitches", ["enable-automation"])
                 options.add_experimental_option('useAutomationExtension', False)
 
             elif browser == "edge":
+                logger.info("[DEBUG] Importing Edge modules...")
                 from selenium.webdriver.edge.options import Options
                 from selenium.webdriver.edge.service import Service
                 from webdriver_manager.microsoft import EdgeChromiumDriverManager
+                logger.info("[DEBUG] Edge modules imported successfully")
 
                 options = Options()
                 options.add_experimental_option("excludeSwitches", ["enable-automation"])
                 options.add_experimental_option('useAutomationExtension', False)
 
             elif browser == "firefox":
+                logger.info("[DEBUG] Importing Firefox modules...")
                 from selenium.webdriver.firefox.options import Options
                 from selenium.webdriver.firefox.service import Service
                 from webdriver_manager.firefox import GeckoDriverManager
+                logger.info("[DEBUG] Firefox modules imported successfully")
 
                 options = Options()
                 options.set_preference("dom.webdriver.enabled", False)
@@ -261,21 +268,33 @@ class CookieBrowserManager:
                 try:
                     if browser == "chrome":
                         try:
+                            logger.info("[DEBUG] Installing ChromeDriver via webdriver_manager...")
                             service = Service(ChromeDriverManager().install())
-                        except Exception:
+                            logger.info("[DEBUG] ChromeDriver installed successfully")
+                        except Exception as wdm_error:
+                            logger.warning(f"[DEBUG] webdriver_manager failed: {wdm_error}, trying default Service")
                             service = Service()
+                        logger.info("[DEBUG] Creating Chrome webdriver instance...")
                         driver_instance[0] = webdriver.Chrome(service=service, options=options)
                     elif browser == "edge":
                         try:
+                            logger.info("[DEBUG] Installing EdgeDriver via webdriver_manager...")
                             service = Service(EdgeChromiumDriverManager().install())
-                        except Exception:
+                            logger.info("[DEBUG] EdgeDriver installed successfully")
+                        except Exception as wdm_error:
+                            logger.warning(f"[DEBUG] webdriver_manager failed: {wdm_error}, trying default Service")
                             service = Service()
+                        logger.info("[DEBUG] Creating Edge webdriver instance...")
                         driver_instance[0] = webdriver.Edge(service=service, options=options)
                     elif browser == "firefox":
                         try:
+                            logger.info("[DEBUG] Installing GeckoDriver via webdriver_manager...")
                             service = Service(GeckoDriverManager().install())
-                        except Exception:
+                            logger.info("[DEBUG] GeckoDriver installed successfully")
+                        except Exception as wdm_error:
+                            logger.warning(f"[DEBUG] webdriver_manager failed: {wdm_error}, trying default Service")
                             service = Service()
+                        logger.info("[DEBUG] Creating Firefox webdriver instance...")
                         driver_instance[0] = webdriver.Firefox(service=service, options=options)
                     logger.info(f"[2/3] {browser_name} 浏览器已启动成功")
                     if cancel_event.is_set() and driver_instance[0]:
@@ -289,11 +308,12 @@ class CookieBrowserManager:
 
             browser_thread = threading.Thread(target=start_browser_thread, daemon=True)
             browser_thread.start()
-            browser_thread.join(timeout=60)
+            # 首次下载 ChromeDriver 可能需要较长时间，设置 180 秒超时
+            browser_thread.join(timeout=180)
 
             if browser_thread.is_alive():
                 cancel_event.set()
-                logger.error(f"{browser_name} 启动超时（60秒）")
+                logger.error(f"{browser_name} 启动超时（180秒）")
                 return {
                     "status": "error",
                     "error": f"{browser_name} 浏览器启动超时。\n\n可能原因：\n1. WebDriver 正在下载但网络较慢\n2. {browser_name} 浏览器响应缓慢\n\n解决方案：\n1. 检查网络连接\n2. 稍后重试",

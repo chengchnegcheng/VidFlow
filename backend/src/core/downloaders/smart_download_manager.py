@@ -8,7 +8,7 @@ from typing import Dict, Any, Optional, Callable
 from datetime import datetime
 
 from .downloader_factory import DownloaderFactory
-from .error_classifier import is_auth_required_error, is_non_retryable_error, classify_error
+from .error_classifier import is_auth_required_error, is_non_retryable_error, classify_error, get_platform_extractor_issue
 from .cookie_manager import (
     get_cookie_path_for_platform,
     has_cookie_for_platform,
@@ -78,6 +78,9 @@ class SmartDownloadManager:
     3. 非认证错误直接报错，不浪费时间重试
     """
     
+    # 优先使用专用下载器的平台（这些平台的 yt-dlp 提取器不稳定或需要特殊处理）
+    PREFER_SPECIALIZED_PLATFORMS = ['iqiyi', 'douyin', 'tiktok']
+    
     def __init__(self, output_dir: str = "./data/downloads"):
         self.output_dir = output_dir
     
@@ -99,6 +102,26 @@ class SmartDownloadManager:
         
         # 检查是否有系统代理（用于后续的无代理重试）
         current_proxy = get_proxy_url()
+        
+        # 🔥 优先使用专用下载器的情况：
+        # 1. 用户已配置该平台的 Cookie
+        # 2. 该平台在 PREFER_SPECIALIZED_PLATFORMS 列表中（yt-dlp 提取器不稳定）
+        use_specialized_first = has_cookie_for_platform(platform) or platform in self.PREFER_SPECIALIZED_PLATFORMS
+        
+        if use_specialized_first:
+            reason = "Cookie configured" if has_cookie_for_platform(platform) else "platform prefers specialized"
+            logger.info(f"[SmartDownload] Using specialized downloader first for {platform} ({reason})")
+            specialized = DownloaderFactory.get_specialized_downloader(url, self.output_dir)
+            try:
+                result = await specialized.get_video_info(url)
+                result['downloader_used'] = specialized.platform_name
+                result['fallback_used'] = False
+                result['fallback_reason'] = None
+                logger.info(f"[SmartDownload] Specialized downloader succeeded")
+                return result
+            except Exception as e:
+                logger.warning(f"[SmartDownload] Specialized downloader failed: {str(e)[:200]}, falling back to generic...")
+                # 专用下载器失败，继续尝试通用下载器
         
         # YouTube 特殊处理：代理更容易触发 bot 检测，优先尝试直连
         # 对于其他平台（如国内平台），保持原有逻辑
@@ -285,6 +308,44 @@ class SmartDownloadManager:
         
         # 检查是否有系统代理（用于后续的无代理重试）
         current_proxy = get_proxy_url()
+        
+        # 🔥 优先使用专用下载器的情况：
+        # 1. 用户已配置该平台的 Cookie
+        # 2. 该平台在 PREFER_SPECIALIZED_PLATFORMS 列表中（yt-dlp 提取器不稳定）
+        use_specialized_first = has_cookie_for_platform(platform) or platform in self.PREFER_SPECIALIZED_PLATFORMS
+        
+        if use_specialized_first:
+            reason = "Cookie configured" if has_cookie_for_platform(platform) else "platform prefers specialized"
+            logger.info(f"[SmartDownload] Using specialized downloader first for {platform} ({reason})")
+            specialized = DownloaderFactory.get_specialized_downloader(url, self.output_dir)
+            
+            # 通知用户正在使用专用下载器
+            if progress_callback and task_id:
+                platform_name = get_platform_display_name(platform)
+                await progress_callback({
+                    'task_id': task_id,
+                    'status': 'info',
+                    'message': f'使用 {platform_name} 专用下载器...'
+                })
+            
+            try:
+                result = await specialized.download_video(
+                    url=url,
+                    quality=quality,
+                    output_path=output_path,
+                    format_id=format_id,
+                    progress_callback=progress_callback,
+                    task_id=task_id,
+                    **kwargs
+                )
+                result['downloader_used'] = specialized.platform_name
+                result['fallback_used'] = False
+                result['fallback_reason'] = None
+                logger.info(f"[SmartDownload] Specialized downloader download succeeded")
+                return result
+            except Exception as e:
+                logger.warning(f"[SmartDownload] Specialized downloader failed: {str(e)[:200]}, falling back to generic...")
+                # 专用下载器失败，继续尝试通用下载器
         
         # YouTube 特殊处理：代理更容易触发 bot 检测，优先尝试直连
         youtube_no_proxy_first = platform == 'youtube' and current_proxy

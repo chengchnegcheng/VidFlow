@@ -8,6 +8,7 @@ from .base_downloader import BaseDownloader
 from .youtube_downloader import YoutubeDownloader
 from .bilibili_downloader import BilibiliDownloader
 from .douyin_downloader import DouyinDownloader
+from .iqiyi_downloader import IqiyiDownloader
 from .generic_downloader import GenericDownloader
 
 logger = logging.getLogger(__name__)
@@ -21,6 +22,7 @@ class DownloaderFactory:
         DouyinDownloader,      # 抖音/TikTok
         YoutubeDownloader,     # YouTube
         BilibiliDownloader,    # Bilibili
+        IqiyiDownloader,       # 爱奇艺
         # 添加更多专用下载器
     ]
     

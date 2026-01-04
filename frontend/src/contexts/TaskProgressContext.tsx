@@ -77,6 +77,26 @@ export interface BurnSubtitleTask {
   cancelled?: boolean;
 }
 
+// 视频信息获取状态
+export interface VideoInfoState {
+  url: string;
+  info: VideoInfo | null;
+  loading: boolean;
+  cookieWarning: { platform: string; platformName: string } | null;
+}
+
+export interface VideoInfo {
+  title: string;
+  duration: number;
+  platform?: string;
+  thumbnail?: string;
+  quality?: string[];
+  formats: { ext: string }[];
+  downloader_used?: string;
+  fallback_used?: boolean;
+  fallback_reason?: string;
+}
+
 interface TaskProgressContextType {
   downloads: DownloadTask[];
   subtitleTasks: SubtitleTask[];
@@ -86,6 +106,13 @@ interface TaskProgressContextType {
   refreshDownloads: () => Promise<void>;
   refreshSubtitles: () => Promise<void>;
   refreshBurns: () => Promise<void>;
+  // 视频信息获取状态
+  videoInfoState: VideoInfoState;
+  setVideoInfoUrl: (url: string) => void;
+  setVideoInfo: (info: VideoInfo | null) => void;
+  setVideoInfoLoading: (loading: boolean) => void;
+  setVideoCookieWarning: (warning: { platform: string; platformName: string } | null) => void;
+  clearVideoInfo: () => void;
 }
 
 const TaskProgressContext = createContext<TaskProgressContextType | undefined>(undefined);
@@ -114,6 +141,34 @@ export function TaskProgressProvider({ children }: { children: ReactNode }) {
   const [subtitleTasks, setSubtitleTasks] = useState<SubtitleTask[]>([]);
   const [burnTasks, setBurnTasks] = useState<BurnSubtitleTask[]>([]);
   const [loading, setLoading] = useState(false);
+
+  // 视频信息获取状态
+  const [videoInfoState, setVideoInfoState] = useState<VideoInfoState>({
+    url: '',
+    info: null,
+    loading: false,
+    cookieWarning: null,
+  });
+
+  const setVideoInfoUrl = useCallback((url: string) => {
+    setVideoInfoState(prev => ({ ...prev, url }));
+  }, []);
+
+  const setVideoInfo = useCallback((info: VideoInfo | null) => {
+    setVideoInfoState(prev => ({ ...prev, info }));
+  }, []);
+
+  const setVideoInfoLoading = useCallback((loading: boolean) => {
+    setVideoInfoState(prev => ({ ...prev, loading }));
+  }, []);
+
+  const setVideoCookieWarning = useCallback((warning: { platform: string; platformName: string } | null) => {
+    setVideoInfoState(prev => ({ ...prev, cookieWarning: warning }));
+  }, []);
+
+  const clearVideoInfo = useCallback(() => {
+    setVideoInfoState({ url: '', info: null, loading: false, cookieWarning: null });
+  }, []);
 
   const prevDownloadStatus = useRef<Map<string, DownloadStatus>>(new Map());
   const prevSubtitleStatus = useRef<Map<string, SubtitleStatus>>(new Map());
@@ -498,6 +553,12 @@ export function TaskProgressProvider({ children }: { children: ReactNode }) {
         refreshDownloads,
         refreshSubtitles,
         refreshBurns,
+        videoInfoState,
+        setVideoInfoUrl,
+        setVideoInfo,
+        setVideoInfoLoading,
+        setVideoCookieWarning,
+        clearVideoInfo,
       }}
     >
       {children}

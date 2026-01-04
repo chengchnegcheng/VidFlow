@@ -5,11 +5,33 @@
 import json
 import hashlib
 import logging
+import os
+import sys
 from pathlib import Path
 from datetime import datetime, timedelta
 from typing import Dict, Any, Optional
 
 logger = logging.getLogger(__name__)
+
+
+def get_cache_base_dir() -> Path:
+    """获取缓存文件的基础目录（支持打包环境）"""
+    if getattr(sys, 'frozen', False):
+        # PyInstaller 打包后的环境，使用用户数据目录
+        if sys.platform == 'win32':
+            appdata = os.environ.get('APPDATA', os.path.expanduser('~'))
+            base_dir = Path(appdata) / 'VidFlow'
+        elif sys.platform == 'darwin':
+            base_dir = Path.home() / 'Library' / 'Application Support' / 'VidFlow'
+        else:
+            base_dir = Path.home() / '.vidflow'
+    else:
+        # 开发环境，使用当前工作目录
+        base_dir = Path('.')
+    
+    cache_dir = base_dir / "cache" / "video_info"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    return cache_dir
 
 
 class VideoInfoCache:
@@ -207,5 +229,6 @@ def get_cache() -> VideoInfoCache:
     """获取全局缓存实例"""
     global _global_cache
     if _global_cache is None:
-        _global_cache = VideoInfoCache()
+        cache_dir = get_cache_base_dir()
+        _global_cache = VideoInfoCache(cache_dir=str(cache_dir))
     return _global_cache

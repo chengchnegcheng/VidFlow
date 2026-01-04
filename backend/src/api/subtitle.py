@@ -815,8 +815,7 @@ class BurnSubtitleRequest(BaseModel):
 
 @router.post("/burn-subtitle")
 async def burn_subtitle_to_video(request: BurnSubtitleRequest):
-    """将字幕烧录到视频中"""
-    import subprocess
+    """将字幕烧录到视频中（简单版，适合短视频）"""
     from pathlib import Path
     
     try:
@@ -854,20 +853,21 @@ async def burn_subtitle_to_video(request: BurnSubtitleRequest):
             str(output_path)
         ]
         
-        # 执行烧录
+        # 使用异步 subprocess 执行烧录，避免阻塞事件循环
         logger.info(f"Burning subtitle: {' '.join(cmd)}")
         
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            encoding='utf-8',
-            errors='ignore'
+        process = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
         )
         
-        if result.returncode != 0:
-            logger.error(f"FFmpeg error: {result.stderr}")
-            raise HTTPException(status_code=500, detail=f"字幕烧录失败: {result.stderr}")
+        stdout, stderr = await process.communicate()
+        
+        if process.returncode != 0:
+            error_msg = stderr.decode('utf-8', errors='ignore')
+            logger.error(f"FFmpeg error: {error_msg}")
+            raise HTTPException(status_code=500, detail=f"字幕烧录失败: {error_msg}")
         
         logger.info(f"Subtitle burned successfully: {output_path}")
         

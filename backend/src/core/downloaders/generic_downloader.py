@@ -360,24 +360,17 @@ class GenericDownloader(BaseDownloader):
         Returns:
             Cookie 文件路径，如果不存在则返回 None
         """
-        base_dir = Path(__file__).parent.parent.parent.parent
-        cookie_dir = base_dir / "data" / "cookies"
+        # 使用统一的 Cookie 目录获取函数（支持打包环境）
+        from .cookie_manager import get_cookie_base_dir
+        cookie_dir = get_cookie_base_dir()
         
         # 根据平台选择 Cookie 文件
         platform = self._detect_platform(url)
         
-        # 平台与 Cookie 文件的映射
-        cookie_map = {
-            'xiaohongshu': 'xiaohongshu_cookies.txt',
-            'douyin': 'douyin_cookies.txt',
-            'tiktok': 'tiktok_cookies.txt',
-            'bilibili': 'bilibili_cookies.txt',
-            'youtube': 'youtube_cookies.txt',
-            'twitter': 'twitter_cookies.txt',
-            'instagram': 'instagram_cookies.txt',
-        }
+        # 使用统一的 Cookie 映射（从 cookie_manager 导入）
+        from .cookie_manager import PLATFORM_COOKIE_MAP
         
-        cookie_filename = cookie_map.get(platform)
+        cookie_filename = PLATFORM_COOKIE_MAP.get(platform)
         if not cookie_filename:
             return None
         

@@ -28,7 +28,8 @@ import {
   AlertCircle,
   AlertTriangle,
   Info,
-  Bug
+  Bug,
+  FolderOpen
 } from 'lucide-react';
 
 interface LogEntry {
@@ -141,6 +142,20 @@ export function LogViewer() {
     } catch (error) {
       toast.error('下载失败', {
         description: error instanceof Error ? error.message : '下载失败'
+      });
+    }
+  };
+
+  // 打开日志目录
+  const handleOpenLogFolder = async () => {
+    try {
+      const result = await invoke('get_log_path') as { success: boolean; path: string };
+      if (result?.path) {
+        await invoke('open_folder', { path: result.path });
+      }
+    } catch (error) {
+      toast.error('打开失败', {
+        description: error instanceof Error ? error.message : '无法打开日志目录'
       });
     }
   };
@@ -290,6 +305,14 @@ export function LogViewer() {
               >
                 <RefreshCw className={`size-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
                 刷新
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleOpenLogFolder}
+              >
+                <FolderOpen className="size-4 mr-2" />
+                打开目录
               </Button>
               <Button
                 variant="outline"

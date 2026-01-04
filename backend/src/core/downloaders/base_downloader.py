@@ -113,7 +113,10 @@ class BaseDownloader(ABC):
         return False
     
     def _get_format_selector(self, quality: str, format_id: Optional[str] = None) -> str:
-        """获取格式选择器字符串"""
+        """获取格式选择器字符串
+        
+        优先选择 H.264 (avc1) 编码，确保在手机和微信等应用中兼容播放
+        """
         if format_id:
             fid = str(format_id).strip().lower()
             if fid not in ('mp4', 'mkv', 'webm', 'mp3'):
@@ -123,19 +126,21 @@ class BaseDownloader(ABC):
         if re.fullmatch(r'\d{3,4}', q):
             q = f"{q}p"
 
-        # 改进的格式选择器 - 优先选择高质量，正确的回退策略
+        # 改进的格式选择器 - 优先 H.264 编码确保兼容性
+        # vcodec^=avc 表示优先选择 H.264 编码（avc1）
+        # 回退策略：H.264 -> 任意编码 -> best
         quality_map = {
-            # best: 优先最佳视频+音频，回退到最佳合成视频（不限制格式）
-            'best': 'bestvideo+bestaudio/best',
-            # 指定分辨率: 优先该分辨率的最佳质量，回退到次优格式
-            '2160p': 'bestvideo[height<=2160]+bestaudio/best[height<=2160]/best',
-            '1440p': 'bestvideo[height<=1440]+bestaudio/best[height<=1440]/best',
-            '1080p': 'bestvideo[height<=1080]+bestaudio/best[height<=1080]/best',
-            '720p': 'bestvideo[height<=720]+bestaudio/best[height<=720]/best',
-            '480p': 'bestvideo[height<=480]+bestaudio/best[height<=480]/best',
-            '360p': 'bestvideo[height<=360]+bestaudio/best[height<=360]/best',
+            # best: 优先 H.264 编码的最佳视频+AAC音频，确保手机兼容
+            'best': 'bestvideo[vcodec^=avc]+bestaudio[acodec^=mp4a]/bestvideo[vcodec^=avc]+bestaudio/bestvideo+bestaudio/best',
+            # 指定分辨率: 优先 H.264 编码
+            '2160p': 'bestvideo[height<=2160][vcodec^=avc]+bestaudio[acodec^=mp4a]/bestvideo[height<=2160][vcodec^=avc]+bestaudio/bestvideo[height<=2160]+bestaudio/best[height<=2160]/best',
+            '1440p': 'bestvideo[height<=1440][vcodec^=avc]+bestaudio[acodec^=mp4a]/bestvideo[height<=1440][vcodec^=avc]+bestaudio/bestvideo[height<=1440]+bestaudio/best[height<=1440]/best',
+            '1080p': 'bestvideo[height<=1080][vcodec^=avc]+bestaudio[acodec^=mp4a]/bestvideo[height<=1080][vcodec^=avc]+bestaudio/bestvideo[height<=1080]+bestaudio/best[height<=1080]/best',
+            '720p': 'bestvideo[height<=720][vcodec^=avc]+bestaudio[acodec^=mp4a]/bestvideo[height<=720][vcodec^=avc]+bestaudio/bestvideo[height<=720]+bestaudio/best[height<=720]/best',
+            '480p': 'bestvideo[height<=480][vcodec^=avc]+bestaudio[acodec^=mp4a]/bestvideo[height<=480][vcodec^=avc]+bestaudio/bestvideo[height<=480]+bestaudio/best[height<=480]/best',
+            '360p': 'bestvideo[height<=360][vcodec^=avc]+bestaudio[acodec^=mp4a]/bestvideo[height<=360][vcodec^=avc]+bestaudio/bestvideo[height<=360]+bestaudio/best[height<=360]/best',
             # 仅音频
-            'audio': 'bestaudio/best',
+            'audio': 'bestaudio[acodec^=mp4a]/bestaudio/best',
         }
 
         return quality_map.get(q, quality_map['best'])

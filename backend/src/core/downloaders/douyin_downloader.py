@@ -582,6 +582,9 @@ class DouyinDownloader(BaseDownloader):
                 async with client.stream('GET', video_url) as response:
                     total_size = int(response.headers.get('content-length', 0))
                     downloaded = 0
+                    start_time = datetime.now()
+                    last_downloaded = 0
+                    last_time = start_time
                     
                     with open(full_output_path, 'wb') as f:
                         async for chunk in response.aiter_bytes(chunk_size=8192):
@@ -589,14 +592,31 @@ class DouyinDownloader(BaseDownloader):
                             downloaded += len(chunk)
                             
                             if progress_callback and total_size > 0:
+                                current_time = datetime.now()
+                                time_diff = (current_time - last_time).total_seconds()
+                                
+                                # 计算速度（每0.5秒更新一次）
+                                if time_diff >= 0.5:
+                                    bytes_diff = downloaded - last_downloaded
+                                    speed = bytes_diff / time_diff if time_diff > 0 else 0
+                                    last_downloaded = downloaded
+                                    last_time = current_time
+                                else:
+                                    speed = 0
+                                
+                                # 计算 ETA
+                                remaining = total_size - downloaded
+                                eta = int(remaining / speed) if speed > 0 else 0
+                                
                                 percentage = (downloaded / total_size) * 100
                                 await progress_callback({
                                     'task_id': task_id,
                                     'status': 'downloading',
                                     'progress': round(percentage, 2),
-                                    'percentage': round(percentage, 2),
                                     'downloaded': downloaded,
                                     'total': total_size,
+                                    'speed': speed,
+                                    'eta': eta,
                                 })
             
             logger.info(f"[DouyinDownloader] Download completed: {full_output_path}")
@@ -606,7 +626,6 @@ class DouyinDownloader(BaseDownloader):
                     'task_id': task_id,
                     'status': 'finished',
                     'progress': 100.0,
-                    'percentage': 100.0,
                     'filename': str(full_output_path),
                 })
             
@@ -659,24 +678,9 @@ class DouyinDownloader(BaseDownloader):
     
     def _get_douyin_cookie_path(self) -> Optional[Path]:
         """获取抖音 Cookie 文件路径"""
-        import sys
-        import os
-        
-        # 根据运行环境确定数据目录
-        if getattr(sys, 'frozen', False):
-            # PyInstaller 打包后的环境
-            if sys.platform == 'win32':
-                appdata = os.environ.get('APPDATA', os.path.expanduser('~'))
-                base_dir = Path(appdata) / 'VidFlow'
-            elif sys.platform == 'darwin':
-                base_dir = Path.home() / 'Library' / 'Application Support' / 'VidFlow'
-            else:
-                base_dir = Path.home() / '.local' / 'share' / 'VidFlow'
-        else:
-            # 开发环境
-            base_dir = Path(__file__).parent.parent.parent.parent
-        
-        cookie_dir = base_dir / "data" / "cookies"
+        # 使用统一的 Cookie 目录获取函数（支持打包环境）
+        from .cookie_manager import get_cookie_base_dir
+        cookie_dir = get_cookie_base_dir()
         cookie_file = cookie_dir / "douyin_cookies.txt"
 
         logger.debug(f"[DouyinDownloader] Looking for cookie at: {cookie_file}")

@@ -14,6 +14,7 @@ from datetime import datetime
 from src.core.downloader import Downloader
 from src.core.download_queue import get_download_queue
 from src.core.config_manager import get_config_manager
+from src.core.websocket_manager import get_ws_manager
 from src.models import DownloadTask, get_session
 from src.models.database import AsyncSessionLocal
 
@@ -384,6 +385,16 @@ async def _execute_download(task_id: str, request: DownloadRequest):
             task.completed_at = datetime.now()
             task.progress = 100.0
             await db.commit()
+
+            # 发送完成状态的 WebSocket 消息，让前端立即更新 UI
+            ws_manager = get_ws_manager()
+            await ws_manager.send_download_progress(task_id, {
+                'status': 'completed',
+                'progress': 100.0,
+                'filename': task.filename,
+                'file_path': task.file_path,
+                'filesize': task.filesize
+            })
 
             logger.info(f"Download completed: {task_id}")
 

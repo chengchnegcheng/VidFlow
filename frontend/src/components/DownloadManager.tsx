@@ -4,7 +4,7 @@
 import { useState } from 'react';
 import { invoke } from './TauriIntegration';
 import { useSettings } from '../contexts/SettingsContext';
-import { useTaskProgress, DownloadTask } from '../contexts/TaskProgressContext';
+import { useTaskProgress, DownloadTask, VideoInfo } from '../contexts/TaskProgressContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -36,19 +36,6 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { getProxiedImageUrl, handleImageError } from '../utils/imageProxy';
-
-interface VideoInfo {
-  title: string;
-  duration: number;  // 时长（秒）
-  platform?: string;
-  thumbnail?: string;
-  quality?: string[];
-  formats: { ext: string }[];
-  // 智能下载器信息
-  downloader_used?: string;
-  fallback_used?: boolean;
-  fallback_reason?: string;
-}
 
 // 格式化时长（秒 -> 分:秒 或 时:分:秒）
 function formatDuration(seconds: number): string {
@@ -128,15 +115,33 @@ interface DownloadManagerProps {
 
 export function DownloadManager({ onNavigateToSettings }: DownloadManagerProps = {}) {
   const { settings } = useSettings();
-  const { downloads: currentTasks, refreshDownloads } = useTaskProgress();
-  const [url, setUrl] = useState('');
-  const [videoInfo, setVideoInfo] = useState<VideoInfo | null>(null);
+  const { 
+    downloads: currentTasks, 
+    refreshDownloads,
+    videoInfoState,
+    setVideoInfoUrl,
+    setVideoInfo,
+    setVideoInfoLoading,
+    setVideoCookieWarning,
+    clearVideoInfo,
+  } = useTaskProgress();
+  
+  // 从全局状态获取
+  const url = videoInfoState.url;
+  const videoInfo = videoInfoState.info;
+  const infoLoading = videoInfoState.loading;
+  const cookieWarning = videoInfoState.cookieWarning;
+  
+  // 本地状态
   const [selectedQuality, setSelectedQuality] = useState(settings.defaultQuality || 'best');
   const [selectedFormat, setSelectedFormat] = useState(settings.defaultFormat || 'mp4');
   const [loading, setLoading] = useState(false); // downloading state
-  const [infoLoading, setInfoLoading] = useState(false); // fetching info state
   const [thumbnailError, setThumbnailError] = useState(false); // thumbnail load error
-  const [cookieWarning, setCookieWarning] = useState<{ platform: string; platformName: string } | null>(null);
+  
+  // 设置 URL
+  const setUrl = (newUrl: string) => {
+    setVideoInfoUrl(newUrl);
+  };
   
   // 打开文件夹
   const handleOpenFolder = async (filePath?: string) => {
@@ -251,7 +256,7 @@ export function DownloadManager({ onNavigateToSettings }: DownloadManagerProps =
           instagram: 'Instagram',
           twitter: 'Twitter/X'
         };
-        setCookieWarning({ 
+        setVideoCookieWarning({ 
           platform, 
           platformName: platformNames[platform] || platform 
         });
@@ -259,17 +264,17 @@ export function DownloadManager({ onNavigateToSettings }: DownloadManagerProps =
           description: '点击下方提示配置Cookie以获取更好的下载体验'
         });
       } else {
-        setCookieWarning(null);
+        setVideoCookieWarning(null);
       }
     } else {
-      setCookieWarning(null);
+      setVideoCookieWarning(null);
     }
 
-    setInfoLoading(true);
+    setVideoInfoLoading(true);
     setThumbnailError(false); // 重置缩略图错误状态
     try {
       const info = await invoke('get_video_info', { url: cleanedUrl });
-      setVideoInfo(info);
+      setVideoInfo(info as VideoInfo);
       toast.success('视频信息获取成功');
     } catch (error: any) {
       toast.error('获取视频信息失败', {
@@ -277,7 +282,7 @@ export function DownloadManager({ onNavigateToSettings }: DownloadManagerProps =
       });
       setVideoInfo(null);
     } finally {
-      setInfoLoading(false);
+      setVideoInfoLoading(false);
     }
   };
 
@@ -312,8 +317,7 @@ export function DownloadManager({ onNavigateToSettings }: DownloadManagerProps =
         output_path: settings.downloadPath || undefined, // 使用设置中的下载路径
       });
       toast.success(`下载任务已创建！任务ID: ${result.task_id}`);
-      setUrl('');
-      setVideoInfo(null);
+      clearVideoInfo(); // 清空全局状态
       await refreshDownloads();
     } catch (error: any) {
       toast.error('开始下载失败', {

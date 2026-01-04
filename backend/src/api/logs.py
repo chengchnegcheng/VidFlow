@@ -177,15 +177,15 @@ async def get_log_stats():
         if _stats_cache is not None and _stats_cache_mtime == current_mtime:
             return _stats_cache
         
-        # 统计日志
+        # 统计日志 - 使用异步文件读取避免阻塞
         error_count = 0
         warning_count = 0
         info_count = 0
         debug_count = 0
         total_lines = 0
         
-        with open(LOG_FILE, 'r', encoding='utf-8', errors='ignore') as f:
-            for line in f:
+        async with aiofiles.open(LOG_FILE, 'r', encoding='utf-8', errors='ignore') as f:
+            async for line in f:
                 total_lines += 1
                 if ' - ERROR - ' in line:
                     error_count += 1
@@ -255,6 +255,19 @@ async def download_logs():
     except Exception as e:
         logger.error(f"Error downloading logs: {e}")
         raise HTTPException(status_code=500, detail=f"下载日志失败: {str(e)}")
+
+@router.get("/path", dependencies=[Depends(verify_log_access)])
+async def get_log_path():
+    """获取日志文件所在目录路径"""
+    try:
+        return {
+            "success": True,
+            "path": str(LOGS_DIR),
+            "file": str(LOG_FILE)
+        }
+    except Exception as e:
+        logger.error(f"Error getting log path: {e}")
+        raise HTTPException(status_code=500, detail=f"获取日志路径失败: {str(e)}")
 
 @router.get("/tail", dependencies=[Depends(verify_log_access)])
 async def tail_logs(lines: int = 50):

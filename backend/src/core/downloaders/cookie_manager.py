@@ -3,6 +3,8 @@ Cookie 管理模块
 用于管理各平台的 Cookie 文件路径和友好错误提示
 """
 import logging
+import os
+import sys
 from pathlib import Path
 from typing import Optional, Dict
 
@@ -43,9 +45,23 @@ PLATFORM_DISPLAY_NAMES: Dict[str, str] = {
 
 
 def get_cookie_base_dir() -> Path:
-    """获取 Cookie 文件的基础目录"""
-    base_dir = Path(__file__).parent.parent.parent.parent
-    return base_dir / "data" / "cookies"
+    """获取 Cookie 文件的基础目录（支持打包环境）"""
+    if getattr(sys, 'frozen', False):
+        # PyInstaller 打包后的环境，使用用户数据目录
+        if sys.platform == 'win32':
+            appdata = os.environ.get('APPDATA', os.path.expanduser('~'))
+            base_dir = Path(appdata) / 'VidFlow'
+        elif sys.platform == 'darwin':
+            base_dir = Path.home() / 'Library' / 'Application Support' / 'VidFlow'
+        else:
+            base_dir = Path.home() / '.vidflow'
+    else:
+        # 开发环境，使用源码目录
+        base_dir = Path(__file__).parent.parent.parent.parent
+    
+    cookie_dir = base_dir / "data" / "cookies"
+    cookie_dir.mkdir(parents=True, exist_ok=True)
+    return cookie_dir
 
 
 def get_cookie_path_for_platform(platform: str) -> Optional[Path]:

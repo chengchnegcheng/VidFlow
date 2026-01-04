@@ -1298,14 +1298,31 @@ async def install_all_tools():
 async def update_dependencies():
     """更新所有 Python 依赖包"""
     try:
-        import subprocess
         import sys
         
+        # 使用异步 subprocess 避免阻塞
         # 更新 pip
-        subprocess.check_call([sys.executable, '-m', 'pip', 'install', '--upgrade', 'pip'])
+        process = await asyncio.create_subprocess_exec(
+            sys.executable, '-m', 'pip', 'install', '--upgrade', 'pip',
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        await process.communicate()
+        
+        if process.returncode != 0:
+            raise Exception("pip 更新失败")
         
         # 更新所有已安装的包
-        subprocess.check_call([sys.executable, '-m', 'pip', 'install', '--upgrade', '-r', 'requirements.txt'])
+        process = await asyncio.create_subprocess_exec(
+            sys.executable, '-m', 'pip', 'install', '--upgrade', '-r', 'requirements.txt',
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        stdout, stderr = await process.communicate()
+        
+        if process.returncode != 0:
+            error_msg = stderr.decode('utf-8', errors='ignore')
+            raise Exception(f"依赖包更新失败: {error_msg}")
         
         return {
             "success": True,
@@ -1708,11 +1725,10 @@ PLATFORM_CATEGORIES = {
 }
 
 def get_cookies_dir() -> Path:
-    """获取Cookie文件夹路径"""
-    base_dir = Path(__file__).parent.parent.parent
-    cookies_dir = base_dir / "data" / "cookies"
-    cookies_dir.mkdir(parents=True, exist_ok=True)
-    return cookies_dir
+    """获取Cookie文件夹路径（支持打包环境）"""
+    # 使用统一的 Cookie 目录获取函数，确保开发和打包环境一致
+    from src.core.downloaders.cookie_manager import get_cookie_base_dir
+    return get_cookie_base_dir()
 
 # ===== Cookie/CORS 测试与示例 API =====
 

@@ -36,14 +36,34 @@ class BilibiliDownloader(BaseDownloader):
         Returns:
             Cookie 文件路径，如果不存在则返回 None
         """
-        base_dir = Path(__file__).parent.parent.parent.parent
-        cookie_dir = base_dir / "data" / "cookies"
+        # 使用统一的 Cookie 目录获取函数（支持打包环境）
+        from .cookie_manager import get_cookie_base_dir
+        cookie_dir = get_cookie_base_dir()
         cookie_file = cookie_dir / "bilibili_cookies.txt"
 
+        logger.info(f"[Bilibili] Looking for cookie file at: {cookie_file}")
+        
         if cookie_file.exists():
-            logger.debug(f"Found Bilibili cookie file: {cookie_file}")
+            # 检查文件大小和内容
+            file_size = cookie_file.stat().st_size
+            logger.info(f"[Bilibili] Found cookie file, size: {file_size} bytes")
+            
+            # 检查是否包含关键 Cookie
+            try:
+                content = cookie_file.read_text(encoding='utf-8', errors='ignore')
+                has_sessdata = 'SESSDATA' in content
+                has_bili_jct = 'bili_jct' in content
+                has_dedeuserid = 'DedeUserID' in content
+                logger.info(f"[Bilibili] Cookie check - SESSDATA: {has_sessdata}, bili_jct: {has_bili_jct}, DedeUserID: {has_dedeuserid}")
+                
+                if not (has_sessdata and has_bili_jct and has_dedeuserid):
+                    logger.warning("[Bilibili] Cookie file may be incomplete! Missing required fields for HD video access.")
+            except Exception as e:
+                logger.warning(f"[Bilibili] Failed to check cookie content: {e}")
+            
             return cookie_file
-
+        
+        logger.info("[Bilibili] Cookie file not found")
         return None
 
     async def get_video_info(self, url: str) -> Dict[str, Any]:
@@ -221,8 +241,14 @@ class BilibiliDownloader(BaseDownloader):
             with cookiefile_for_ytdlp(cookie_path) as ytdlp_cookie_path:
                 if ytdlp_cookie_path:
                     ydl_opts['cookiefile'] = str(ytdlp_cookie_path)
-                    logger.info(f"Using Bilibili cookies for download from: {cookie_path}")
+                    logger.info(f"[Bilibili] Using cookies for download from: {cookie_path}")
+                    logger.info(f"[Bilibili] yt-dlp cookie file: {ytdlp_cookie_path}")
+                else:
+                    logger.warning("[Bilibili] No cookie file available - HD video may not be accessible!")
 
+                # 记录使用的格式选择器
+                logger.info(f"[Bilibili] Format selector: {ydl_opts.get('format')}")
+                
                 result = await loop.run_in_executor(None, _download)
             
             logger.info(f"Successfully downloaded Bilibili video: {result['title']}")
@@ -248,7 +274,10 @@ class BilibiliDownloader(BaseDownloader):
             raise Exception(f"Failed to download Bilibili video: {str(e)}")
     
     def _get_bilibili_format(self, quality: str, format_id: Optional[str] = None) -> str:
-        """获取B站专用的格式选择器"""
+        """获取B站专用的格式选择器
+        
+        优先选择 H.264 (avc1) 编码，确保在手机和微信等应用中兼容播放
+        """
         if format_id:
             fid = str(format_id).strip().lower()
             if fid not in ('mp4', 'mkv', 'webm', 'mp3'):
@@ -256,16 +285,17 @@ class BilibiliDownloader(BaseDownloader):
         
         # B站画质对应关系
         # 120: 4K超清, 116: 1080P60, 80: 1080P, 64: 720P, 32: 480P, 16: 360P
+        # 优先 H.264 编码确保手机兼容性
         bilibili_quality_map = {
-            'best': 'bestvideo+bestaudio/best',
-            '2160p': 'bestvideo[height<=2160]+bestaudio/best[height<=2160]',  # 4K
-            '4k': 'bestvideo[height<=2160]+bestaudio/best[height<=2160]',     # 4K 别名
-            '1440p': 'bestvideo[height<=1440]+bestaudio/best[height<=1440]',  # 2K
-            '1080p60': 'bestvideo[height<=1080][fps<=60]+bestaudio/best[height<=1080]',
-            '1080p': 'bestvideo[height<=1080]+bestaudio/best[height<=1080]',
-            '720p': 'bestvideo[height<=720]+bestaudio/best[height<=720]',
-            '480p': 'bestvideo[height<=480]+bestaudio/best[height<=480]',
-            '360p': 'bestvideo[height<=360]+bestaudio/best[height<=360]',
+            'best': 'bestvideo[vcodec^=avc]+bestaudio/bestvideo+bestaudio/best',
+            '2160p': 'bestvideo[height<=2160][vcodec^=avc]+bestaudio/bestvideo[height<=2160]+bestaudio/best[height<=2160]',  # 4K
+            '4k': 'bestvideo[height<=2160][vcodec^=avc]+bestaudio/bestvideo[height<=2160]+bestaudio/best[height<=2160]',     # 4K 别名
+            '1440p': 'bestvideo[height<=1440][vcodec^=avc]+bestaudio/bestvideo[height<=1440]+bestaudio/best[height<=1440]',  # 2K
+            '1080p60': 'bestvideo[height<=1080][fps<=60][vcodec^=avc]+bestaudio/bestvideo[height<=1080][fps<=60]+bestaudio/best[height<=1080]',
+            '1080p': 'bestvideo[height<=1080][vcodec^=avc]+bestaudio/bestvideo[height<=1080]+bestaudio/best[height<=1080]',
+            '720p': 'bestvideo[height<=720][vcodec^=avc]+bestaudio/bestvideo[height<=720]+bestaudio/best[height<=720]',
+            '480p': 'bestvideo[height<=480][vcodec^=avc]+bestaudio/bestvideo[height<=480]+bestaudio/best[height<=480]',
+            '360p': 'bestvideo[height<=360][vcodec^=avc]+bestaudio/bestvideo[height<=360]+bestaudio/best[height<=360]',
             'audio': 'bestaudio',
         }
 

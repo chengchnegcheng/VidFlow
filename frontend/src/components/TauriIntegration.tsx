@@ -574,6 +574,16 @@ export async function invoke(command: string, args?: any): Promise<any> {
       }
     },
 
+    // 获取日志路径
+    'get_log_path': async () => {
+      try {
+        const res = await api.get('/api/v1/logs/path');
+        return res.data;
+      } catch (error: any) {
+        throw new Error(error.response?.data?.detail || '获取日志路径失败');
+      }
+    },
+
     // 获取存储信息
     'get_storage_info': async () => {
       try {

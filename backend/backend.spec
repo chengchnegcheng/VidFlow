@@ -79,6 +79,10 @@ hiddenimports = [
     'certifi',
     'typing_extensions',
     'browser_cookie3',
+    # webdriver_manager 的网络依赖
+    'requests',
+    'urllib3',
+    'packaging',
     # Selenium 和 WebDriver Manager（用于受控浏览器获取 Cookie）
     'selenium',
     'selenium.webdriver',
@@ -101,6 +105,16 @@ hiddenimports = [
     'webdriver_manager.microsoft',
     'webdriver_manager.firefox',
     'webdriver_manager.core',
+    'webdriver_manager.core.driver',
+    'webdriver_manager.core.driver_cache',
+    'webdriver_manager.core.download_manager',
+    'webdriver_manager.core.manager',
+    'webdriver_manager.core.os_manager',
+    'webdriver_manager.core.utils',
+    'webdriver_manager.drivers',
+    'webdriver_manager.drivers.chrome',
+    'webdriver_manager.drivers.edge',
+    'webdriver_manager.drivers.firefox',
     # Playwright（抖音下载，浏览器需要用户单独安装）
     'playwright',
     'playwright.sync_api',

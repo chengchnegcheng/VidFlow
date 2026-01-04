@@ -102,6 +102,44 @@ NON_RETRYABLE_ERROR_KEYWORDS = [
     'geo-restricted',  # 地区限制通常不是认证问题
 ]
 
+# 平台提取器已知问题（yt-dlp 提取器失效的平台）
+KNOWN_EXTRACTOR_ISSUES = {
+    'iqiyi': {
+        'error_keywords': ["can't find any video", "iqiyi"],
+        'message': '爱奇艺下载功能暂时不可用。\n\n'
+                   '原因：yt-dlp 的爱奇艺提取器需要更新。\n\n'
+                   '解决方案：\n'
+                   '1. 等待 yt-dlp 官方修复（运行 pip install -U yt-dlp 更新）\n'
+                   '2. 尝试使用其他下载工具\n'
+                   '3. 爱奇艺 VIP 内容通常有 DRM 保护，无法下载'
+    },
+}
+
+
+def get_platform_extractor_issue(error_msg: str, platform: str) -> str:
+    """
+    检查是否是已知的平台提取器问题
+    
+    Args:
+        error_msg: 错误消息
+        platform: 平台名称
+        
+    Returns:
+        友好的错误提示，如果不是已知问题则返回空字符串
+    """
+    if not error_msg or not platform:
+        return ""
+    
+    error_lower = error_msg.lower()
+    issue_info = KNOWN_EXTRACTOR_ISSUES.get(platform.lower())
+    
+    if issue_info:
+        keywords = issue_info.get('error_keywords', [])
+        if all(kw.lower() in error_lower for kw in keywords):
+            return issue_info.get('message', '')
+    
+    return ""
+
 
 def is_auth_required_error(error_msg: str, platform: str = 'generic') -> bool:
     """
