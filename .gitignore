@@ -98,3 +98,15 @@ frontend_port.json
 .coverage
 htmlcov/
 
+# 开发过程文档（不需要上传）
+Development process record document/
+
+# 临时和冗余文件
+backend/6.0.0
+backend/=1.11.0
+backend/=23.2.0
+Docs/Ioc/
+
+# 发布文件（本地构建）
+releases/
+

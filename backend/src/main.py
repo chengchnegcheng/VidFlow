@@ -103,10 +103,9 @@ if in_venv:
     print(f"📦 Virtual Environment: {sys.prefix}")
 
 DATA_DIR = BASE_DIR / "data"
-DOWNLOAD_DIR = DATA_DIR / "downloads"
 LOGS_DIR = DATA_DIR / "logs"
 
-for directory in [DATA_DIR, DOWNLOAD_DIR, LOGS_DIR]:
+for directory in [DATA_DIR, LOGS_DIR]:
     directory.mkdir(parents=True, exist_ok=True)
 
 print(f"BASE_DIR: {BASE_DIR}")
@@ -310,7 +309,7 @@ async def stop_all_active_tasks():
 app = FastAPI(
     title="VidFlow API",
     description="全能视频下载器 API",
-    version="1.0.2",
+    version="1.0.3",
     lifespan=lifespan
 )
 
@@ -340,7 +339,7 @@ app.add_middleware(
 )
 
 # 导入路由
-from src.api import downloads, system, websocket, subtitle, logs, config, proxy
+from src.api import downloads, system, websocket, subtitle, logs, config, proxy, updates
 
 # 注册路由
 app.include_router(downloads.router)
@@ -350,6 +349,7 @@ app.include_router(subtitle.router)
 app.include_router(logs.router)
 app.include_router(config.router)
 app.include_router(proxy.router)
+app.include_router(updates.router)
 
 @app.get("/")
 async def root():
@@ -390,16 +390,57 @@ if __name__ == "__main__":
     import json
     import sys
     
+    def _find_available_port(start_port: int = 10000, end_port: int = 65535, max_attempts: int = 100) -> int:
+        """
+        查找一个可用的端口。
+        使用 SO_REUSEADDR 选项并验证端口确实可用。
+        """
+        import random
+        
+        for _ in range(max_attempts):
+            # 在指定范围内随机选择端口
+            port = random.randint(start_port, end_port)
+            
+            try:
+                # 创建 socket 并尝试绑定
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                sock.bind(('127.0.0.1', port))
+                sock.close()
+                
+                # 再次验证端口可用（防止竞态条件）
+                test_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                test_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                try:
+                    test_sock.bind(('127.0.0.1', port))
+                    test_sock.close()
+                    return port
+                except OSError:
+                    continue
+            except OSError:
+                continue
+        
+        # 如果随机选择失败，使用系统分配
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.bind(('127.0.0.1', 0))
+        port = sock.getsockname()[1]
+        sock.close()
+        return port
+    
     print("=" * 60, flush=True)
     print("🚀 VidFlow Backend Starting...", flush=True)
     print("=" * 60, flush=True)
     
+    # 获取实际的默认下载路径
+    from src.core.config_manager import get_default_download_path
+    default_download_path = get_default_download_path()
+    
     logger.info("Starting VidFlow Backend Server...")
     logger.info(f"Data directory: {DATA_DIR}")
-    logger.info(f"Download directory: {DOWNLOAD_DIR}")
+    logger.info(f"Default download path: {default_download_path}")
     
     print(f"📁 Data directory: {DATA_DIR}", flush=True)
-    print(f"📥 Download directory: {DOWNLOAD_DIR}", flush=True)
+    print(f"📥 Default download path: {default_download_path}", flush=True)
     
     # 检查是否指定固定端口（用于浏览器开发模式）
     fixed_port = os.environ.get('VIDFLOW_FIXED_PORT')
@@ -411,16 +452,10 @@ if __name__ == "__main__":
             logger.info(f"Using fixed port {port} for browser development mode")
         except ValueError:
             logger.error(f"Invalid fixed port: {fixed_port}, using random port")
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.bind(('127.0.0.1', 0))
-            port = sock.getsockname()[1]
-            sock.close()
+            port = _find_available_port()
     else:
         # Electron 模式：使用随机端口
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.bind(('127.0.0.1', 0))
-        port = sock.getsockname()[1]
-        sock.close()
+        port = _find_available_port()
         logger.info(f"Using random port {port} for Electron mode")
     
     # 立即写入端口信息文件，让前端可以尽快连接

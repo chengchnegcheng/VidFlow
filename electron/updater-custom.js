@@ -4,6 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const axios = require('axios');
+const { DeltaUpdater } = require('./delta-updater');
 
 class CustomUpdater extends EventEmitter {
   constructor(options = {}) {
@@ -25,6 +26,10 @@ class CustomUpdater extends EventEmitter {
     this.updateInfo = null;
     this.downloadedFilePath = null;
     
+    // 增量更新器
+    this.deltaUpdater = new DeltaUpdater(this);
+    this.useDeltaUpdate = options.useDeltaUpdate !== false; // 默认启用增量更新
+    
     // 确保下载目录存在
     if (!fs.existsSync(this.downloadPath)) {
       fs.mkdirSync(this.downloadPath, { recursive: true });
@@ -32,6 +37,43 @@ class CustomUpdater extends EventEmitter {
     
     // 启动时清理旧的更新文件
     this.cleanOldUpdateFiles();
+    
+    // 转发增量更新事件
+    this._setupDeltaEvents();
+  }
+  
+  /**
+   * 设置增量更新事件转发
+   */
+  _setupDeltaEvents() {
+    this.deltaUpdater.on('delta-download-start', () => {
+      this.emit('download-start', { type: 'delta' });
+    });
+    
+    this.deltaUpdater.on('delta-download-progress', (progress) => {
+      this.emit('download-progress', {
+        ...progress,
+        type: 'delta'
+      });
+    });
+    
+    this.deltaUpdater.on('delta-download-complete', (info) => {
+      this.emit('delta-download-complete', info);
+    });
+    
+    this.deltaUpdater.on('delta-apply-start', () => {
+      this.emit('delta-apply-start');
+    });
+    
+    this.deltaUpdater.on('delta-apply-complete', () => {
+      this.emit('delta-apply-complete');
+    });
+    
+    this.deltaUpdater.on('error', (error) => {
+      console.error('[CustomUpdater] Delta update error:', error);
+      // 增量更新失败时，回退到全量更新
+      this.emit('delta-fallback', { reason: error.message });
+    });
   }
   
   /**
@@ -163,7 +205,19 @@ class CustomUpdater extends EventEmitter {
         
         // 自动下载
         if (this.autoDownload) {
-          await this.downloadUpdate();
+          // 检查是否有增量更新可用
+          if (this.useDeltaUpdate && updateInfo.delta_available && updateInfo.delta_info) {
+            console.log('[CustomUpdater] Delta update available, size:', updateInfo.delta_info.delta_size);
+            try {
+              await this.downloadDeltaUpdate();
+            } catch (deltaError) {
+              console.error('[CustomUpdater] Delta update failed, falling back to full update:', deltaError);
+              this.emit('delta-fallback', { reason: deltaError.message });
+              await this.downloadUpdate();
+            }
+          } else {
+            await this.downloadUpdate();
+          }
         }
       } else {
         console.log('[CustomUpdater] Already up to date');
@@ -176,6 +230,31 @@ class CustomUpdater extends EventEmitter {
       this.emit('error', error);
       throw error;
     }
+  }
+  
+  /**
+   * 下载增量更新
+   */
+  async downloadDeltaUpdate() {
+    const deltaInfo = await this.deltaUpdater.checkDeltaUpdate();
+    if (!deltaInfo) {
+      throw new Error('No delta update available');
+    }
+    
+    const deltaPath = await this.deltaUpdater.downloadDelta();
+    
+    // 获取应用安装目录
+    const appPath = app.getAppPath();
+    const resourcesPath = process.resourcesPath;
+    
+    // 应用增量更新
+    await this.deltaUpdater.applyDelta(deltaPath, resourcesPath);
+    
+    this.emit('update-downloaded', {
+      version: this.updateInfo.latest_version,
+      type: 'delta',
+      requiresRestart: true
+    });
   }
   
   /**

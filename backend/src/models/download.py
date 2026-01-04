@@ -61,10 +61,11 @@ class DownloadTask(Base):
             # 如果有 output_path,拼接路径
             elif self.output_path:
                 file_path = str(Path(self.output_path) / self.filename)
-            # 否则使用默认下载目录
+            # 否则使用默认下载目录 (Downloads/VidFlow)
             else:
-                base_dir = Path(__file__).parent.parent.parent / "data" / "downloads"
-                file_path = str(base_dir / self.filename)
+                from src.core.config_manager import get_default_download_path
+                default_path = get_default_download_path()
+                file_path = str(Path(default_path) / self.filename)
 
         # 确保 progress 值在 0-100 范围内
         progress = self.progress if self.progress is not None else 0.0

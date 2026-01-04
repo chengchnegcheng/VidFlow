@@ -388,11 +388,19 @@ async def _execute_download(task_id: str, request: DownloadRequest):
 
             # 发送完成状态的 WebSocket 消息，让前端立即更新 UI
             ws_manager = get_ws_manager()
+            # 构建完整的文件路径（file_path 不是模型属性，需要动态计算）
+            file_path = None
+            if task.filename and task.output_path:
+                import os
+                if os.path.isabs(task.filename):
+                    file_path = task.filename
+                else:
+                    file_path = os.path.join(task.output_path, task.filename)
             await ws_manager.send_download_progress(task_id, {
                 'status': 'completed',
                 'progress': 100.0,
                 'filename': task.filename,
-                'file_path': task.file_path,
+                'file_path': file_path,
                 'filesize': task.filesize
             })
 
@@ -443,19 +451,23 @@ async def _execute_download(task_id: str, request: DownloadRequest):
                     logger.error(f"Error updating task status on cancel: {cancel_err}")
             else:
                 logger.error(f"Download failed: {e}")
-                result = await db.execute(
-                    select(DownloadTask).where(DownloadTask.task_id == task_id)
-                )
-                task = result.scalar_one_or_none()
-                if task:
-                    task.status = 'failed'
-                    task.error_message = error_msg
-                    await db.commit()
+                # 使用新的数据库会话来更新失败状态，避免会话状态损坏问题
+                try:
+                    async with AsyncSessionLocal() as fail_db:
+                        result = await fail_db.execute(
+                            select(DownloadTask).where(DownloadTask.task_id == task_id)
+                        )
+                        task = result.scalar_one_or_none()
+                        if task:
+                            task.status = 'failed'
+                            task.error_message = error_msg
+                            await fail_db.commit()
+                except Exception as fail_err:
+                    logger.error(f"Error updating task status on failure: {fail_err}")
         finally:
             # 从队列中移除完成/失败的任务
             await download_queue.complete_task(task_id)
-            # 处理队列中的下一个任务
-            import asyncio
+            # 处理队列中的下一个任务（asyncio 已在文件顶部导入）
             t = asyncio.create_task(_process_queue())
             t.add_done_callback(_handle_task_exception)
 
@@ -666,10 +678,15 @@ async def get_task_status(
 @router.delete("/tasks/{task_id}")
 async def delete_task(
     task_id: str,
+    delete_file: bool = False,
     db: AsyncSession = Depends(get_session)
 ):
     """
     删除任务
+    
+    Args:
+        task_id: 任务ID
+        delete_file: 是否同时删除本地文件，默认为 False
     """
     try:
         result = await db.execute(
@@ -680,12 +697,36 @@ async def delete_task(
         if not task:
             raise HTTPException(status_code=404, detail="Task not found")
         
+        file_deleted = False
+        file_path = None
+        
+        # 如果需要删除本地文件
+        if delete_file and task.filename:
+            import os
+            from pathlib import Path
+            
+            # 构建完整的文件路径
+            if os.path.isabs(task.filename):
+                file_path = task.filename
+            elif task.output_path:
+                file_path = os.path.join(task.output_path, task.filename)
+            
+            if file_path and os.path.exists(file_path):
+                try:
+                    os.remove(file_path)
+                    file_deleted = True
+                    logger.info(f"Deleted file: {file_path}")
+                except Exception as e:
+                    logger.warning(f"Failed to delete file {file_path}: {e}")
+        
         await db.delete(task)
         await db.commit()
         
         return {
             "status": "success",
-            "message": "Task deleted"
+            "message": "Task deleted",
+            "file_deleted": file_deleted,
+            "file_path": file_path if file_deleted else None
         }
     except HTTPException:
         raise

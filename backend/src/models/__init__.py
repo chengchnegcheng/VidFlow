@@ -4,6 +4,7 @@ Data Models
 from .database import Base, engine, AsyncSessionLocal, init_database, get_session
 from .download import DownloadTask
 from .subtitle import SubtitleTask, BurnSubtitleTask
+from .delta_package import DeltaPackage
 
 __all__ = [
     'Base',
@@ -14,4 +15,5 @@ __all__ = [
     'DownloadTask',
     'SubtitleTask',
     'BurnSubtitleTask',
+    'DeltaPackage',
 ]

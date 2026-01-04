@@ -38,6 +38,8 @@ class BilibiliDownloader(BaseDownloader):
         """
         # 使用统一的 Cookie 目录获取函数（支持打包环境）
         from .cookie_manager import get_cookie_base_dir
+        from src.core.cookie_storage import read_cookie_file, is_encrypted_cookie_file_text
+        
         cookie_dir = get_cookie_base_dir()
         cookie_file = cookie_dir / "bilibili_cookies.txt"
 
@@ -48,12 +50,20 @@ class BilibiliDownloader(BaseDownloader):
             file_size = cookie_file.stat().st_size
             logger.info(f"[Bilibili] Found cookie file, size: {file_size} bytes")
             
-            # 检查是否包含关键 Cookie
+            # 检查是否包含关键 Cookie（需要先解密）
             try:
-                content = cookie_file.read_text(encoding='utf-8', errors='ignore')
-                has_sessdata = 'SESSDATA' in content
-                has_bili_jct = 'bili_jct' in content
-                has_dedeuserid = 'DedeUserID' in content
+                raw_content = cookie_file.read_text(encoding='utf-8', errors='ignore')
+                
+                # 如果是加密的，尝试解密后检查
+                if is_encrypted_cookie_file_text(raw_content):
+                    logger.info("[Bilibili] Cookie file is encrypted, will be decrypted when used")
+                    # 加密文件无法直接检查内容，返回路径让后续解密处理
+                    return cookie_file
+                
+                # 未加密的文件，直接检查内容
+                has_sessdata = 'SESSDATA' in raw_content
+                has_bili_jct = 'bili_jct' in raw_content
+                has_dedeuserid = 'DedeUserID' in raw_content
                 logger.info(f"[Bilibili] Cookie check - SESSDATA: {has_sessdata}, bili_jct: {has_bili_jct}, DedeUserID: {has_dedeuserid}")
                 
                 if not (has_sessdata and has_bili_jct and has_dedeuserid):
@@ -131,6 +141,21 @@ class BilibiliDownloader(BaseDownloader):
             logger.info(f"Successfully extracted Bilibili info: {video_info['title']}")
             return video_info
             
+        except RuntimeError as e:
+            # Cookie 解密失败的特殊处理
+            error_msg = str(e)
+            if '无法解密' in error_msg or 'decrypt' in error_msg.lower():
+                logger.error(f"[Bilibili] Cookie decryption failed: {e}")
+                raise Exception(
+                    "B站 Cookie 解密失败。\n\n"
+                    "💡 可能原因：Cookie 是在其他 Windows 用户账户下保存的。\n\n"
+                    "解决方法：\n"
+                    "1. 打开「Cookie 管理」\n"
+                    "2. 删除现有的 B站 Cookie\n"
+                    "3. 重新获取 Cookie（使用当前 Windows 账户）\n\n"
+                    "注意：即使没有 Cookie，也可以下载非会员视频。"
+                )
+            raise Exception(f"Failed to get Bilibili video info: {error_msg}")
         except Exception as e:
             logger.error(f"Error extracting Bilibili video info: {e}")
             raise Exception(f"Failed to get Bilibili video info: {str(e)}")
@@ -263,6 +288,21 @@ class BilibiliDownloader(BaseDownloader):
                 'download_time': datetime.now().isoformat()
             }
             
+        except RuntimeError as e:
+            # Cookie 解密失败的特殊处理
+            error_msg = str(e)
+            if '无法解密' in error_msg or 'decrypt' in error_msg.lower():
+                logger.error(f"[Bilibili] Cookie decryption failed: {e}")
+                raise Exception(
+                    "B站 Cookie 解密失败。\n\n"
+                    "💡 可能原因：Cookie 是在其他 Windows 用户账户下保存的。\n\n"
+                    "解决方法：\n"
+                    "1. 打开「Cookie 管理」\n"
+                    "2. 删除现有的 B站 Cookie\n"
+                    "3. 重新获取 Cookie（使用当前 Windows 账户）\n\n"
+                    "注意：即使没有 Cookie，也可以下载非会员视频。"
+                )
+            raise Exception(f"Failed to download Bilibili video: {error_msg}")
         except Exception as e:
             logger.error(f"Error downloading Bilibili video: {e}")
             if progress_callback and task_id:

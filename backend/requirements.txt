@@ -46,3 +46,6 @@ playwright>=1.40.0  # 抖音视频下载（绕过反爬虫）
 
 # Build & Packaging
 pyinstaller>=6.0.0
+
+# Delta Update (增量更新)
+bsdiff4>=1.2.0

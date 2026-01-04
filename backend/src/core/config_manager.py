@@ -30,16 +30,18 @@ CONFIG_FILE = DATA_DIR / "config.json"
 
 # 获取系统默认下载文件夹
 def get_default_download_path() -> str:
-    """获取系统默认下载文件夹路径"""
+    """获取系统默认下载文件夹路径，使用 VidFlow 子目录"""
     try:
-        # Windows: C:\Users\{username}\Downloads
-        # macOS/Linux: ~/Downloads
+        # Windows: C:\Users\{username}\Downloads\VidFlow
+        # macOS/Linux: ~/Downloads/VidFlow
         home = Path.home()
         downloads = home / "Downloads"
         
-        # 如果 Downloads 文件夹存在，使用它
+        # 如果 Downloads 文件夹存在，使用它下面的 VidFlow 子目录
         if downloads.exists():
-            return str(downloads)
+            vidflow_dir = downloads / "VidFlow"
+            vidflow_dir.mkdir(parents=True, exist_ok=True)
+            return str(vidflow_dir)
         
         # 否则使用当前工作目录的 downloads 文件夹
         fallback = BASE_DIR / "data" / "downloads"
