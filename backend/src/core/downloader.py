@@ -20,7 +20,11 @@ class Downloader:
     使用智能回退策略：默认通用下载器，认证错误时回退到专用下载器
     """
     
-    def __init__(self, output_dir: str = "./data/downloads"):
+    def __init__(self, output_dir: str = None):
+        # 如果没有指定输出目录，使用系统默认下载路径
+        if output_dir is None:
+            from src.core.config_manager import get_default_download_path
+            output_dir = get_default_download_path()
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.active_downloads: Dict[str, Any] = {}

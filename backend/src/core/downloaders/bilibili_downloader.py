@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 class BilibiliDownloader(BaseDownloader):
     """Bilibili 专用下载器"""
     
-    def __init__(self, output_dir: str = "./data/downloads"):
+    def __init__(self, output_dir: str = None):
         super().__init__(output_dir)
         self.platform_name = "bilibili"
     

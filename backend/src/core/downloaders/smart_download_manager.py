@@ -81,7 +81,11 @@ class SmartDownloadManager:
     # 优先使用专用下载器的平台（这些平台的 yt-dlp 提取器不稳定或需要特殊处理）
     PREFER_SPECIALIZED_PLATFORMS = ['iqiyi', 'douyin', 'tiktok']
     
-    def __init__(self, output_dir: str = "./data/downloads"):
+    def __init__(self, output_dir: str = None):
+        # 如果没有指定输出目录，使用系统默认下载路径
+        if output_dir is None:
+            from src.core.config_manager import get_default_download_path
+            output_dir = get_default_download_path()
         self.output_dir = output_dir
     
     async def get_info_with_fallback(self, url: str) -> Dict[str, Any]:
@@ -579,7 +583,7 @@ class SmartDownloadManager:
 _smart_manager: Optional[SmartDownloadManager] = None
 
 
-def get_smart_download_manager(output_dir: str = "./data/downloads") -> SmartDownloadManager:
+def get_smart_download_manager(output_dir: str = None) -> SmartDownloadManager:
     """获取智能下载管理器单例"""
     global _smart_manager
     if _smart_manager is None:

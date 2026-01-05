@@ -47,7 +47,11 @@ def _sanitize_filename(filename: str, max_length: int = 200) -> str:
 class BaseDownloader(ABC):
     """下载器基类，定义统一接口"""
     
-    def __init__(self, output_dir: str = "./data/downloads", enable_cache: bool = True):
+    def __init__(self, output_dir: str = None, enable_cache: bool = True):
+        # 如果没有指定输出目录，使用系统默认下载路径
+        if output_dir is None:
+            from src.core.config_manager import get_default_download_path
+            output_dir = get_default_download_path()
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.platform_name = "generic"

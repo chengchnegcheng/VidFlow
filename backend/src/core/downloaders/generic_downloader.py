@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 class GenericDownloader(BaseDownloader):
     """通用下载器，支持所有yt-dlp支持的平台"""
     
-    def __init__(self, output_dir: str = "./data/downloads"):
+    def __init__(self, output_dir: str = None):
         super().__init__(output_dir)
         self.platform_name = "generic"
         # 智能回退模式下是否使用 Cookie（由 DownloaderFactory 设置）

@@ -27,7 +27,7 @@ class DownloaderFactory:
     ]
     
     @classmethod
-    def get_downloader(cls, url: str, output_dir: str = "./data/downloads") -> BaseDownloader:
+    def get_downloader(cls, url: str, output_dir: str = None) -> BaseDownloader:
         """
         根据URL获取合适的下载器
         
@@ -64,7 +64,7 @@ class DownloaderFactory:
             logger.info(f"Registered downloader: {downloader_class.__name__}")
     
     @classmethod
-    def get_generic_downloader(cls, output_dir: str = "./data/downloads") -> GenericDownloader:
+    def get_generic_downloader(cls, output_dir: str = None) -> GenericDownloader:
         """
         获取通用下载器（不使用 Cookie，用于首次尝试）
         
@@ -81,7 +81,7 @@ class DownloaderFactory:
         return downloader
     
     @classmethod
-    def get_specialized_downloader(cls, url: str, output_dir: str = "./data/downloads") -> BaseDownloader:
+    def get_specialized_downloader(cls, url: str, output_dir: str = None) -> BaseDownloader:
         """
         获取专用下载器（支持 Cookie，用于回退时使用）
         

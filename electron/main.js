@@ -603,10 +603,11 @@ function createWindow() {
     { role: 'selectAll', label: '全选' },
   ]);
 
-  mainWindow.webContents.on('context-menu', (_event, params) => {
-    const menu = params.isEditable ? inputMenu : selectionMenu;
-    menu.popup({ window: mainWindow });
-  });
+  // 禁用原生右键菜单，使用前端自定义菜单
+  // mainWindow.webContents.on('context-menu', (_event, params) => {
+  //   const menu = params.isEditable ? inputMenu : selectionMenu;
+  //   menu.popup({ window: mainWindow });
+  // });
 
   // 添加加载失败处理
   mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
@@ -926,15 +927,70 @@ function createTray() {
       },
       { type: 'separator' },
       {
-        label: '关于 VidFlow',
-        click: () => {
+        label: '检查更新',
+        click: async () => {
           if (mainWindow) {
             mainWindow.show();
             mainWindow.focus();
           }
+          if (updater) {
+            try {
+              await updater.checkForUpdates();
+            } catch (err) {
+              console.error('Check update failed:', err);
+            }
+          }
+        }
+      },
+      {
+        label: '打开下载目录',
+        click: async () => {
+          try {
+            const { shell } = require('electron');
+            const downloadPath = path.join(app.getPath('downloads'), 'VidFlow');
+            // 确保目录存在
+            if (!fs.existsSync(downloadPath)) {
+              fs.mkdirSync(downloadPath, { recursive: true });
+            }
+            await shell.openPath(downloadPath);
+          } catch (err) {
+            console.error('Failed to open download folder:', err);
+          }
         }
       },
       { type: 'separator' },
+      {
+        label: '开机自启动',
+        type: 'checkbox',
+        checked: app.getLoginItemSettings().openAtLogin,
+        click: (menuItem) => {
+          app.setLoginItemSettings({
+            openAtLogin: menuItem.checked,
+            path: app.getPath('exe')
+          });
+        }
+      },
+      { type: 'separator' },
+      {
+        label: '关于 VidFlow',
+        click: () => {
+          dialog.showMessageBox({
+            type: 'info',
+            title: '关于 VidFlow',
+            message: 'VidFlow',
+            detail: `版本: v${app.getVersion()}\n全能视频下载器\n\n支持 YouTube、Bilibili、抖音等平台`,
+            buttons: ['确定']
+          });
+        }
+      },
+      { type: 'separator' },
+      {
+        label: '重启应用',
+        click: () => {
+          app.relaunch();
+          app.quit();
+        }
+      },
       {
         label: '退出应用',
         click: () => {

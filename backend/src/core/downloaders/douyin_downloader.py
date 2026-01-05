@@ -197,7 +197,7 @@ async def auto_install_playwright(progress_callback: Optional[Callable] = None) 
 class DouyinDownloader(BaseDownloader):
     """抖音/TikTok 专用下载器"""
 
-    def __init__(self, output_dir: str = "./data/downloads"):
+    def __init__(self, output_dir: str = None):
         super().__init__(output_dir)
         self.platform_name = "douyin"
         self._url_cache = {}  # 短链接缓存

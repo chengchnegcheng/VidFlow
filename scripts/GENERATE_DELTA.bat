@@ -42,11 +42,11 @@ echo 将生成差异包: %SOURCE_VERSION% → %TARGET_VERSION%
 echo.
 
 REM 检查源版本目录是否存在
-set "SOURCE_DIR=releases\v%SOURCE_VERSION%"
-set "TARGET_DIR=releases\v%TARGET_VERSION%"
+set "SOURCE_DIR=releases/v%SOURCE_VERSION%"
+set "TARGET_DIR=releases/v%TARGET_VERSION%"
 
-if not exist "%SOURCE_DIR%" (
-    echo ❌ 源版本目录不存在: %SOURCE_DIR%
+if not exist "releases\v%SOURCE_VERSION%" (
+    echo ❌ 源版本目录不存在: releases\v%SOURCE_VERSION%
     echo.
     echo 💡 请确保以下目录结构存在:
     echo    releases\
@@ -58,8 +58,8 @@ if not exist "%SOURCE_DIR%" (
     exit /b 1
 )
 
-if not exist "%TARGET_DIR%" (
-    echo ❌ 目标版本目录不存在: %TARGET_DIR%
+if not exist "releases\v%TARGET_VERSION%" (
+    echo ❌ 目标版本目录不存在: releases\v%TARGET_VERSION%
     echo.
     echo 💡 请先运行 UPLOAD_RELEASE.bat 选择 [3] 复制到本地发布目录
     echo.
@@ -75,9 +75,9 @@ echo 开始生成差异包...
 echo ========================================
 echo.
 
-REM 调用 Python 脚本生成差异包（从项目根目录运行）
+REM 调用 Python 脚本生成差异包
 if exist "backend\venv\Scripts\python.exe" (
-    backend\venv\Scripts\python.exe -c "import sys; sys.path.insert(0, 'backend'); from pathlib import Path; from src.core.delta_generator import DeltaGenerator; g = DeltaGenerator(Path('releases/deltas')); r = g.generate_delta('%SOURCE_VERSION%', '%TARGET_VERSION%', Path('%SOURCE_DIR%'), Path('%TARGET_DIR%'), 'win32', 'x64'); print(f'Delta: {r.delta_path}')"
+    backend\venv\Scripts\python.exe -c "import sys; sys.path.insert(0, 'backend'); from pathlib import Path; from src.core.delta_generator import DeltaGenerator; g = DeltaGenerator(Path('releases/deltas')); r = g.generate_delta('%SOURCE_VERSION%', '%TARGET_VERSION%', Path('%SOURCE_DIR%'), Path('%TARGET_DIR%'), 'win32', 'x64'); print(f'✅ 差异包已生成: {r.delta_path}'); print(f'   大小: {r.delta_size / 1024 / 1024:.2f} MB'); print(f'   节省: {r.savings_percent:.1f}%%')"
     if errorlevel 1 (
         echo.
         echo ❌ 差异包生成失败

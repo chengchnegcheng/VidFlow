@@ -320,8 +320,13 @@ async def add_process_time_header(request: Request, call_next):
     response = await call_next(request)
     process_time = time.time() - start_time
     
-    # 记录慢请求（超过1秒）
-    if process_time > 1.0:
+    # 记录慢请求（超过1秒），但排除本身就需要时间的网络检测接口
+    slow_request_whitelist = [
+        "/api/v1/system/network/proxy-check",
+        "/api/v1/system/tools/status",
+        "/api/v1/system/tools/check-updates",
+    ]
+    if process_time > 1.0 and request.url.path not in slow_request_whitelist:
         logger.warning(f"⚠️ Slow request: {request.method} {request.url.path} took {process_time:.2f}s")
     
     response.headers["X-Process-Time"] = str(process_time)

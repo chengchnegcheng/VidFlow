@@ -493,9 +493,9 @@ async def check_tools_status():
     
     version_tasks = []
     
-    # FFmpeg 优先从 GitHub 获取版本
+    # FFmpeg 优先从 GitHub 获取版本（使用 BtbN/FFmpeg-Builds 仓库）
     if ffmpeg_path:
-        version_tasks.append(_get_github_version("FFmpeg/FFmpeg", timeout=5.0))
+        version_tasks.append(_get_github_version("BtbN/FFmpeg-Builds", timeout=5.0))
     else:
         version_tasks.append(asyncio.sleep(0, result=None))  # 占位任务
     
@@ -774,9 +774,9 @@ async def install_ffmpeg():
         
         tool_mgr.set_progress_callback(progress_callback)
         
-        # 获取远程版本
-        remote_version = await _get_github_version("FFmpeg/FFmpeg", timeout=5.0)
-        logger.info(f"[Tools] GitHub FFmpeg version: {remote_version}")
+        # 获取远程版本（使用 BtbN/FFmpeg-Builds 仓库）
+        remote_version = await _get_github_version("BtbN/FFmpeg-Builds", timeout=5.0)
+        logger.info(f"[Tools] GitHub FFmpeg-Builds version: {remote_version}")
         
         if not remote_version:
             logger.warning("[Tools] Failed to get FFmpeg version from GitHub, will update anyway")

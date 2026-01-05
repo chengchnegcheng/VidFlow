@@ -395,7 +395,7 @@ export function LogViewer() {
 
           {/* 日志列表 */}
           <ScrollArea className="h-[500px] w-full rounded-md border" ref={scrollRef}>
-            <div className="p-4 space-y-2 font-mono text-sm">
+            <div className="p-4 space-y-2 font-mono text-sm select-text">
               {logs.length === 0 ? (
                 <div className="text-center py-12 text-muted-foreground">
                   <FileText className="size-12 mx-auto mb-4 opacity-20" />
@@ -417,21 +417,21 @@ export function LogViewer() {
                 logs.map((log, index) => (
                   <div
                     key={`${log.line_number}-${index}`}
-                    className={`p-2 rounded hover:bg-muted/50 transition-colors ${
+                    className={`p-2 rounded hover:bg-muted/50 transition-colors cursor-text ${
                       log.level === 'ERROR' ? 'bg-red-50 dark:bg-red-950/20' :
                       log.level === 'WARNING' ? 'bg-yellow-50 dark:bg-yellow-950/20' :
                       ''
                     }`}
                   >
                     <div className="flex items-start gap-3">
-                      <span className="text-muted-foreground text-xs mt-0.5 w-32 flex-shrink-0">
+                      <span className="text-muted-foreground text-xs mt-0.5 w-32 flex-shrink-0 select-text">
                         {log.timestamp}
                       </span>
                       {getLevelBadge(log.level)}
-                      <span className="text-muted-foreground text-xs mt-0.5 w-32 flex-shrink-0 truncate">
+                      <span className="text-muted-foreground text-xs mt-0.5 w-32 flex-shrink-0 truncate select-text">
                         {log.logger}
                       </span>
-                      <span className="flex-1 break-words">{log.message}</span>
+                      <span className="flex-1 break-words select-text">{log.message}</span>
                     </div>
                   </div>
                 ))

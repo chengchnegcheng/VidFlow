@@ -4,6 +4,7 @@ import { SettingsProvider } from './contexts/SettingsContext';
 import { BackendProvider, useBackend } from './contexts/BackendContext';
 import { InstallProgressProvider } from './contexts/InstallProgressContext';
 import { TaskProgressProvider } from './contexts/TaskProgressContext';
+import { ContextMenuProvider } from './components/ContextMenu';
 import packageJson from '../package.json';
 import { DownloadManager } from './components/DownloadManager';
 import { TaskManager } from './components/TaskManager';
@@ -453,7 +454,9 @@ function AppContent() {
 function App() {
   return (
     <BackendProvider>
-      <AppContent />
+      <ContextMenuProvider>
+        <AppContent />
+      </ContextMenuProvider>
     </BackendProvider>
   );
 }
