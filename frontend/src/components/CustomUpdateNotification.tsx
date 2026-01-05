@@ -223,12 +223,7 @@ export function CustomUpdateNotification() {
               <span className="text-sm text-gray-600 dark:text-gray-400">大小</span>
               <span className="text-sm text-gray-900 dark:text-white">
                 {updateInfo.delta_available && updateInfo.delta_info ? (
-                  <>
-                    {formatBytes(updateInfo.delta_info.delta_size)}
-                    <span className="ml-2 text-xs text-green-600 dark:text-green-400">
-                      (增量更新，节省 {updateInfo.delta_info.savings_percent.toFixed(0)}%)
-                    </span>
-                  </>
+                  formatBytes(updateInfo.delta_info.delta_size)
                 ) : (
                   formatBytes(updateInfo.file_size)
                 )}

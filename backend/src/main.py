@@ -171,11 +171,12 @@ async def lifespan(app: FastAPI):
     db_init_task = asyncio.create_task(init_database())
     logger.info("Database initialization started in background")
 
-    # 所有耗时操作都放到后台异步执行,不阻塞API启动
-    # 这样可以让健康检查和API立即可用,提升用户体验
-
-    # 清理旧的进行中任务（后台任务，不阻塞启动）
-    asyncio.create_task(cleanup_stale_tasks())
+    # 等待数据库初始化完成后再清理旧任务
+    async def cleanup_after_db_init():
+        await db_init_task
+        await cleanup_stale_tasks()
+    
+    asyncio.create_task(cleanup_after_db_init())
 
     # 初始化工具（后台任务，不阻塞启动）
     from src.core.tool_manager import initialize_tools
@@ -309,7 +310,7 @@ async def stop_all_active_tasks():
 app = FastAPI(
     title="VidFlow API",
     description="全能视频下载器 API",
-    version="1.0.4",
+    version="1.0.5",
     lifespan=lifespan
 )
 

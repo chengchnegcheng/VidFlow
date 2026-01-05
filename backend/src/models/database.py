@@ -7,13 +7,33 @@ from sqlalchemy.pool import NullPool
 from sqlalchemy import text
 from pathlib import Path
 import logging
+import sys
+import os
 
 logger = logging.getLogger(__name__)
 
+# 获取正确的数据目录（支持打包后的环境）
+def get_data_dir() -> Path:
+    """获取数据目录（与 main.py 保持一致）"""
+    if getattr(sys, 'frozen', False):
+        # PyInstaller 打包后的环境 - 使用用户数据目录
+        if sys.platform == 'win32':
+            appdata = os.environ.get('APPDATA', os.path.expanduser('~'))
+            base_dir = Path(appdata) / 'VidFlow'
+        elif sys.platform == 'darwin':
+            base_dir = Path.home() / 'Library' / 'Application Support' / 'VidFlow'
+        else:
+            base_dir = Path.home() / '.local' / 'share' / 'VidFlow'
+    else:
+        # 开发环境
+        base_dir = Path(__file__).parent.parent.parent
+    
+    data_dir = base_dir / "data"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    return data_dir
+
 # 创建数据目录
-BASE_DIR = Path(__file__).parent.parent.parent
-DATA_DIR = BASE_DIR / "data"
-DATA_DIR.mkdir(parents=True, exist_ok=True)
+DATA_DIR = get_data_dir()
 
 # 数据库URL
 DATABASE_URL = f"sqlite+aiosqlite:///{DATA_DIR}/database.db"
