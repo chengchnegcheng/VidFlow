@@ -2,6 +2,16 @@ import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import DOMPurify from 'dompurify';
 
+interface DeltaInfo {
+  source_version: string;
+  target_version: string;
+  delta_size: number;
+  delta_hash: string;
+  delta_url: string;
+  full_size: number;
+  savings_percent: number;
+}
+
 interface UpdateInfo {
   has_update: boolean;
   latest_version: string;
@@ -11,6 +21,9 @@ interface UpdateInfo {
   download_url: string;
   rollout_blocked?: boolean;
   rollout_message?: string;
+  delta_available?: boolean;
+  delta_info?: DeltaInfo;
+  recommended_update_type?: 'delta' | 'full';
 }
 
 interface DownloadProgress {
@@ -26,6 +39,7 @@ export function CustomUpdateNotification() {
   const [downloadProgress, setDownloadProgress] = useState<DownloadProgress | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [updateDownloaded, setUpdateDownloaded] = useState(false);
+  const [applyingDelta, setApplyingDelta] = useState(false);
 
   useEffect(() => {
     // 监听更新事件
@@ -70,8 +84,29 @@ export function CustomUpdateNotification() {
 
       const handleUpdateError = (error: string) => {
         setDownloading(false);
+        setApplyingDelta(false);
         toast.error('更新失败', {
           description: error
+        });
+      };
+
+      const handleDeltaFallback = (info: { reason: string }) => {
+        toast.warning('增量更新失败，正在下载完整包', {
+          description: info.reason
+        });
+      };
+
+      const handleDeltaApplyStart = () => {
+        setApplyingDelta(true);
+        toast.info('正在应用增量更新...');
+      };
+
+      const handleDeltaApplyComplete = () => {
+        setApplyingDelta(false);
+        setDownloading(false);
+        setUpdateDownloaded(true);
+        toast.success('增量更新已应用', {
+          description: '重启应用即可完成更新'
         });
       };
 
@@ -81,6 +116,9 @@ export function CustomUpdateNotification() {
       window.electron.on('download-progress', handleDownloadProgress);
       window.electron.on('update-downloaded', handleUpdateDownloaded);
       window.electron.on('update-error', handleUpdateError);
+      window.electron.on('delta-fallback', handleDeltaFallback);
+      window.electron.on('delta-apply-start', handleDeltaApplyStart);
+      window.electron.on('delta-apply-complete', handleDeltaApplyComplete);
 
       return () => {
         if (window.electron) {
@@ -90,6 +128,9 @@ export function CustomUpdateNotification() {
           window.electron.off('download-progress', handleDownloadProgress);
           window.electron.off('update-downloaded', handleUpdateDownloaded);
           window.electron.off('update-error', handleUpdateError);
+          window.electron.off('delta-fallback', handleDeltaFallback);
+          window.electron.off('delta-apply-start', handleDeltaApplyStart);
+          window.electron.off('delta-apply-complete', handleDeltaApplyComplete);
         }
       };
     }
@@ -181,7 +222,16 @@ export function CustomUpdateNotification() {
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm text-gray-600 dark:text-gray-400">大小</span>
               <span className="text-sm text-gray-900 dark:text-white">
-                {formatBytes(updateInfo.file_size)}
+                {updateInfo.delta_available && updateInfo.delta_info ? (
+                  <>
+                    {formatBytes(updateInfo.delta_info.delta_size)}
+                    <span className="ml-2 text-xs text-green-600 dark:text-green-400">
+                      (增量更新，节省 {updateInfo.delta_info.savings_percent.toFixed(0)}%)
+                    </span>
+                  </>
+                ) : (
+                  formatBytes(updateInfo.file_size)
+                )}
               </span>
             </div>
             {updateInfo.is_mandatory && (
@@ -237,7 +287,7 @@ export function CustomUpdateNotification() {
 
         {/* 底部按钮 */}
         <div className="px-6 py-4 bg-gray-50 dark:bg-gray-900 flex gap-3">
-          {!downloading && !updateDownloaded && (
+          {!downloading && !updateDownloaded && !applyingDelta && (
             <>
               {!updateInfo.is_mandatory && (
                 <button
@@ -256,12 +306,21 @@ export function CustomUpdateNotification() {
             </>
           )}
 
-          {downloading && (
+          {downloading && !applyingDelta && (
             <button
               disabled
               className="flex-1 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md opacity-75 cursor-not-allowed"
             >
               下载中...
+            </button>
+          )}
+
+          {applyingDelta && (
+            <button
+              disabled
+              className="flex-1 px-4 py-2 text-sm font-medium text-white bg-purple-600 rounded-md opacity-75 cursor-not-allowed"
+            >
+              正在应用更新...
             </button>
           )}
 

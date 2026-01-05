@@ -811,6 +811,28 @@ function initUpdater() {
     }
   });
 
+  // 增量更新事件转发
+  updater.on('delta-fallback', (info) => {
+    console.log('[Update] Delta fallback:', info);
+    if (mainWindow) {
+      mainWindow.webContents.send('delta-fallback', info);
+    }
+  });
+
+  updater.on('delta-apply-start', () => {
+    console.log('[Update] Delta apply starting...');
+    if (mainWindow) {
+      mainWindow.webContents.send('delta-apply-start');
+    }
+  });
+
+  updater.on('delta-apply-complete', () => {
+    console.log('[Update] Delta apply complete');
+    if (mainWindow) {
+      mainWindow.webContents.send('delta-apply-complete');
+    }
+  });
+
   // 应用启动时检查更新（延迟5秒）
   setTimeout(() => {
     updater.checkForUpdates().catch(err => {
@@ -1336,8 +1358,25 @@ ipcMain.handle('custom-update-download', async () => {
     if (!updater) {
       return { success: false, error: 'Updater not initialized' };
     }
-    await updater.downloadUpdate();
-    return { success: true };
+    
+    // 检查是否有增量更新可用，优先使用增量更新
+    const updateInfo = updater.updateInfo;
+    if (updater.useDeltaUpdate && updateInfo && updateInfo.delta_available && updateInfo.delta_info) {
+      console.log('[Update] Using delta update, size:', updateInfo.delta_info.delta_size);
+      try {
+        await updater.downloadDeltaUpdate();
+        return { success: true, type: 'delta' };
+      } catch (deltaError) {
+        console.error('[Update] Delta update failed, falling back to full update:', deltaError);
+        mainWindow?.webContents.send('delta-fallback', { reason: deltaError.message });
+        // 回退到全量更新
+        await updater.downloadUpdate();
+        return { success: true, type: 'full' };
+      }
+    } else {
+      await updater.downloadUpdate();
+      return { success: true, type: 'full' };
+    }
   } catch (error) {
     return { success: false, error: error.message };
   }

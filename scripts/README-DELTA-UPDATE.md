@@ -4,7 +4,12 @@
 
 ## 概述
 
-增量更新通过只传输版本间的差异数据，将更新下载量从 100-150MB 降低到 10-30MB（减少 70-90%）。
+增量更新通过只传输版本间变化的文件，将更新下载量从 80-150MB 降低到 10-30MB（减少 70-90%）。
+
+**技术方案**：
+- 不使用 bsdiff 二进制差异（对 PyInstaller 打包的 exe 效果不佳）
+- 直接打包变化的文件，排除大型依赖库
+- 支持文件的新增、替换、删除操作
 
 ## 完整发布流程
 
@@ -17,9 +22,7 @@
         ↓
 4. 生成差异包 (GENERATE_DELTA.bat)
         ↓
-5. 上传到更新服务器
-        ↓
-6. 在服务器注册版本信息
+5. 上传到更新服务器管理后台
 ```
 
 ## 详细步骤
@@ -60,9 +63,14 @@ scripts\UPLOAD_RELEASE.bat
 ```
 releases\
   └── v1.1.0\
-      ├── VidFlow-Setup-1.1.0.exe    # 安装包
+      ├── VidFlow Setup 1.1.0.exe     # 安装包
       ├── VidFlow-Backend\            # 后端文件
-      └── frontend\dist\              # 前端文件
+      │   ├── VidFlow-Backend.exe
+      │   └── _internal\
+      └── frontend\
+          └── dist\                   # 前端文件
+              ├── index.html
+              └── assets\
 ```
 
 ### 步骤 4: 生成差异包
@@ -71,9 +79,9 @@ releases\
 scripts\GENERATE_DELTA.bat
 ```
 
-输入源版本号（如 `1.0.0`），脚本会自动：
-1. 比较两个版本的文件差异
-2. 生成二进制补丁文件
+输入源版本号（如 `1.0.2`），脚本会自动：
+1. 扫描两个版本的文件（排除大型依赖）
+2. 比较文件哈希，找出变化的文件
 3. 创建差异包 ZIP 文件
 4. 生成清单文件 (manifest.json)
 
@@ -81,39 +89,15 @@ scripts\GENERATE_DELTA.bat
 ```
 releases\
   └── deltas\
-      └── delta-1.0.0-to-1.1.0-win-x64.zip
+      └── delta-1.0.2-to-1.0.3-win32-x64.zip
 ```
 
 ### 步骤 5: 上传到更新服务器
 
-将以下文件上传到更新服务器：
-
-```bash
-# 上传完整安装包
-scp releases/v1.1.0/VidFlow-Setup-1.1.0.exe user@shcrystal.top:/path/to/releases/v1.1.0/
-
-# 上传差异包
-scp releases/deltas/delta-1.0.0-to-1.1.0-win-x64.zip user@shcrystal.top:/path/to/releases/deltas/
-```
-
-### 步骤 6: 在服务器注册版本
-
 登录更新服务器管理后台 (http://shcrystal.top:8321/admin)：
 
-1. 上传新版本信息
-2. 注册差异包信息
-
-或使用 API：
-
-```bash
-# 注册新版本
-curl -X POST http://shcrystal.top:8321/api/v1/admin/versions/upload \
-  -H "Authorization: Bearer <token>" \
-  -F "file=@releases/v1.1.0/VidFlow-Setup-1.1.0.exe" \
-  -F "version=1.1.0" \
-  -F "channel=stable" \
-  -F "release_notes=更新说明"
-```
+1. 进入「版本管理」上传新版本安装包
+2. 进入「增量更新」上传差异包文件
 
 ## 目录结构要求
 
@@ -121,20 +105,21 @@ curl -X POST http://shcrystal.top:8321/api/v1/admin/versions/upload \
 
 ```
 releases\
-  ├── v1.0.0\                    # 旧版本
+  ├── v1.0.2\                    # 旧版本
   │   ├── VidFlow-Backend\       # 后端可执行文件
   │   │   ├── VidFlow-Backend.exe
-  │   │   └── ...
-  │   └── frontend\dist\         # 前端静态文件
-  │       ├── index.html
-  │       └── assets\
+  │   │   └── _internal\
+  │   └── frontend\
+  │       └── dist\              # 前端静态文件
+  │           ├── index.html
+  │           └── assets\
   │
-  ├── v1.1.0\                    # 新版本
+  ├── v1.0.3\                    # 新版本
   │   ├── VidFlow-Backend\
   │   └── frontend\dist\
   │
   └── deltas\                    # 差异包输出目录
-      └── delta-1.0.0-to-1.1.0-win-x64.zip
+      └── delta-1.0.2-to-1.0.3-win32-x64.zip
 ```
 
 ## 差异包结构
@@ -142,15 +127,28 @@ releases\
 生成的差异包 ZIP 文件包含：
 
 ```
-delta-1.0.0-to-1.1.0-win-x64.zip
-├── manifest.json           # 清单文件（文件列表和哈希）
-├── patches/                # 补丁文件目录
-│   ├── app.asar.patch     # 二进制差异文件
-│   └── VidFlow-Backend.exe.patch
-├── new/                    # 新增文件目录
-│   └── new_feature.dll
-└── checksum.sha512        # 整包校验和
+delta-1.0.2-to-1.0.3-win32-x64.zip
+├── manifest.json               # 清单文件（文件列表和哈希）
+└── files/                      # 变化的文件
+    ├── backend/                # 后端文件（映射到安装目录的 backend/）
+    │   ├── VidFlow-Backend.exe
+    │   └── _internal/
+    │       └── base_library.zip
+    └── frontend/dist/          # 前端文件（映射到安装目录的 frontend/dist/）
+        ├── index.html
+        └── assets/
+            └── js/
+                └── index-xxx.js
 ```
+
+## 路径映射
+
+差异包中的路径会映射到安装目录：
+
+| 差异包路径 | 安装目录路径 |
+|-----------|-------------|
+| `backend/xxx` | `resources/backend/xxx` |
+| `frontend/dist/xxx` | `resources/app/frontend/dist/xxx` |
 
 ## 清单文件格式
 
@@ -158,33 +156,37 @@ delta-1.0.0-to-1.1.0-win-x64.zip
 
 ```json
 {
-  "version": "1.1.0",
-  "source_version": "1.0.0",
+  "version": "1.0.3",
+  "source_version": "1.0.2",
   "platform": "win32",
   "arch": "x64",
-  "created_at": "2026-01-04T10:00:00Z",
+  "created_at": "2026-01-04T14:26:02.332058Z",
   "files": [
     {
-      "path": "VidFlow-Backend/VidFlow-Backend.exe",
-      "action": "patch",
-      "source_hash": "abc123...",
-      "target_hash": "def456...",
-      "patch_file": "VidFlow-Backend.exe.patch",
-      "patch_size": 1048576
-    },
-    {
-      "path": "frontend/dist/assets/index.js",
+      "path": "backend/VidFlow-Backend.exe",
       "action": "replace",
-      "target_hash": "ghi789...",
-      "target_size": 500000
+      "target_hash": "1ec3374d6d9459286926c4a33a7e160d...",
+      "target_size": 23698237,
+      "source_hash": "dec057d157c4f42323f1e442848b1cec..."
     },
     {
-      "path": "old_file.dll",
-      "action": "delete"
+      "path": "frontend/dist/assets/js/index-DOfn_1Ig.js",
+      "action": "add",
+      "target_hash": "2ad8f91fd9692218148b43d9401ef6cf...",
+      "target_size": 343654,
+      "source_hash": null
+    },
+    {
+      "path": "frontend/dist/assets/js/index-DQAKwrM_.js",
+      "action": "delete",
+      "target_hash": null,
+      "target_size": null,
+      "source_hash": null
     }
   ],
-  "total_patch_size": 15728640,
-  "full_package_size": 157286400
+  "total_size": 25486509,
+  "full_package_size": 84601448,
+  "file_count": 4
 }
 ```
 
@@ -192,10 +194,20 @@ delta-1.0.0-to-1.1.0-win-x64.zip
 
 | 操作 | 说明 |
 |------|------|
-| `patch` | 使用二进制差异补丁更新文件 |
-| `replace` | 完整替换文件（差异太大时） |
 | `add` | 新增文件 |
+| `replace` | 替换已有文件 |
 | `delete` | 删除文件 |
+
+## 排除的目录
+
+以下大型依赖目录会被自动排除（很少变化，体积巨大）：
+
+- `playwright` - 浏览器自动化
+- `selenium` - 浏览器驱动
+- `pip` - Python 包管理器
+- `setuptools` - Python 构建工具
+- `_tcl_data`, `_tk_data`, `tcl8` - Tcl/Tk 数据
+- `Pythonwin`, `win32`, `win32com` - Windows 扩展
 
 ## 注意事项
 
@@ -207,46 +219,57 @@ delta-1.0.0-to-1.1.0-win-x64.zip
 releases\
   ├── v1.0.0\    # 保留
   ├── v1.0.1\    # 保留
-  ├── v1.1.0\    # 保留
-  └── v1.2.0\    # 当前版本
+  ├── v1.0.2\    # 保留
+  └── v1.0.3\    # 当前版本
 ```
 
 ### 2. 差异包大小阈值
 
-如果差异包大小超过完整包的 80%，系统会自动推荐全量更新。
+- 如果差异包大小超过完整包的 70%，系统会标记为「不推荐」
+- 如果节省比例低于 20%，建议使用全量更新
 
-### 3. 版本跨度限制
+### 3. 哈希算法
 
-如果用户版本落后超过 5 个版本，建议使用全量更新而非链式增量更新。
+使用 SHA-256 计算文件哈希（比 SHA-512 更快，安全性足够）。
 
 ### 4. 测试验证
 
 发布前务必测试：
 1. 从旧版本增量更新到新版本
 2. 验证更新后功能正常
-3. 测试回滚功能
+3. 测试回滚功能（自动）
 
 ## 常见问题
 
 ### Q: 差异包生成失败？
 
 检查：
-1. 源版本目录是否存在
-2. Python 虚拟环境是否正常
-3. 是否安装了 bsdiff 依赖
+1. 源版本目录是否存在（`releases\v1.0.2\`）
+2. 目标版本目录是否存在（`releases\v1.0.3\`）
+3. Python 虚拟环境是否正常（`backend\venv\`）
 
-### Q: 客户端无法下载差异包？
+### Q: 差异包太大？
 
-检查：
-1. 服务器上差异包文件是否存在
-2. 数据库中是否注册了差异包信息
-3. 文件权限是否正确
+可能原因：
+1. 大型依赖库发生变化（如 Python 版本升级）
+2. 前端资源文件名变化（Vite 构建的 hash 文件名）
 
-### Q: 增量更新后程序异常？
+解决方案：
+1. 检查是否有不必要的依赖更新
+2. 考虑使用全量更新
 
-1. 检查清单文件中的哈希是否正确
-2. 尝试回滚到旧版本
-3. 使用全量更新重新安装
+### Q: 客户端增量更新失败？
+
+1. 检查服务器上差异包文件是否存在
+2. 检查 manifest.json 中的哈希是否正确
+3. 客户端会自动回退到全量更新
+
+### Q: 如何手动生成差异包？
+
+```batch
+cd backend
+venv\Scripts\python.exe -m src.core.delta_generator 1.0.2 1.0.3 ..\releases\v1.0.2 ..\releases\v1.0.3 win32 x64
+```
 
 ## 相关脚本
 
@@ -257,7 +280,10 @@ releases\
 | `UPLOAD_RELEASE.bat` | 上传/保存发布版本 |
 | `GENERATE_DELTA.bat` | 生成差异包 |
 
-## 相关文档
+## 相关文件
 
-- [增量更新设计文档](../.kiro/specs/incremental-update/design.md)
-- [更新服务器部署](../VidFlow%20Service%20Update/server/scripts/README_DEPLOY.txt)
+| 文件 | 说明 |
+|------|------|
+| `backend/src/core/delta_generator.py` | 差异包生成器 |
+| `electron/delta-updater.js` | 客户端增量更新器 |
+| `electron/updater-custom.js` | 客户端更新管理器 |

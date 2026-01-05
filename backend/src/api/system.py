@@ -22,6 +22,22 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/system", tags=["system"])
 
+def get_base_dir() -> Path:
+    """获取应用数据目录（与 main.py 保持一致）"""
+    import sys
+    if getattr(sys, 'frozen', False):
+        # 打包后：使用用户数据目录
+        if sys.platform == 'win32':
+            appdata = os.environ.get('APPDATA', os.path.expanduser('~'))
+            return Path(appdata) / 'VidFlow'
+        elif sys.platform == 'darwin':
+            return Path.home() / 'Library' / 'Application Support' / 'VidFlow'
+        else:
+            return Path.home() / '.local' / 'share' / 'VidFlow'
+    else:
+        # 开发环境
+        return Path(__file__).parent.parent.parent
+
 # 应用启动时间
 START_TIME = datetime.now()
 
@@ -596,7 +612,7 @@ async def get_storage_info(db: AsyncSession = Depends(get_session)):
         from sqlalchemy import select, func
         from src.models.download import DownloadTask
         
-        base_dir = Path(__file__).parent.parent.parent
+        base_dir = get_base_dir()
         data_dir = base_dir / "data"
         
         def get_dir_size(path: Path) -> int:
@@ -656,7 +672,7 @@ async def get_storage_info(db: AsyncSession = Depends(get_session)):
 async def clear_cache():
     """清理所有缓存"""
     try:
-        base_dir = Path(__file__).parent.parent.parent
+        base_dir = get_base_dir()
         cleared_items = []
         
         # 清理 temp 目录

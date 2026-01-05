@@ -118,6 +118,7 @@ class DeltaUpdater extends EventEmitter {
    */
   async applyDelta(deltaPath, targetDir) {
     console.log('[DeltaUpdater] Applying delta package...');
+    console.log('[DeltaUpdater] Target directory:', targetDir);
     this.emit('delta-apply-start');
 
     try {
@@ -137,6 +138,8 @@ class DeltaUpdater extends EventEmitter {
       const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
 
       console.log('[DeltaUpdater] Manifest loaded:', manifest.files.length, 'files');
+      console.log('[DeltaUpdater] Source version:', manifest.source_version);
+      console.log('[DeltaUpdater] Target version:', manifest.version);
 
       // 创建备份
       const backupDir = await this.createBackup(targetDir, manifest.files);
@@ -181,39 +184,60 @@ class DeltaUpdater extends EventEmitter {
   }
 
   /**
+   * 将差异包路径映射到实际安装路径
+   * 差异包路径格式: backend/xxx 或 frontend/dist/xxx
+   * 安装目录结构: resources/backend/xxx 或 resources/app/frontend/dist/xxx
+   */
+  mapToInstallPath(deltaPath, targetDir) {
+    if (deltaPath.startsWith('backend/')) {
+      // backend/xxx -> resources/backend/xxx
+      // targetDir 已经是 resources 目录
+      return path.join(targetDir, deltaPath);
+    } else if (deltaPath.startsWith('frontend/')) {
+      // frontend/dist/xxx -> resources/app/frontend/dist/xxx
+      // 或者如果是 asar 解压后的目录
+      const appDir = path.join(targetDir, 'app');
+      if (fs.existsSync(appDir)) {
+        return path.join(appDir, deltaPath);
+      }
+      // 如果没有 app 目录，可能是开发模式
+      return path.join(targetDir, deltaPath);
+    }
+    // 其他路径直接使用
+    return path.join(targetDir, deltaPath);
+  }
+
+  /**
    * 应用单个文件变更
    */
   async applyFileChange(fileChange, tempDir, targetDir) {
-    const targetPath = path.join(targetDir, fileChange.path);
+    // 映射到实际安装路径
+    const targetPath = this.mapToInstallPath(fileChange.path, targetDir);
 
     switch (fileChange.action) {
       case 'add':
-        // 添加新文件
-        const newFilePath = path.join(tempDir, 'new', fileChange.path);
-        fs.mkdirSync(path.dirname(targetPath), { recursive: true });
-        fs.copyFileSync(newFilePath, targetPath);
+      case 'replace':
+        // 添加或替换文件（新格式统一放在 files/ 目录）
+        const filePath = path.join(tempDir, 'files', fileChange.path);
+        if (fs.existsSync(filePath)) {
+          fs.mkdirSync(path.dirname(targetPath), { recursive: true });
+          fs.copyFileSync(filePath, targetPath);
+          console.log(`[DeltaUpdater] ${fileChange.action}: ${fileChange.path} -> ${targetPath}`);
+        } else {
+          console.warn(`[DeltaUpdater] File not found in delta: ${fileChange.path}`);
+        }
         break;
 
       case 'delete':
         // 删除文件
         if (fs.existsSync(targetPath)) {
           fs.unlinkSync(targetPath);
+          console.log(`[DeltaUpdater] delete: ${fileChange.path}`);
         }
         break;
 
-      case 'patch':
-        // 应用补丁（简化版：直接替换）
-        const patchFilePath = path.join(tempDir, 'patches', fileChange.patch_file);
-        if (fs.existsSync(patchFilePath)) {
-          fs.copyFileSync(patchFilePath, targetPath);
-        }
-        break;
-
-      case 'replace':
-        // 替换文件
-        const replaceFilePath = path.join(tempDir, 'new', fileChange.path);
-        fs.copyFileSync(replaceFilePath, targetPath);
-        break;
+      default:
+        console.warn(`[DeltaUpdater] Unknown action: ${fileChange.action}`);
     }
   }
 
@@ -227,7 +251,7 @@ class DeltaUpdater extends EventEmitter {
     for (const fileChange of files) {
       if (fileChange.action === 'add') continue;
 
-      const sourcePath = path.join(targetDir, fileChange.path);
+      const sourcePath = this.mapToInstallPath(fileChange.path, targetDir);
       if (fs.existsSync(sourcePath)) {
         const backupPath = path.join(backupDir, fileChange.path);
         fs.mkdirSync(path.dirname(backupPath), { recursive: true });
@@ -247,7 +271,7 @@ class DeltaUpdater extends EventEmitter {
     const files = this.getAllFiles(backupDir);
     for (const file of files) {
       const relativePath = path.relative(backupDir, file);
-      const targetPath = path.join(targetDir, relativePath);
+      const targetPath = this.mapToInstallPath(relativePath, targetDir);
       fs.mkdirSync(path.dirname(targetPath), { recursive: true });
       fs.copyFileSync(file, targetPath);
     }
@@ -262,14 +286,15 @@ class DeltaUpdater extends EventEmitter {
     for (const fileChange of manifest.files) {
       if (fileChange.action === 'delete') continue;
 
-      const targetPath = path.join(targetDir, fileChange.path);
+      const targetPath = this.mapToInstallPath(fileChange.path, targetDir);
       if (!fs.existsSync(targetPath)) {
-        console.error('[DeltaUpdater] Missing file:', fileChange.path);
+        console.error('[DeltaUpdater] Missing file:', fileChange.path, '->', targetPath);
         return false;
       }
 
       if (fileChange.target_hash) {
-        const hash = await this.calculateFileHash(targetPath);
+        // manifest 中的 target_hash 是 SHA-256（由 delta_generator.py 生成）
+        const hash = await this.calculateFileSha256(targetPath);
         if (hash !== fileChange.target_hash) {
           console.error('[DeltaUpdater] Hash mismatch:', fileChange.path);
           return false;
@@ -302,11 +327,27 @@ class DeltaUpdater extends EventEmitter {
   }
 
   /**
-   * 计算文件哈希
+   * 计算文件哈希 (SHA-512，与服务端上传时保持一致)
+   * 用于验证下载的差异包完整性
    */
   async calculateFileHash(filePath) {
     return new Promise((resolve, reject) => {
       const hash = crypto.createHash('sha512');
+      const stream = fs.createReadStream(filePath);
+
+      stream.on('data', (data) => hash.update(data));
+      stream.on('end', () => resolve(hash.digest('hex')));
+      stream.on('error', reject);
+    });
+  }
+
+  /**
+   * 计算文件 SHA-256 哈希（与 delta_generator.py 保持一致）
+   * 用于验证 manifest 中的文件哈希
+   */
+  async calculateFileSha256(filePath) {
+    return new Promise((resolve, reject) => {
+      const hash = crypto.createHash('sha256');
       const stream = fs.createReadStream(filePath);
 
       stream.on('data', (data) => hash.update(data));

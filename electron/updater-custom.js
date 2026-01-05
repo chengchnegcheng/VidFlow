@@ -25,6 +25,7 @@ class CustomUpdater extends EventEmitter {
     this.downloadProgress = 0;
     this.updateInfo = null;
     this.downloadedFilePath = null;
+    this.deltaUpdateApplied = false; // 标记增量更新是否已应用
     
     // 增量更新器
     this.deltaUpdater = new DeltaUpdater(this);
@@ -250,6 +251,10 @@ class CustomUpdater extends EventEmitter {
     // 应用增量更新
     await this.deltaUpdater.applyDelta(deltaPath, resourcesPath);
     
+    // 标记增量更新已完成，只需重启
+    this.deltaUpdateApplied = true;
+    this.downloadedFilePath = null; // 增量更新不需要安装程序
+    
     this.emit('update-downloaded', {
       version: this.updateInfo.latest_version,
       type: 'delta',
@@ -372,9 +377,18 @@ class CustomUpdater extends EventEmitter {
   }
   
   /**
-   * 退出并安装
+   * 退出并安装/重启
    */
   async quitAndInstall() {
+    // 增量更新已应用，只需重启
+    if (this.deltaUpdateApplied) {
+      console.log('[CustomUpdater] Delta update applied, restarting app...');
+      app.relaunch();
+      app.quit();
+      return;
+    }
+    
+    // 全量更新需要安装程序
     if (!this.downloadedFilePath) {
       throw new Error('No update downloaded');
     }
