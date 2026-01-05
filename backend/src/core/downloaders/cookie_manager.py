@@ -24,6 +24,7 @@ PLATFORM_COOKIE_MAP: Dict[str, str] = {
     'youku': 'youku_cookies.txt',
     'iqiyi': 'iqiyi_cookies.txt',
     'facebook': 'facebook_cookies.txt',
+    'vimeo': 'vimeo_cookies.txt',
 }
 
 # 平台中文名称映射
@@ -40,6 +41,7 @@ PLATFORM_DISPLAY_NAMES: Dict[str, str] = {
     'youku': '优酷',
     'iqiyi': '爱奇艺',
     'facebook': 'Facebook',
+    'vimeo': 'Vimeo',
     'generic': '该平台',
 }
 

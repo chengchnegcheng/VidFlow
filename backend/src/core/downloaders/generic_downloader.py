@@ -30,9 +30,29 @@ class GenericDownloader(BaseDownloader):
         """通用下载器支持所有URL"""
         return True
     
+    def _convert_vimeo_url(self, url: str) -> str:
+        """
+        将 vimeo.com/xxx 格式的 URL 转换为 player.vimeo.com/video/xxx 格式
+        这样可以绕过 Vimeo 的登录要求
+        """
+        import re
+        # 匹配 vimeo.com/数字 格式（不是 player.vimeo.com）
+        match = re.match(r'https?://(?:www\.)?vimeo\.com/(\d+)', url)
+        if match:
+            video_id = match.group(1)
+            converted_url = f'https://player.vimeo.com/video/{video_id}'
+            logger.info(f"Converted Vimeo URL: {url} -> {converted_url}")
+            return converted_url
+        return url
+
     async def get_video_info(self, url: str) -> Dict[str, Any]:
         """获取视频信息"""
         try:
+            # Vimeo URL 转换（绕过登录要求）
+            original_url = url
+            if 'vimeo.com' in url.lower() and 'player.vimeo.com' not in url.lower():
+                url = self._convert_vimeo_url(url)
+
             # 检查缓存
             cached_info = self._get_cached_info(url)
             if cached_info:
@@ -82,6 +102,11 @@ class GenericDownloader(BaseDownloader):
                 elif platform in ['tencent', 'youku', 'iqiyi']:
                     # 国内视频平台通用 Referer
                     ydl_opts['http_headers']['Referer'] = url.split('?')[0]  # 使用当前页面作为 Referer
+
+            # Vimeo 优化
+            if platform == 'vimeo':
+                ydl_opts['http_headers']['Referer'] = 'https://vimeo.com/'
+                ydl_opts['socket_timeout'] = 60  # Vimeo 需要更长超时
 
             # 为特定平台添加 Cookie 支持（仅在非智能回退模式或允许使用 Cookie 时）
             cookie_path = None
@@ -136,6 +161,10 @@ class GenericDownloader(BaseDownloader):
     ) -> Dict[str, Any]:
         """下载视频"""
         try:
+            # Vimeo URL 转换（绕过登录要求）
+            if 'vimeo.com' in url.lower() and 'player.vimeo.com' not in url.lower():
+                url = self._convert_vimeo_url(url)
+
             output_path = output_path or str(self.output_dir)
 
             output_format: Optional[str] = None
@@ -202,6 +231,11 @@ class GenericDownloader(BaseDownloader):
                     ydl_opts['http_headers']['Referer'] = 'https://www.bilibili.com/'
                 elif platform in ['tencent', 'youku', 'iqiyi']:
                     ydl_opts['http_headers']['Referer'] = url.split('?')[0]
+            
+            # Vimeo 优化
+            if platform == 'vimeo':
+                ydl_opts['http_headers']['Referer'] = 'https://vimeo.com/'
+                ydl_opts['socket_timeout'] = 60
             
             # YouTube 特殊处理：使用不需要 PO Token 的客户端
             if platform == 'youtube':
@@ -347,6 +381,8 @@ class GenericDownloader(BaseDownloader):
             return 'youku'
         elif 'iqiyi.com' in url_lower:
             return 'iqiyi'
+        elif 'vimeo.com' in url_lower or 'player.vimeo.com' in url_lower:
+            return 'vimeo'
         else:
             return 'generic'
     

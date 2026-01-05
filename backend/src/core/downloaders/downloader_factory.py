@@ -9,6 +9,9 @@ from .youtube_downloader import YoutubeDownloader
 from .bilibili_downloader import BilibiliDownloader
 from .douyin_downloader import DouyinDownloader
 from .iqiyi_downloader import IqiyiDownloader
+from .tencent_downloader import TencentDownloader
+from .youku_downloader import YoukuDownloader
+from .vimeo_downloader import VimeoDownloader
 from .generic_downloader import GenericDownloader
 
 logger = logging.getLogger(__name__)
@@ -23,7 +26,9 @@ class DownloaderFactory:
         YoutubeDownloader,     # YouTube
         BilibiliDownloader,    # Bilibili
         IqiyiDownloader,       # 爱奇艺
-        # 添加更多专用下载器
+        TencentDownloader,     # 腾讯视频
+        YoukuDownloader,       # 优酷
+        VimeoDownloader,       # Vimeo
     ]
     
     @classmethod
@@ -136,6 +141,8 @@ class DownloaderFactory:
             return 'youku'
         elif 'iqiyi.com' in url_lower:
             return 'iqiyi'
+        elif 'vimeo.com' in url_lower or 'player.vimeo.com' in url_lower:
+            return 'vimeo'
         elif 'twitter.com' in url_lower or 'x.com' in url_lower:
             return 'twitter'
         elif 'instagram.com' in url_lower:

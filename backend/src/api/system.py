@@ -1721,6 +1721,13 @@ SUPPORTED_PLATFORMS = {
         "description": "用于下载Instagram的私密内容",
         "guide_url": "backend/data/cookies/README.txt",
         "category": "social_media"
+    },
+    "vimeo": {
+        "name": "Vimeo",
+        "filename": "vimeo_cookies.txt",
+        "description": "用于下载Vimeo私有视频或需要登录的内容",
+        "guide_url": "backend/data/cookies/README.txt",
+        "category": "video_platform"
     }
 }
 
