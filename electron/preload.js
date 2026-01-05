@@ -39,7 +39,8 @@ contextBridge.exposeInMainWorld('electron', {
       'window-state-changed',
       'backend-ready',
       'backend-error',
-      'backend-disconnected'
+      'backend-disconnected',
+      'show-about'
     ];
 
     if (validChannels.includes(channel)) {
@@ -62,7 +63,8 @@ contextBridge.exposeInMainWorld('electron', {
       'window-state-changed',
       'backend-ready',
       'backend-error',
-      'backend-disconnected'
+      'backend-disconnected',
+      'show-about'
     ];
 
     if (validChannels.includes(channel)) {

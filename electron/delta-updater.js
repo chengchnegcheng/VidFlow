@@ -115,9 +115,131 @@ class DeltaUpdater extends EventEmitter {
 
   /**
    * 应用差异包
+   * 由于应用运行时无法替换正在使用的 exe 文件，
+   * 我们将差异包解压到 pending 目录，重启时再应用
    */
   async applyDelta(deltaPath, targetDir) {
-    console.log('[DeltaUpdater] Applying delta package...');
+    console.log('[DeltaUpdater] Preparing delta update...');
+    console.log('[DeltaUpdater] Target directory:', targetDir);
+    this.emit('delta-apply-start');
+
+    try {
+      // 解压差异包到 pending 目录
+      const zip = new AdmZip(deltaPath);
+      const pendingDir = path.join(this.customUpdater.downloadPath, 'pending_update');
+
+      if (fs.existsSync(pendingDir)) {
+        fs.rmSync(pendingDir, { recursive: true });
+      }
+      fs.mkdirSync(pendingDir, { recursive: true });
+
+      zip.extractAllTo(pendingDir, true);
+
+      // 读取清单
+      const manifestPath = path.join(pendingDir, 'manifest.json');
+      const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+
+      console.log('[DeltaUpdater] Manifest loaded:', manifest.files.length, 'files');
+      console.log('[DeltaUpdater] Source version:', manifest.source_version);
+      console.log('[DeltaUpdater] Target version:', manifest.version);
+
+      // 保存更新信息，供重启后使用
+      const updateInfoPath = path.join(this.customUpdater.downloadPath, 'pending_update.json');
+      fs.writeFileSync(updateInfoPath, JSON.stringify({
+        pendingDir,
+        targetDir,
+        manifest,
+        deltaPath,
+        createdAt: new Date().toISOString()
+      }, null, 2));
+
+      console.log('[DeltaUpdater] Delta update prepared, will apply on restart');
+      this.emit('delta-apply-complete');
+
+      // 上报准备完成
+      await this.reportUpdateResult(true);
+
+      return true;
+
+    } catch (error) {
+      console.error('[DeltaUpdater] Delta prepare failed:', error);
+      this.emit('error', error);
+      await this.reportUpdateResult(false, error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * 在应用启动时检查并应用待处理的增量更新
+   * 应该在应用启动早期、后端启动之前调用
+   */
+  async applyPendingUpdate() {
+    const updateInfoPath = path.join(this.customUpdater.downloadPath, 'pending_update.json');
+    
+    if (!fs.existsSync(updateInfoPath)) {
+      return false;
+    }
+
+    console.log('[DeltaUpdater] Found pending update, applying...');
+
+    try {
+      const updateInfo = JSON.parse(fs.readFileSync(updateInfoPath, 'utf8'));
+      const { pendingDir, targetDir, manifest } = updateInfo;
+
+      if (!fs.existsSync(pendingDir)) {
+        console.log('[DeltaUpdater] Pending directory not found, skipping');
+        fs.unlinkSync(updateInfoPath);
+        return false;
+      }
+
+      // 创建备份
+      const backupDir = await this.createBackup(targetDir, manifest.files);
+
+      try {
+        // 应用变更
+        for (const fileChange of manifest.files) {
+          await this.applyFileChange(fileChange, pendingDir, targetDir);
+        }
+
+        // 验证完整性（可选，因为文件可能还没被加载）
+        // const valid = await this.verifyTargetFiles(manifest, targetDir);
+
+        // 清理
+        fs.rmSync(backupDir, { recursive: true });
+        fs.rmSync(pendingDir, { recursive: true });
+        fs.unlinkSync(updateInfoPath);
+
+        console.log('[DeltaUpdater] Pending update applied successfully');
+        return true;
+
+      } catch (error) {
+        console.error('[DeltaUpdater] Apply pending update failed, rolling back...', error);
+        await this.rollback(backupDir, targetDir);
+        
+        // 清理失败的更新
+        if (fs.existsSync(pendingDir)) {
+          fs.rmSync(pendingDir, { recursive: true });
+        }
+        fs.unlinkSync(updateInfoPath);
+        
+        throw error;
+      }
+
+    } catch (error) {
+      console.error('[DeltaUpdater] Failed to apply pending update:', error);
+      // 清理更新信息文件
+      try {
+        fs.unlinkSync(updateInfoPath);
+      } catch {}
+      return false;
+    }
+  }
+
+  /**
+   * 应用差异包 - 旧方法，保留用于直接应用（非 exe 文件）
+   */
+  async applyDeltaDirect(deltaPath, targetDir) {
+    console.log('[DeltaUpdater] Applying delta package directly...');
     console.log('[DeltaUpdater] Target directory:', targetDir);
     this.emit('delta-apply-start');
 

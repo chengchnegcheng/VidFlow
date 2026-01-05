@@ -907,9 +907,15 @@ function createTray() {
     tray.setToolTip('VidFlow - 全能视频下载器');
     
     // 创建托盘右键菜单
+    // 使用固定宽度的标签，通过空格填充使菜单更宽
+    const padLabel = (text, width = 24) => {
+      const spaces = ' '.repeat(Math.max(0, width - text.length));
+      return text + spaces;
+    };
+    
     const contextMenu = Menu.buildFromTemplate([
       {
-        label: '显示主窗口',
+        label: padLabel('显示主窗口'),
         click: () => {
           if (mainWindow) {
             mainWindow.show();
@@ -918,7 +924,7 @@ function createTray() {
         }
       },
       {
-        label: '隐藏窗口',
+        label: padLabel('隐藏窗口'),
         click: () => {
           if (mainWindow) {
             mainWindow.hide();
@@ -927,7 +933,7 @@ function createTray() {
       },
       { type: 'separator' },
       {
-        label: '检查更新',
+        label: padLabel('检查更新'),
         click: async () => {
           if (mainWindow) {
             mainWindow.show();
@@ -943,7 +949,7 @@ function createTray() {
         }
       },
       {
-        label: '打开下载目录',
+        label: padLabel('打开下载目录'),
         click: async () => {
           try {
             const { shell } = require('electron');
@@ -960,7 +966,7 @@ function createTray() {
       },
       { type: 'separator' },
       {
-        label: '开机自启动',
+        label: padLabel('开机自启动'),
         type: 'checkbox',
         checked: app.getLoginItemSettings().openAtLogin,
         click: (menuItem) => {
@@ -972,27 +978,26 @@ function createTray() {
       },
       { type: 'separator' },
       {
-        label: '关于 VidFlow',
+        label: padLabel('关于 VidFlow'),
         click: () => {
-          dialog.showMessageBox({
-            type: 'info',
-            title: '关于 VidFlow',
-            message: 'VidFlow',
-            detail: `版本: v${app.getVersion()}\n全能视频下载器\n\n支持 YouTube、Bilibili、抖音等平台`,
-            buttons: ['确定']
-          });
+          // 显示窗口并发送事件到渲染进程显示自定义关于对话框
+          if (mainWindow) {
+            mainWindow.show();
+            mainWindow.focus();
+            mainWindow.webContents.send('show-about');
+          }
         }
       },
       { type: 'separator' },
       {
-        label: '重启应用',
+        label: padLabel('重启应用'),
         click: () => {
           app.relaunch();
           app.quit();
         }
       },
       {
-        label: '退出应用',
+        label: padLabel('退出应用'),
         click: () => {
           app.isQuitting = true;
           app.quit();
@@ -1089,6 +1094,18 @@ app.whenReady().then(async () => {
   // 初始化更新器
   console.log('Initializing updater...');
   initUpdater();
+
+  // 检查并应用待处理的增量更新（在后端启动之前）
+  if (updater && updater.deltaUpdater) {
+    try {
+      const applied = await updater.deltaUpdater.applyPendingUpdate();
+      if (applied) {
+        console.log('✅ Pending delta update applied successfully');
+      }
+    } catch (err) {
+      console.error('Failed to apply pending update:', err);
+    }
+  }
 
   // 检查是否禁用后端自动启动（用于手动启动后端的开发场景）
   if (process.env.DISABLE_BACKEND_AUTO_START === '1') {

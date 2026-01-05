@@ -309,7 +309,7 @@ async def stop_all_active_tasks():
 app = FastAPI(
     title="VidFlow API",
     description="全能视频下载器 API",
-    version="1.0.3",
+    version="1.0.4",
     lifespan=lifespan
 )
 

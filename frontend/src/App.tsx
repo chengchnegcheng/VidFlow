@@ -13,6 +13,7 @@ import { SubtitleProcessor } from './components/SubtitleProcessor';
 import BurnSubtitle from './components/BurnSubtitle';
 import { LogViewer } from './components/LogViewer';
 import { CustomUpdateNotification } from './components/CustomUpdateNotification';
+import AboutDialog from './components/AboutDialog';
 import { Toaster } from './components/ui/sonner';
 import { Badge } from './components/ui/badge';
 import { Button } from './components/ui/button';
@@ -61,6 +62,7 @@ function AppContent() {
   const [appVersion, setAppVersion] = useState<string>(packageJson.version);
   const [isMaximized, setIsMaximized] = useState(false);
   const [targetCookiePlatform, setTargetCookiePlatform] = useState<string | null>(null);
+  const [showAboutDialog, setShowAboutDialog] = useState(false);
 
   // 导航到设置页面的 Cookie 配置
   const handleNavigateToSettings = (platform?: string) => {
@@ -145,6 +147,21 @@ function AppContent() {
 
       return () => {
         window.electron?.off('window-state-changed', handleWindowStateChange);
+      };
+    }
+  }, []);
+
+  // 监听托盘"关于"菜单点击
+  useEffect(() => {
+    if (window.electron) {
+      const handleShowAbout = () => {
+        setShowAboutDialog(true);
+      };
+
+      window.electron.on('show-about', handleShowAbout);
+
+      return () => {
+        window.electron?.off('show-about', handleShowAbout);
       };
     }
   }, []);
@@ -443,6 +460,13 @@ function AppContent() {
         
         {/* Update Notification */}
         <CustomUpdateNotification />
+        
+        {/* About Dialog */}
+        <AboutDialog 
+          isOpen={showAboutDialog} 
+          onClose={() => setShowAboutDialog(false)} 
+          version={appVersion}
+        />
             </TooltipProvider>
           </TaskProgressProvider>
         </InstallProgressProvider>
