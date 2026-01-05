@@ -218,8 +218,8 @@ excludes = [
     'test',             # 测试模块
     # 'setuptools',     # ❌ 不能排除：pip 需要
     # 'pip',            # ❌ 不能排除：需要用于 -m pip 模式
-    'wheel',            # 打包格式
-    'distutils',        # 分发工具
+    # 'wheel',          # ❌ 不能排除：setuptools 内部会 alias wheel，排除会导致冲突
+    # 'distutils',      # ❌ 不能排除：setuptools 依赖
     # 'email',          # ❌ 不能排除：uvicorn 需要
     'xml.dom',          # XML DOM（如果不用）
     'xml.sax',          # XML SAX（如果不用）
