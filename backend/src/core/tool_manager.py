@@ -2273,30 +2273,8 @@ async def initialize_tools():
         interval = max(1, tool_manager.auto_update_interval_hours)
         logger.info(f"[Tools] Auto-update enabled, interval: {interval}h")
 
-        # 🔥 改进：将初始更新检查改为后台异步执行，不阻塞应用启动
-        async def _background_initial_update():
-            """后台执行初始更新检查"""
-            try:
-                # 延迟 5 秒再开始更新，让应用先完成启动
-                await asyncio.sleep(5)
-                logger.info("[Tools] Starting background initial update check...")
-                
-                # 强制重新下载 yt-dlp（删除旧元数据，强制更新）
-                if "yt-dlp" in tool_manager.tools_meta:
-                    logger.info("[Tools] Clearing yt-dlp metadata to force update check")
-                    del tool_manager.tools_meta["yt-dlp"]
-                    tool_manager._save_tools_meta()
-
-                await tool_manager.check_and_update_tool("yt-dlp")
-                await tool_manager.check_and_update_tool("ffmpeg")
-                logger.info("[Tools] Background initial update check completed")
-            except Exception as e:
-                logger.warning(f"[Tools] Background initial update check failed (will retry later): {e}")
-
-        # 在后台启动初始更新检查（不阻塞）
-        asyncio.create_task(_background_initial_update())
-
         # 启动后台自动更新循环
+        # 注意：run_auto_update_loop 内部已有延迟和首次检查逻辑，无需额外的 _background_initial_update
         try:
             if tool_manager._auto_update_task is None or tool_manager._auto_update_task.done():
                 tool_manager._auto_update_task = asyncio.create_task(tool_manager.run_auto_update_loop(interval))

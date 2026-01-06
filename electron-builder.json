@@ -1,6 +1,7 @@
 {
   "appId": "com.vidflow.desktop",
   "productName": "VidFlow",
+  "asar": false,
   "directories": {
     "output": "dist-output",
     "buildResources": "resources"

@@ -156,8 +156,8 @@ class DeltaUpdater extends EventEmitter {
       console.log('[DeltaUpdater] Delta update prepared, will apply on restart');
       this.emit('delta-apply-complete');
 
-      // 上报准备完成
-      await this.reportUpdateResult(true);
+      // 注意：这里只是准备完成，实际应用在重启后的 applyPendingUpdate 中
+      // 上报移到 applyPendingUpdate 成功后
 
       return true;
 
@@ -182,8 +182,9 @@ class DeltaUpdater extends EventEmitter {
 
     console.log('[DeltaUpdater] Found pending update, applying...');
 
+    let updateInfo;
     try {
-      const updateInfo = JSON.parse(fs.readFileSync(updateInfoPath, 'utf8'));
+      updateInfo = JSON.parse(fs.readFileSync(updateInfoPath, 'utf8'));
       const { pendingDir, targetDir, manifest } = updateInfo;
 
       if (!fs.existsSync(pendingDir)) {
@@ -210,6 +211,10 @@ class DeltaUpdater extends EventEmitter {
         fs.unlinkSync(updateInfoPath);
 
         console.log('[DeltaUpdater] Pending update applied successfully');
+        
+        // 上报更新成功
+        await this.reportPendingUpdateResult(updateInfo, true);
+        
         return true;
 
       } catch (error) {
@@ -221,6 +226,9 @@ class DeltaUpdater extends EventEmitter {
           fs.rmSync(pendingDir, { recursive: true });
         }
         fs.unlinkSync(updateInfoPath);
+        
+        // 上报更新失败
+        await this.reportPendingUpdateResult(updateInfo, false, error.message);
         
         throw error;
       }
@@ -308,7 +316,9 @@ class DeltaUpdater extends EventEmitter {
   /**
    * 将差异包路径映射到实际安装路径
    * 差异包路径格式: backend/xxx 或 frontend/dist/xxx
-   * 安装目录结构: resources/backend/xxx 或 resources/app/frontend/dist/xxx
+   * 安装目录结构 (asar: false): 
+   *   - resources/backend/xxx (后端)
+   *   - resources/app/frontend/dist/xxx (前端)
    */
   mapToInstallPath(deltaPath, targetDir) {
     if (deltaPath.startsWith('backend/')) {
@@ -317,13 +327,8 @@ class DeltaUpdater extends EventEmitter {
       return path.join(targetDir, deltaPath);
     } else if (deltaPath.startsWith('frontend/')) {
       // frontend/dist/xxx -> resources/app/frontend/dist/xxx
-      // 或者如果是 asar 解压后的目录
-      const appDir = path.join(targetDir, 'app');
-      if (fs.existsSync(appDir)) {
-        return path.join(appDir, deltaPath);
-      }
-      // 如果没有 app 目录，可能是开发模式
-      return path.join(targetDir, deltaPath);
+      // 禁用 asar 后，前端文件在 resources/app/ 目录下
+      return path.join(targetDir, 'app', deltaPath);
     }
     // 其他路径直接使用
     return path.join(targetDir, deltaPath);
@@ -449,12 +454,12 @@ class DeltaUpdater extends EventEmitter {
   }
 
   /**
-   * 计算文件哈希 (SHA-512，与服务端上传时保持一致)
+   * 计算文件哈希 (SHA-256，与 delta_generator.py 保持一致)
    * 用于验证下载的差异包完整性
    */
   async calculateFileHash(filePath) {
     return new Promise((resolve, reject) => {
-      const hash = crypto.createHash('sha512');
+      const hash = crypto.createHash('sha256');
       const stream = fs.createReadStream(filePath);
 
       stream.on('data', (data) => hash.update(data));
@@ -468,18 +473,11 @@ class DeltaUpdater extends EventEmitter {
    * 用于验证 manifest 中的文件哈希
    */
   async calculateFileSha256(filePath) {
-    return new Promise((resolve, reject) => {
-      const hash = crypto.createHash('sha256');
-      const stream = fs.createReadStream(filePath);
-
-      stream.on('data', (data) => hash.update(data));
-      stream.on('end', () => resolve(hash.digest('hex')));
-      stream.on('error', reject);
-    });
+    return this.calculateFileHash(filePath);
   }
 
   /**
-   * 上报更新结果
+   * 上报更新结果（用于下载/准备阶段）
    */
   async reportUpdateResult(success, error = null) {
     try {
@@ -498,6 +496,30 @@ class DeltaUpdater extends EventEmitter {
       );
     } catch (err) {
       console.error('[DeltaUpdater] Failed to report result:', err);
+    }
+  }
+
+  /**
+   * 上报待处理更新的应用结果（用于重启后应用阶段）
+   */
+  async reportPendingUpdateResult(updateInfo, success, error = null) {
+    try {
+      const { manifest } = updateInfo;
+      await axios.post(
+        `${this.customUpdater.updateServerUrl}/api/v1/updates/deltas/report`,
+        {
+          source_version: manifest.source_version,
+          target_version: manifest.version,
+          platform: this.customUpdater.platform,
+          arch: this.customUpdater.arch,
+          update_type: 'delta_apply',
+          success,
+          error
+        },
+        { timeout: 5000 }
+      );
+    } catch (err) {
+      console.error('[DeltaUpdater] Failed to report pending update result:', err);
     }
   }
 }
