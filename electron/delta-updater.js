@@ -212,6 +212,16 @@ class DeltaUpdater extends EventEmitter {
         fs.rmSync(backupDir, { recursive: true });
         fs.rmSync(pendingDir, { recursive: true });
         fs.unlinkSync(updateInfoPath);
+        
+        // 清理旧的 delta 包
+        if (updateInfo.deltaPath && fs.existsSync(updateInfo.deltaPath)) {
+          try {
+            fs.unlinkSync(updateInfo.deltaPath);
+            console.log('[DeltaUpdater] Cleaned delta package:', updateInfo.deltaPath);
+          } catch (err) {
+            console.warn('[DeltaUpdater] Failed to clean delta package:', err.message);
+          }
+        }
 
         console.log('[DeltaUpdater] Pending update applied successfully');
         

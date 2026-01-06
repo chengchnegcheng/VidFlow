@@ -78,7 +78,7 @@ class CustomUpdater extends EventEmitter {
   }
   
   /**
-   * 清理旧的更新文件（7天前）
+   * 清理旧的更新文件（保留当前版本，删除其他所有）
    */
   cleanOldUpdateFiles() {
     try {
@@ -86,28 +86,79 @@ class CustomUpdater extends EventEmitter {
         return;
       }
       
-      const files = fs.readdirSync(this.downloadPath);
+      const items = fs.readdirSync(this.downloadPath);
       let cleanedCount = 0;
+      let freedSize = 0;
       
-      files.forEach(file => {
-        const filePath = path.join(this.downloadPath, file);
-        const stats = fs.statSync(filePath);
+      items.forEach(item => {
+        const itemPath = path.join(this.downloadPath, item);
+        const stats = fs.statSync(itemPath);
         
-        // 删除7天前的更新文件
+        // 跳过 pending_update.json（正在等待应用的更新）
+        if (item === 'pending_update.json') {
+          return;
+        }
+        
+        // 跳过 pending_update 目录（正在等待应用的更新）
+        if (item === 'pending_update') {
+          return;
+        }
+        
+        // 删除条件：
+        // 1. 超过 3 天的文件/目录
+        // 2. 或者是旧版本的安装包（不是当前版本）
         const daysSinceModified = (Date.now() - stats.mtime.getTime()) / (1000 * 60 * 60 * 24);
-        if (daysSinceModified > 7) {
-          console.log(`[CustomUpdater] Cleaning old update file: ${file}`);
-          fs.unlinkSync(filePath);
-          cleanedCount++;
+        const isOldVersion = item.includes('Setup') && !item.includes(this.currentVersion);
+        const isOldDelta = item.startsWith('delta-') && !item.includes(`to-${this.currentVersion}`);
+        const isBackup = item.startsWith('backup_');
+        const isTempDir = item === 'delta_temp';
+        
+        if (daysSinceModified > 3 || isOldVersion || isOldDelta || isBackup || isTempDir) {
+          try {
+            if (stats.isDirectory()) {
+              freedSize += this._getDirectorySize(itemPath);
+              fs.rmSync(itemPath, { recursive: true, force: true });
+              console.log(`[CustomUpdater] Cleaned old directory: ${item}`);
+            } else {
+              freedSize += stats.size;
+              fs.unlinkSync(itemPath);
+              console.log(`[CustomUpdater] Cleaned old file: ${item}`);
+            }
+            cleanedCount++;
+          } catch (err) {
+            console.error(`[CustomUpdater] Failed to clean ${item}:`, err.message);
+          }
         }
       });
       
       if (cleanedCount > 0) {
-        console.log(`[CustomUpdater] Cleaned ${cleanedCount} old update file(s)`);
+        console.log(`[CustomUpdater] Cleaned ${cleanedCount} item(s), freed ${(freedSize / 1024 / 1024).toFixed(2)} MB`);
       }
     } catch (error) {
       console.error('[CustomUpdater] Failed to clean old files:', error);
     }
+  }
+  
+  /**
+   * 获取目录大小
+   */
+  _getDirectorySize(dirPath) {
+    let size = 0;
+    try {
+      const items = fs.readdirSync(dirPath);
+      for (const item of items) {
+        const itemPath = path.join(dirPath, item);
+        const stats = fs.statSync(itemPath);
+        if (stats.isDirectory()) {
+          size += this._getDirectorySize(itemPath);
+        } else {
+          size += stats.size;
+        }
+      }
+    } catch (err) {
+      // 忽略错误
+    }
+    return size;
   }
   
   /**
@@ -119,19 +170,35 @@ class CustomUpdater extends EventEmitter {
         return { success: true, message: 'No update files to clean' };
       }
       
-      const files = fs.readdirSync(this.downloadPath);
+      const items = fs.readdirSync(this.downloadPath);
       let cleanedCount = 0;
       let totalSize = 0;
       
-      files.forEach(file => {
-        const filePath = path.join(this.downloadPath, file);
-        const stats = fs.statSync(filePath);
-        totalSize += stats.size;
-        fs.unlinkSync(filePath);
-        cleanedCount++;
+      items.forEach(item => {
+        const itemPath = path.join(this.downloadPath, item);
+        
+        // 跳过正在等待应用的更新
+        if (item === 'pending_update.json' || item === 'pending_update') {
+          console.log(`[CustomUpdater] Skipping pending update: ${item}`);
+          return;
+        }
+        
+        try {
+          const stats = fs.statSync(itemPath);
+          if (stats.isDirectory()) {
+            totalSize += this._getDirectorySize(itemPath);
+            fs.rmSync(itemPath, { recursive: true, force: true });
+          } else {
+            totalSize += stats.size;
+            fs.unlinkSync(itemPath);
+          }
+          cleanedCount++;
+        } catch (err) {
+          console.error(`[CustomUpdater] Failed to clean ${item}:`, err.message);
+        }
       });
       
-      const message = `Cleaned ${cleanedCount} file(s), freed ${(totalSize / 1024 / 1024).toFixed(2)} MB`;
+      const message = `Cleaned ${cleanedCount} item(s), freed ${(totalSize / 1024 / 1024).toFixed(2)} MB`;
       console.log(`[CustomUpdater] ${message}`);
       
       return { 
@@ -382,7 +449,9 @@ class CustomUpdater extends EventEmitter {
   async quitAndInstall() {
     // 增量更新已应用，只需重启
     if (this.deltaUpdateApplied) {
-      console.log('[CustomUpdater] Delta update applied, restarting app...');
+      console.log('[CustomUpdater] Delta update applied, cleaning up and restarting app...');
+      // 清理旧的更新文件
+      this.cleanOldUpdateFiles();
       app.relaunch();
       app.quit();
       return;
@@ -402,6 +471,11 @@ class CustomUpdater extends EventEmitter {
       // 在 Windows 上启动安装程序
       if (this.platform === 'win32') {
         const { spawn } = require('child_process');
+        
+        // 安装完成后清理旧文件（保留当前安装包）
+        const currentInstaller = path.basename(this.downloadedFilePath);
+        this._cleanupAfterInstall(currentInstaller);
+        
         spawn(this.downloadedFilePath, ['/S'], {
           detached: true,
           stdio: 'ignore'
@@ -423,6 +497,37 @@ class CustomUpdater extends EventEmitter {
       console.error('[CustomUpdater] Installation failed:', error);
       await this.reportInstallFailed(error.message);
       throw error;
+    }
+  }
+  
+  /**
+   * 安装后清理旧文件（保留当前安装包）
+   */
+  _cleanupAfterInstall(currentInstaller) {
+    try {
+      const items = fs.readdirSync(this.downloadPath);
+      
+      items.forEach(item => {
+        // 保留当前安装包和 pending 更新
+        if (item === currentInstaller || item === 'pending_update.json' || item === 'pending_update') {
+          return;
+        }
+        
+        const itemPath = path.join(this.downloadPath, item);
+        try {
+          const stats = fs.statSync(itemPath);
+          if (stats.isDirectory()) {
+            fs.rmSync(itemPath, { recursive: true, force: true });
+          } else {
+            fs.unlinkSync(itemPath);
+          }
+          console.log(`[CustomUpdater] Cleaned up: ${item}`);
+        } catch (err) {
+          // 忽略清理错误
+        }
+      });
+    } catch (error) {
+      console.error('[CustomUpdater] Cleanup after install failed:', error);
     }
   }
   
