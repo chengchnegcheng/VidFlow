@@ -202,6 +202,9 @@ class DeltaUpdater extends EventEmitter {
           await this.applyFileChange(fileChange, pendingDir, targetDir);
         }
 
+        // 更新 package.json 中的版本号（关键步骤！）
+        await this.updatePackageVersion(targetDir, manifest.version);
+
         // 验证完整性（可选，因为文件可能还没被加载）
         // const valid = await this.verifyTargetFiles(manifest, targetDir);
 
@@ -309,6 +312,33 @@ class DeltaUpdater extends EventEmitter {
     } catch (error) {
       console.error('[DeltaUpdater] Delta apply failed:', error);
       this.emit('error', error);
+      throw error;
+    }
+  }
+
+  /**
+   * 更新 package.json 中的版本号
+   * 这是增量更新的关键步骤，确保 app.getVersion() 返回新版本号
+   */
+  async updatePackageVersion(targetDir, newVersion) {
+    // package.json 位于 resources/app/package.json
+    const packageJsonPath = path.join(targetDir, 'app', 'package.json');
+    
+    if (!fs.existsSync(packageJsonPath)) {
+      console.warn('[DeltaUpdater] package.json not found at:', packageJsonPath);
+      return false;
+    }
+
+    try {
+      const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+      const oldVersion = packageJson.version;
+      packageJson.version = newVersion;
+      
+      fs.writeFileSync(packageJsonPath, JSON.stringify(packageJson, null, 4), 'utf8');
+      console.log(`[DeltaUpdater] Updated package.json version: ${oldVersion} -> ${newVersion}`);
+      return true;
+    } catch (error) {
+      console.error('[DeltaUpdater] Failed to update package.json:', error);
       throw error;
     }
   }
