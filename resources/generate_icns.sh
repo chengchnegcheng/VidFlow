@@ -5,7 +5,7 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-SOURCE_PNG="$SCRIPT_DIR/icon.png"
+SOURCE_PNG="$SCRIPT_DIR/icons/tray-icon.png"
 ICONSET_DIR="$SCRIPT_DIR/icon.iconset"
 OUTPUT_ICNS="$SCRIPT_DIR/icon.icns"
 
@@ -15,7 +15,7 @@ if [ ! -f "$SOURCE_PNG" ]; then
     exit 1
 fi
 
-echo "🎨 从 icon.png 生成 icon.icns..."
+echo "🎨 从 tray-icon.png 生成 icon.icns..."
 
 # 创建 iconset 目录
 rm -rf "$ICONSET_DIR"

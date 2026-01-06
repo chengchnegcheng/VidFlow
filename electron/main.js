@@ -862,30 +862,16 @@ function createTray() {
       // 开发模式：相对于当前文件
       if (process.platform === 'win32') {
         iconPath = path.join(__dirname, '../resources/icons/tray-icon.ico');
-      } else if (process.platform === 'darwin') {
-        // macOS: 优先使用 Template 图标（16x16 或 22x22）
-        const templatePath = path.join(__dirname, '../resources/icons/tray-iconTemplate.png');
-        if (fs.existsSync(templatePath)) {
-          iconPath = templatePath;
-        } else {
-          iconPath = path.join(__dirname, '../resources/icons/tray-icon.png');
-        }
       } else {
+        // macOS 和 Linux: 直接使用 tray-icon.png
         iconPath = path.join(__dirname, '../resources/icons/tray-icon.png');
       }
     } else {
       // 生产模式：使用 process.resourcesPath
       if (process.platform === 'win32') {
         iconPath = path.join(process.resourcesPath, 'icons', 'tray-icon.ico');
-      } else if (process.platform === 'darwin') {
-        // macOS: 优先使用 Template 图标
-        const templatePath = path.join(process.resourcesPath, 'icons', 'tray-iconTemplate.png');
-        if (fs.existsSync(templatePath)) {
-          iconPath = templatePath;
-        } else {
-          iconPath = path.join(process.resourcesPath, 'icons', 'tray-icon.png');
-        }
       } else {
+        // macOS 和 Linux: 直接使用 tray-icon.png
         iconPath = path.join(process.resourcesPath, 'icons', 'tray-icon.png');
       }
     }

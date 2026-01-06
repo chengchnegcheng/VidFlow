@@ -1,6 +1,6 @@
 {
     "name": "vidflow-desktop",
-    "version": "1.0.8",
+    "version": "1.0.0",
     "description": "VidFlow",
     "main": "electron/main.js",
     "scripts": {

@@ -70,16 +70,23 @@ out/
 *.temp
 
 # Tools - 大文件(GitHub 100MB 限制)
+# Windows 工具
 backend/tools/bin/ffmpeg.exe
 backend/tools/bin/ffprobe.exe
 backend/tools/bin/yt-dlp.exe
 resources/tools/bin/ffmpeg.exe
 resources/tools/bin/ffprobe.exe
 resources/tools/bin/yt-dlp.exe
-# macOS 工具（构建时下载）
+# macOS 工具
 resources/tools/bin/ffmpeg
 resources/tools/bin/ffprobe
 resources/tools/bin/yt-dlp
+backend/tools/bin/ffmpeg
+backend/tools/bin/ffprobe
+backend/tools/bin/yt-dlp
+# 版本文件保留用于追踪
+!backend/tools/bin/.ffmpeg_version
+!backend/tools/bin/.ytdlp_version
 # 注意: 这些工具应在运行时下载或包含在发布包中
 
 backend/tools/models/         # AI 模型(运行时下载)

@@ -1,8 +1,8 @@
-# VidFlow Desktop 3.1.0
+# VidFlow Desktop 1.0.0
 
 > 视频下载器桌面版，采用 **Electron + Python FastAPI** 架构
 
-[![Version](https://img.shields.io/badge/version-3.1.0-blue.svg)](https://github.com/vidflow/desktop)
+[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://github.com/vidflow/desktop)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 ## ✨ 特性
@@ -15,7 +15,7 @@
 - 🖥️ **跨平台**：支持 Windows、macOS、Linux
 - 📦 **体积优化**：基础包仅 500 MB（AI 功能可选）
 
-## 🆕 3.1.0 新特性
+## 🆕 1.0.0 新特性
 
 ### 🍪 自动Cookie获取功能 ⭐ NEW!
 - ✅ **半自动化提取**：一键启动浏览器，用户登录后自动提取Cookie
@@ -98,7 +98,7 @@ npm run dev
 scripts\BUILD_AUTO.bat
 ```
 
-输出：`dist-output/VidFlow Desktop Setup 3.1.0.exe` (~500 MB)
+输出：`dist-output/VidFlow Desktop Setup 1.0.0.exe` (~500 MB)
 
 ### 手动打包
 
@@ -162,7 +162,7 @@ npm run package          # 打包应用
 - [打包准备](PACKAGE_READY.md) - 打包前检查清单
 - [AI 工具指南](Docs/AI_TOOLS_GUIDE.md) - AI 功能完整说明
 - [前端实施](Docs/FRONTEND_IMPLEMENTATION.md) - 前端开发文档
-- [变更日志](Docs/CHANGELOG_AI_TOOLS.md) - 3.1.0 详细变更
+- [变更日志](Docs/CHANGELOG_AI_TOOLS.md) - 1.0.0 详细变更
 
 ## 🐛 故障排除
 
@@ -198,4 +198,4 @@ MIT License
 
 ---
 
-**VidFlow Team** © 2025
+**VidFlow Team** © 2026
