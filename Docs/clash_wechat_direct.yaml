@@ -1,0 +1,43 @@
+# Clash Verge 微信直连规则
+# 
+# 使用方法：
+# 1. 打开 Clash Verge
+# 2. 点击左侧 "配置" 菜单
+# 3. 找到 "Merge" 配置，点击编辑
+# 4. 将下面的内容复制进去，保存
+# 5. 点击右上角 "重载配置" 按钮
+#
+# 或者直接替换这个文件：
+# C:\Users\cheng\AppData\Roaming\io.github.clash-verge-rev.clash-verge-rev\profiles\Merge.yaml
+
+prepend-rules:
+  # ========== 微信进程直连（最重要！）==========
+  # 这会让微信的所有流量都直连，不走代理
+  - PROCESS-NAME,WeChat.exe,DIRECT
+  - PROCESS-NAME,Weixin.exe,DIRECT
+  - PROCESS-NAME,WeChatAppEx.exe,DIRECT
+  - PROCESS-NAME,WeChatApp.exe,DIRECT
+  - PROCESS-NAME,WeChatPlayer.exe,DIRECT
+  - PROCESS-NAME,WeChatBrowser.exe,DIRECT
+  
+  # ========== 微信域名直连 ==========
+  - DOMAIN-SUFFIX,weixin.qq.com,DIRECT
+  - DOMAIN-SUFFIX,wechat.com,DIRECT
+  - DOMAIN-SUFFIX,wx.qq.com,DIRECT
+  - DOMAIN-SUFFIX,weixin.com,DIRECT
+  
+  # ========== 微信视频号相关 ==========
+  - DOMAIN-SUFFIX,channels.weixin.qq.com,DIRECT
+  - DOMAIN-KEYWORD,finder,DIRECT
+  - DOMAIN-KEYWORD,findermp,DIRECT
+  - DOMAIN-KEYWORD,wxsnsdy,DIRECT
+  
+  # ========== 腾讯视频 CDN ==========
+  - DOMAIN-SUFFIX,video.qq.com,DIRECT
+  - DOMAIN-SUFFIX,tc.qq.com,DIRECT
+  - DOMAIN-SUFFIX,qpic.cn,DIRECT
+  - DOMAIN-SUFFIX,gtimg.cn,DIRECT
+  - DOMAIN-SUFFIX,idqqimg.com,DIRECT
+  - DOMAIN-SUFFIX,qq.com.cn,DIRECT
+
+profile:

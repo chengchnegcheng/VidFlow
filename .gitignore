@@ -102,6 +102,7 @@ frontend_port.json
 
 # 测试和覆盖率
 .pytest_cache/
+.hypothesis/
 .coverage
 htmlcov/
 
@@ -116,4 +117,26 @@ Docs/Ioc/
 
 # 发布文件（本地构建）
 releases/
+
+# GitHub Actions
+.github/workflows/*.log
+
+# 用户特定配置（不要提交）
+.env.production
+.env.development
+
+# 本地测试文件（不要提交到仓库）
+backend/tests/test_*.py
+!backend/tests/test_channels/
+!backend/tests/test_qr_login/
+backend/test_*.py
+backend/check_*.py
+
+# 临时文档（开发中）
+Docs/fix-*.md
+Docs/transparent-*.md
+Docs/video-detection-*.md
+
+# Web 子项目（如果是独立项目）
+web/
 

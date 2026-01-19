@@ -11,6 +11,7 @@ import { TaskManager } from './components/TaskManager';
 import { SettingsPanel } from './components/SettingsPanel';
 import { SubtitleProcessor } from './components/SubtitleProcessor';
 import BurnSubtitle from './components/BurnSubtitle';
+import { ChannelsPanel } from './components/channels';
 import { LogViewer } from './components/LogViewer';
 import { CustomUpdateNotification } from './components/CustomUpdateNotification';
 import AboutDialog from './components/AboutDialog';
@@ -39,7 +40,8 @@ import {
   Film,
   Copy,
   AlertCircle,
-  RefreshCw
+  RefreshCw,
+  Video
 } from 'lucide-react';
 
 interface ProxyStatus {
@@ -76,6 +78,7 @@ function AppContent() {
   const navigationItems = [
     { id: 'download', label: '下载中心', icon: Download, description: '新建和管理下载任务' },
     { id: 'tasks', label: '任务管理', icon: List, description: '查看历史和批量操作' },
+    { id: 'channels', label: '视频号', icon: Video, description: '微信视频号下载' },
     { id: 'subtitle', label: '字幕处理', icon: FileText, description: 'AI 字幕生成和翻译' },
     { id: 'burn', label: '烧录字幕', icon: Film, description: '将字幕嵌入到视频中' },
     { id: 'logs', label: '日志中心', icon: ScrollText, description: '查看系统运行日志' },
@@ -441,6 +444,7 @@ function AppContent() {
             <div className="flex-1 overflow-auto">
               {activeTab === 'download' && <DownloadManager onNavigateToSettings={handleNavigateToSettings} />}
               {activeTab === 'tasks' && <TaskManager />}
+              {activeTab === 'channels' && <ChannelsPanel />}
               {activeTab === 'subtitle' && <SubtitleProcessor />}
               {activeTab === 'burn' && <BurnSubtitle />}
               {activeTab === 'logs' && <LogViewer />}

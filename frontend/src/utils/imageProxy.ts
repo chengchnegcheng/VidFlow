@@ -18,14 +18,21 @@ export function getProxiedImageUrl(url: string | undefined | null): string {
     return url;
   }
 
-  // 检查是否需要代理（B站、YouTube、抖音等）
+  // 检查是否需要代理（常见的有防盗链的平台）
   const needsProxy = 
     url.includes('hdslb.com') ||      // B站
     url.includes('bilibili.com') ||   
     url.includes('ytimg.com') ||      // YouTube
     url.includes('ggpht.com') ||      
     url.includes('douyin.com') ||     // 抖音
-    url.includes('tiktok.com');
+    url.includes('tiktok.com') ||
+    url.includes('iqiyipic.com') ||   // 爱奇艺
+    url.includes('iqiyi.com') ||
+    url.includes('mgtv.com') ||       // 芒果TV
+    url.includes('youku.com') ||      // 优酷
+    url.includes('qq.com') ||         // 腾讯视频
+    url.includes('baidu.com') ||      // 百度
+    url.includes('bdstatic.com');
 
   if (needsProxy) {
     // 使用后端代理（通过 TauriIntegration 获取正确的动态端口）

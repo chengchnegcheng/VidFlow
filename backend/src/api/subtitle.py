@@ -311,6 +311,16 @@ async def process_subtitle_task(task_id: str, request: SubtitleGenerateRequest):
     from src.core.subtitle_processor import get_subtitle_processor
     ws_manager = get_ws_manager()
     acquired = False
+    
+    # 调试日志：打印请求参数
+    logger.info(f"[DEBUG] process_subtitle_task called with:")
+    logger.info(f"[DEBUG]   task_id: {task_id}")
+    logger.info(f"[DEBUG]   video_path: {request.video_path}")
+    logger.info(f"[DEBUG]   source_language: {request.source_language}")
+    logger.info(f"[DEBUG]   target_languages: {request.target_languages}")
+    logger.info(f"[DEBUG]   model: {request.model}")
+    logger.info(f"[DEBUG]   formats: {request.formats}")
+    
     try:
         await _subtitle_semaphore.acquire()
         acquired = True
@@ -1046,6 +1056,9 @@ async def process_burn_subtitle_task(task_id: str, request: CreateBurnSubtitleTa
                 
                 # 音频直接复制
                 cmd.extend(['-c:a', 'copy', '-y', str(task.output_path)])
+                
+                # 添加 -progress 参数让 FFmpeg 以行格式输出进度到 stdout
+                cmd.extend(['-progress', 'pipe:1', '-stats_period', '1'])
 
                 # 执行烧录（设置 cwd 为字幕目录）
                 logger.info(f"Burning subtitle (cwd={subtitle_dir}): {' '.join(cmd)}")
@@ -1056,18 +1069,19 @@ async def process_burn_subtitle_task(task_id: str, request: CreateBurnSubtitleTa
                     cwd=str(subtitle_dir)  # 关键：设置工作目录
                 )
 
-                time_pattern = re.compile(r"time=(\d+):(\d+):(\d+\.\d+)")
+                # FFmpeg -progress 输出格式: out_time_us=微秒数
+                time_pattern = re.compile(r"out_time_us=(\d+)")
                 last_progress_log = 0
 
                 while True:
-                    line = await process.stderr.readline()
+                    line = await process.stdout.readline()
                     if not line:
                         break
                     text = line.decode(errors="ignore").strip()
                     match = time_pattern.search(text)
                     if match and duration > 0:
-                        h, m, s = match.groups()
-                        current_time = int(h) * 3600 + int(m) * 60 + float(s)
+                        # out_time_us 是微秒
+                        current_time = int(match.group(1)) / 1_000_000
                         progress = round(min(current_time / duration * 100, 99.0), 1)
                         
                         # 每 10% 记录一次日志

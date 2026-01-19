@@ -1140,6 +1140,291 @@ export async function invoke(command: string, args?: any): Promise<any> {
       }
     },
 
+    // ==================== QR 扫码登录 ====================
+    
+    // 获取支持扫码登录的平台列表
+    'qr_login_get_supported_platforms': async () => {
+      try {
+        const res = await api.get('/api/v1/admin/cookies/qr/supported');
+        return res.data;
+      } catch (error: any) {
+        throw new Error(error.response?.data?.detail || '获取支持平台列表失败');
+      }
+    },
+
+    // 获取平台登录二维码
+    'qr_login_get_qrcode': async () => {
+      try {
+        const res = await api.get(`/api/v1/admin/cookies/qr/${args?.platformId}/qrcode`);
+        return res.data;
+      } catch (error: any) {
+        throw new Error(error.response?.data?.detail || '获取二维码失败');
+      }
+    },
+
+    // 检查扫码状态
+    'qr_login_check_status': async () => {
+      try {
+        const res = await api.post(`/api/v1/admin/cookies/qr/${args?.platformId}/qrcode/check`);
+        return res.data;
+      } catch (error: any) {
+        throw new Error(error.response?.data?.detail || '检查扫码状态失败');
+      }
+    },
+
+    // 取消扫码登录
+    'qr_login_cancel': async () => {
+      try {
+        const res = await api.post(`/api/v1/admin/cookies/qr/${args?.platformId}/qrcode/cancel`);
+        return res.data;
+      } catch (error: any) {
+        throw new Error(error.response?.data?.detail || '取消扫码登录失败');
+      }
+    },
+
+    // 启用/禁用平台扫码登录
+    'qr_login_set_enabled': async () => {
+      try {
+        const res = await api.post(`/api/v1/admin/cookies/qr/${args?.platformId}/enable`, {
+          enabled: args?.enabled
+        });
+        return res.data;
+      } catch (error: any) {
+        throw new Error(error.response?.data?.detail || '设置平台状态失败');
+      }
+    },
+
+    // ==================== 微信视频号 API ====================
+
+    // 获取嗅探器状态
+    'channels_get_status': async () => {
+      try {
+        const res = await api.get('/api/channels/sniffer/status');
+        return res.data;
+      } catch (error: any) {
+        throw new Error(error.response?.data?.detail || '获取嗅探器状态失败');
+      }
+    },
+
+    // 启动嗅探器
+    'channels_start_sniffer': async () => {
+      try {
+        const res = await api.post('/api/channels/sniffer/start', {
+          port: args?.port,
+          capture_mode: args?.capture_mode
+        });
+        return res.data;
+      } catch (error: any) {
+        throw new Error(error.response?.data?.detail || '启动嗅探器失败');
+      }
+    },
+
+    // 停止嗅探器
+    'channels_stop_sniffer': async () => {
+      try {
+        const res = await api.post('/api/channels/sniffer/stop');
+        return res.data;
+      } catch (error: any) {
+        throw new Error(error.response?.data?.detail || '停止嗅探器失败');
+      }
+    },
+
+    // 获取检测到的视频列表
+    'channels_get_videos': async () => {
+      try {
+        const res = await api.get('/api/channels/videos');
+        return res.data;
+      } catch (error: any) {
+        throw new Error(error.response?.data?.detail || '获取视频列表失败');
+      }
+    },
+
+    // 清空视频列表
+    'channels_clear_videos': async () => {
+      try {
+        const res = await api.delete('/api/channels/videos');
+        return res.data;
+      } catch (error: any) {
+        throw new Error(error.response?.data?.detail || '清空视频列表失败');
+      }
+    },
+
+    // 手动添加视频 URL
+    'channels_add_video': async () => {
+      try {
+        const res = await api.post('/api/channels/videos/add', {
+          url: args?.url,
+          title: args?.title
+        });
+        return res.data;
+      } catch (error: any) {
+        throw new Error(error.response?.data?.detail || '添加视频失败');
+      }
+    },
+
+    // 下载视频
+    'channels_download_video': async () => {
+      try {
+        const res = await api.post('/api/channels/download', {
+          url: args?.url,
+          quality: args?.quality,
+          output_path: args?.output_path,
+          auto_decrypt: args?.auto_decrypt
+        });
+        return res.data;
+      } catch (error: any) {
+        throw new Error(error.response?.data?.detail || '下载视频失败');
+      }
+    },
+
+    // 取消下载
+    'channels_cancel_download': async () => {
+      try {
+        const res = await api.post('/api/channels/download/cancel', {
+          task_id: args?.task_id
+        });
+        return res.data;
+      } catch (error: any) {
+        throw new Error(error.response?.data?.detail || '取消下载失败');
+      }
+    },
+
+    // 获取证书信息
+    'channels_get_cert_info': async () => {
+      try {
+        const res = await api.get('/api/channels/certificate');
+        return res.data;
+      } catch (error: any) {
+        throw new Error(error.response?.data?.detail || '获取证书信息失败');
+      }
+    },
+
+    // 生成证书
+    'channels_generate_cert': async () => {
+      try {
+        const res = await api.post('/api/channels/certificate/generate');
+        return res.data;
+      } catch (error: any) {
+        throw new Error(error.response?.data?.detail || '生成证书失败');
+      }
+    },
+
+    // 导出证书
+    'channels_export_cert': async () => {
+      try {
+        const res = await api.post('/api/channels/certificate/export', {
+          export_path: args?.export_path
+        });
+        return res.data;
+      } catch (error: any) {
+        throw new Error(error.response?.data?.detail || '导出证书失败');
+      }
+    },
+
+    // 获取证书安装说明
+    'channels_get_cert_instructions': async () => {
+      try {
+        const res = await api.get('/api/channels/certificate/instructions');
+        return res.data;
+      } catch (error: any) {
+        throw new Error(error.response?.data?.detail || '获取证书说明失败');
+      }
+    },
+
+    // 获取配置
+    'channels_get_config': async () => {
+      try {
+        const res = await api.get('/api/channels/config');
+        return res.data;
+      } catch (error: any) {
+        throw new Error(error.response?.data?.detail || '获取配置失败');
+      }
+    },
+
+    // 更新配置
+    'channels_update_config': async () => {
+      try {
+        const res = await api.put('/api/channels/config', {
+          proxy_port: args?.proxy_port,
+          download_dir: args?.download_dir,
+          auto_decrypt: args?.auto_decrypt,
+          quality_preference: args?.quality_preference,
+          clear_on_exit: args?.clear_on_exit
+        });
+        return res.data;
+      } catch (error: any) {
+        throw new Error(error.response?.data?.detail || '更新配置失败');
+      }
+    },
+
+    // ==================== 透明捕获 API ====================
+
+    // 获取驱动状态
+    'channels_get_driver_status': async () => {
+      try {
+        const res = await api.get('/api/channels/driver/status');
+        return res.data;
+      } catch (error: any) {
+        throw new Error(error.response?.data?.detail || '获取驱动状态失败');
+      }
+    },
+
+    // 安装驱动
+    'channels_install_driver': async () => {
+      try {
+        const res = await api.post('/api/channels/driver/install');
+        return res.data;
+      } catch (error: any) {
+        throw new Error(error.response?.data?.detail || '安装驱动失败');
+      }
+    },
+
+    // 请求管理员权限重启
+    'channels_request_admin_restart': async () => {
+      try {
+        const res = await api.post('/api/channels/driver/request-admin');
+        return res.data;
+      } catch (error: any) {
+        throw new Error(error.response?.data?.detail || '请求管理员权限失败');
+      }
+    },
+
+    // 获取捕获配置
+    'channels_get_capture_config': async () => {
+      try {
+        const res = await api.get('/api/channels/capture/config');
+        return res.data;
+      } catch (error: any) {
+        throw new Error(error.response?.data?.detail || '获取捕获配置失败');
+      }
+    },
+
+    // 更新捕获配置
+    'channels_update_capture_config': async () => {
+      try {
+        const res = await api.put('/api/channels/capture/config', {
+          capture_mode: args?.capture_mode,
+          use_windivert: args?.use_windivert,
+          target_processes: args?.target_processes,
+          no_detection_timeout: args?.no_detection_timeout,
+          log_unrecognized_domains: args?.log_unrecognized_domains
+        });
+        return res.data;
+      } catch (error: any) {
+        throw new Error(error.response?.data?.detail || '更新捕获配置失败');
+      }
+    },
+
+    // 获取捕获统计
+    'channels_get_capture_statistics': async () => {
+      try {
+        const res = await api.get('/api/channels/capture/statistics');
+        return res.data;
+      } catch (error: any) {
+        throw new Error(error.response?.data?.detail || '获取捕获统计失败');
+      }
+    },
+
   };
 
   const handler = commandMap[command];

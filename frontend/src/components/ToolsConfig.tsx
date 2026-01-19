@@ -210,59 +210,93 @@ export function ToolsConfig() {
 
     // 检查 AI 工具安装完成
     const aiProgress = installProgress['ai-tools'];
-    if (aiProgress && aiProgress.progress === 100 && installingAI) {
-      console.log('[ToolsConfig] AI installation complete:', aiProgress);
-      setTimeout(() => {
-        fetchAIToolsStatus();
-        fetchToolsStatus();
-        fetchGPUStatus();
-        setInstallingAI(false);
+    // 修复：即使 installingAI 为 false，也要检测安装完成状态
+    // 这样即使用户刷新页面，也能正确显示安装完成状态
+    if (aiProgress && aiProgress.progress === 100) {
+      console.log('[ToolsConfig] AI installation complete:', aiProgress, 'installingAI:', installingAI);
+      
+      // 如果正在安装中，执行完成逻辑
+      if (installingAI) {
+        setTimeout(() => {
+          fetchAIToolsStatus();
+          fetchToolsStatus();
+          fetchGPUStatus();
+          setInstallingAI(false);
 
-        const message = aiProgress.message || 'AI 工具安装完成';
-        if (message.includes('失败') || message.includes('错误') || message.toLowerCase().includes('error')) {
-          toast.error('AI 工具安装失败', { description: message });
-        } else {
-          toast.success(message);
+          const message = aiProgress.message || 'AI 工具安装完成';
+          if (message.includes('失败') || message.includes('错误') || message.toLowerCase().includes('error')) {
+            toast.error('AI 工具安装失败', { description: message });
+          } else {
+            toast.success(message);
+          }
+        }, 1000);
+      } else {
+        // 即使 installingAI 为 false，也刷新状态（用户可能刷新了页面）
+        // 使用防抖避免重复刷新
+        const lastRefreshKey = 'ai-install-complete-refresh';
+        const lastRefresh = sessionStorage.getItem(lastRefreshKey);
+        const now = Date.now();
+        if (!lastRefresh || now - parseInt(lastRefresh) > 5000) {
+          sessionStorage.setItem(lastRefreshKey, now.toString());
+          console.log('[ToolsConfig] AI installation detected as complete, refreshing status...');
+          fetchAIToolsStatus();
+          fetchToolsStatus();
+          fetchGPUStatus();
         }
-      }, 1000);
+      }
     }
 
     // 检查 AI 工具卸载完成
     const aiUninstallProgress = installProgress['ai-tools-uninstall'];
-    if (aiUninstallProgress && aiUninstallProgress.progress === 100 && uninstallingAI) {
-      console.log('[ToolsConfig] AI uninstallation complete:', aiUninstallProgress);
-      clearUninstallTimeout();
-      setTimeout(async () => {
-        // 等待后端完成收尾工作后再刷新状态（增加到5秒）
-        await new Promise(resolve => setTimeout(resolve, 5000));
+    // 修复：即使 uninstallingAI 为 false，也要检测卸载完成状态
+    if (aiUninstallProgress && aiUninstallProgress.progress === 100) {
+      console.log('[ToolsConfig] AI uninstallation complete:', aiUninstallProgress, 'uninstallingAI:', uninstallingAI);
+      
+      if (uninstallingAI) {
+        clearUninstallTimeout();
+        setTimeout(async () => {
+          // 等待后端完成收尾工作后再刷新状态（增加到5秒）
+          await new Promise(resolve => setTimeout(resolve, 5000));
 
-        // 重试机制：最多尝试3次，每次间隔2秒
-        let retries = 3;
-        while (retries > 0) {
-          await fetchAIToolsStatus();
-          await fetchToolsStatus();
+          // 重试机制：最多尝试3次，每次间隔2秒
+          let retries = 3;
+          while (retries > 0) {
+            await fetchAIToolsStatus();
+            await fetchToolsStatus();
 
-          // 等待状态更新
-          await new Promise(resolve => setTimeout(resolve, 500));
+            // 等待状态更新
+            await new Promise(resolve => setTimeout(resolve, 500));
 
-          // 检查是否真的卸载了（通过检查 aiToolsStatus）
-          // 如果还显示已安装，继续重试
-          retries--;
-          if (retries > 0) {
-            console.log(`[ToolsConfig] Retrying status fetch, ${retries} attempts left`);
-            await new Promise(resolve => setTimeout(resolve, 2000));
+            // 检查是否真的卸载了（通过检查 aiToolsStatus）
+            // 如果还显示已安装，继续重试
+            retries--;
+            if (retries > 0) {
+              console.log(`[ToolsConfig] Retrying status fetch, ${retries} attempts left`);
+              await new Promise(resolve => setTimeout(resolve, 2000));
+            }
           }
-        }
 
-        setUninstallingAI(false);
+          setUninstallingAI(false);
 
-        const message = aiUninstallProgress.message || 'AI 工具卸载完成';
-        if (message.includes('失败') || message.includes('错误') || message.toLowerCase().includes('error')) {
-          toast.error('AI 工具卸载失败', { description: message });
-        } else {
-          toast.success(message);
+          const message = aiUninstallProgress.message || 'AI 工具卸载完成';
+          if (message.includes('失败') || message.includes('错误') || message.toLowerCase().includes('error')) {
+            toast.error('AI 工具卸载失败', { description: message });
+          } else {
+            toast.success(message);
+          }
+        }, 1200);
+      } else {
+        // 即使 uninstallingAI 为 false，也刷新状态
+        const lastRefreshKey = 'ai-uninstall-complete-refresh';
+        const lastRefresh = sessionStorage.getItem(lastRefreshKey);
+        const now = Date.now();
+        if (!lastRefresh || now - parseInt(lastRefresh) > 5000) {
+          sessionStorage.setItem(lastRefreshKey, now.toString());
+          console.log('[ToolsConfig] AI uninstallation detected as complete, refreshing status...');
+          fetchAIToolsStatus();
+          fetchToolsStatus();
         }
-      }, 1200);
+      }
     }
 
     // 检查其他工具安装完成

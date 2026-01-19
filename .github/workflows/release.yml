@@ -1,0 +1,117 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-windows:
+    name: 构建 Windows 版本
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: 设置 Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+
+    - name: 设置 Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: 安装根目录依赖
+      run: npm install
+
+    - name: 安装前端依赖
+      run: |
+        cd frontend
+        npm install
+
+    - name: 安装后端依赖
+      run: |
+        cd backend
+        pip install -r requirements.txt
+        pip install pyinstaller
+
+    - name: 构建应用
+      run: npm run build
+
+    - name: 上传构建产物
+      uses: actions/upload-artifact@v3
+      with:
+        name: windows-build
+        path: dist-output/*.exe
+
+  build-macos:
+    name: 构建 macOS 版本
+    runs-on: macos-latest
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: 设置 Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+
+    - name: 设置 Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: 安装根目录依赖
+      run: npm install
+
+    - name: 安装前端依赖
+      run: |
+        cd frontend
+        npm install
+
+    - name: 安装后端依赖
+      run: |
+        cd backend
+        pip install -r requirements.txt
+        pip install pyinstaller
+
+    - name: 构建应用
+      run: npm run build:mac
+
+    - name: 上传构建产物
+      uses: actions/upload-artifact@v3
+      with:
+        name: macos-build
+        path: dist-output/*.dmg
+
+  create-release:
+    name: 创建 Release
+    needs: [build-windows, build-macos]
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: 下载 Windows 构建
+      uses: actions/download-artifact@v3
+      with:
+        name: windows-build
+        path: ./release
+
+    - name: 下载 macOS 构建
+      uses: actions/download-artifact@v3
+      with:
+        name: macos-build
+        path: ./release
+
+    - name: 创建 Release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: release/*
+        draft: false
+        prerelease: false
+        generate_release_notes: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

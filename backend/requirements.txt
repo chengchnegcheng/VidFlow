@@ -44,6 +44,13 @@ pycryptodomex>=3.19.0  # Cookie 解密支持
 pywin32>=306; sys_platform == 'win32'  # Windows Cookie 解密支持（仅 Windows）
 playwright>=1.40.0  # 抖音视频下载（绕过反爬虫）
 
+# Certificate Management (for HTTPS proxy)
+cryptography>=41.0.0  # CA 证书生成（视频号嗅探）
+mitmproxy>=10.0.0  # HTTP/HTTPS 代理拦截（视频号嗅探）
+
+# Windows Transparent Traffic Capture (透明流量捕获)
+pydivert>=2.1.0; sys_platform == 'win32'  # WinDivert Python 绑定（仅 Windows）
+
 # Build & Packaging
 pyinstaller>=6.0.0
 

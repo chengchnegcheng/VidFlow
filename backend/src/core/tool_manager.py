@@ -352,13 +352,18 @@ class ToolManager:
                 "*.tmp",
                 "*.retry*",
                 "*_download.zip.tmp",
+                "*_download.zip",  # 也清理未完成的下载文件
                 "ffmpeg_extract_tmp"
             ]
 
             for pattern in patterns:
                 for temp_file in TOOLS_DIR.glob(pattern):
                     try:
+                        # 跳过正在使用的文件
                         if temp_file.is_file():
+                            if self._is_file_in_use(temp_file):
+                                logger.debug(f"[Tools] Skipping in-use file: {temp_file}")
+                                continue
                             temp_file.unlink(missing_ok=True)
                             cleanup_count += 1
                             logger.debug(f"[Tools] Removed temp file: {temp_file}")
@@ -409,10 +414,15 @@ class ToolManager:
             return False
 
     @staticmethod
-    async def _safe_remove_file(file_path: Path, max_retries: int = 3, retry_delay: float = 1.0) -> bool:
+    async def _safe_remove_file(file_path: Path, max_retries: int = 5, retry_delay: float = 1.0) -> bool:
         """安全删除文件，带重试机制"""
         if not file_path.exists():
             return True
+
+        # Windows 需要更长的延迟和更多重试
+        if platform.system() == "Windows":
+            max_retries = max(max_retries, 5)
+            retry_delay = max(retry_delay, 1.0)
 
         for attempt in range(max_retries):
             try:
@@ -420,7 +430,10 @@ class ToolManager:
                 if ToolManager._is_file_in_use(file_path):
                     logger.warning(f"[Tools] File is in use, attempt {attempt + 1}/{max_retries}: {file_path}")
                     if attempt < max_retries - 1:
-                        await asyncio.sleep(retry_delay)
+                        # 尝试强制垃圾回收来释放文件句柄
+                        import gc
+                        gc.collect()
+                        await asyncio.sleep(retry_delay * (attempt + 1))  # 递增延迟
                         continue
                     else:
                         logger.error(f"[Tools] File still in use after {max_retries} attempts: {file_path}")
@@ -434,7 +447,10 @@ class ToolManager:
             except (IOError, OSError, PermissionError) as e:
                 logger.warning(f"[Tools] Failed to remove file (attempt {attempt + 1}/{max_retries}): {file_path}, error: {e}")
                 if attempt < max_retries - 1:
-                    await asyncio.sleep(retry_delay)
+                    # 尝试强制垃圾回收
+                    import gc
+                    gc.collect()
+                    await asyncio.sleep(retry_delay * (attempt + 1))  # 递增延迟
                 else:
                     logger.error(f"[Tools] Failed to remove file after {max_retries} attempts: {file_path}")
                     return False
@@ -442,19 +458,38 @@ class ToolManager:
         return False
 
     @staticmethod
-    async def _safe_replace_file(src: Path, dst: Path, max_retries: int = 3, retry_delay: float = 1.0) -> bool:
+    async def _safe_replace_file(src: Path, dst: Path, max_retries: int = 5, retry_delay: float = 1.0) -> bool:
         """安全替换文件，带重试机制"""
         if not src.exists():
             logger.error(f"[Tools] Source file does not exist: {src}")
             return False
 
+        # Windows 需要更长的延迟和更多重试
+        if platform.system() == "Windows":
+            max_retries = max(max_retries, 5)
+            retry_delay = max(retry_delay, 1.0)
+
         for attempt in range(max_retries):
             try:
+                # 检查源文件是否被占用
+                if ToolManager._is_file_in_use(src):
+                    logger.warning(f"[Tools] Source file is in use, attempt {attempt + 1}/{max_retries}: {src}")
+                    if attempt < max_retries - 1:
+                        import gc
+                        gc.collect()
+                        await asyncio.sleep(retry_delay * (attempt + 1))
+                        continue
+                    else:
+                        logger.error(f"[Tools] Source file still in use after {max_retries} attempts: {src}")
+                        return False
+
                 # 检查目标文件是否被占用
                 if dst.exists() and ToolManager._is_file_in_use(dst):
                     logger.warning(f"[Tools] Destination file is in use, attempt {attempt + 1}/{max_retries}: {dst}")
                     if attempt < max_retries - 1:
-                        await asyncio.sleep(retry_delay)
+                        import gc
+                        gc.collect()
+                        await asyncio.sleep(retry_delay * (attempt + 1))
                         continue
                     else:
                         logger.error(f"[Tools] Destination file still in use after {max_retries} attempts: {dst}")
@@ -468,7 +503,9 @@ class ToolManager:
             except (IOError, OSError, PermissionError) as e:
                 logger.warning(f"[Tools] Failed to replace file (attempt {attempt + 1}/{max_retries}): {src} -> {dst}, error: {e}")
                 if attempt < max_retries - 1:
-                    await asyncio.sleep(retry_delay)
+                    import gc
+                    gc.collect()
+                    await asyncio.sleep(retry_delay * (attempt + 1))
                 else:
                     logger.error(f"[Tools] Failed to replace file after {max_retries} attempts: {src} -> {dst}")
                     return False
@@ -795,16 +832,28 @@ class ToolManager:
 
     def _validate_zip_integrity(self, zip_path: Path) -> bool:
         """校验 ZIP 完整性，返回是否通过。"""
+        zf = None
         try:
-            with zipfile.ZipFile(zip_path, "r") as zf:
-                bad_file = zf.testzip()  # 返回首个 CRC 错误的文件名；正常返回 None
-                if bad_file:
-                    logger.warning(f"[Tools] ZIP CRC check failed: {bad_file}")
-                    return False
+            zf = zipfile.ZipFile(zip_path, "r")
+            bad_file = zf.testzip()  # 返回首个 CRC 错误的文件名；正常返回 None
+            if bad_file:
+                logger.warning(f"[Tools] ZIP CRC check failed: {bad_file}")
+                return False
             return True
         except Exception as e:
             logger.warning(f"[Tools] ZIP validation failed: {e}")
             return False
+        finally:
+            # 确保 ZIP 文件被关闭
+            if zf is not None:
+                try:
+                    zf.close()
+                except Exception:
+                    pass
+            # Windows 需要额外时间释放文件句柄
+            if platform.system() == "Windows":
+                import gc
+                gc.collect()  # 强制垃圾回收，帮助释放文件句柄
 
     async def download_ffmpeg(self):
         """下载 FFmpeg"""
@@ -838,9 +887,12 @@ class ToolManager:
                             last_error = RuntimeError("FFmpeg archive CRC check failed, will retry")
                             logger.warning(last_error)
                             continue
+                        # Windows 需要额外时间释放文件句柄
+                        if self.system == "Windows":
+                            await asyncio.sleep(0.5)
 
                     # 安全替换正式文件名
-                    replace_success = await self._safe_replace_file(candidate, download_path, max_retries=3, retry_delay=0.5)
+                    replace_success = await self._safe_replace_file(candidate, download_path, max_retries=5, retry_delay=1.0)
                     if not replace_success:
                         raise RuntimeError(f"Failed to replace file: {candidate} -> {download_path} (file may be in use)")
 
@@ -975,6 +1027,11 @@ class ToolManager:
                             zip_ref.close()
                         except Exception as e:
                             logger.warning(f"Failed to close ZIP file: {e}")
+                    # Windows 需要额外时间释放文件句柄
+                    if self.system == "Windows":
+                        import gc
+                        gc.collect()
+                        await asyncio.sleep(1.0)  # 给 Windows 足够时间释放文件句柄
             
             elif archive_path.suffix in ['.tar', '.xz', '.gz']:
                 mode = 'r:xz' if archive_path.suffix == '.xz' else 'r:gz'
@@ -1922,7 +1979,9 @@ else:
                                 ]
                             else:
                                 possible_exes = [
+                                    chromium_dir / 'chrome-headless-shell-linux64' / 'chrome-headless-shell',
                                     chromium_dir / 'chrome-headless-shell-linux' / 'chrome-headless-shell',
+                                    chromium_dir / 'chrome-linux64' / 'chrome',
                                     chromium_dir / 'chrome-linux' / 'chrome',
                                 ]
                             

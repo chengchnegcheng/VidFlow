@@ -182,6 +182,14 @@ async def lifespan(app: FastAPI):
     from src.core.tool_manager import initialize_tools
     asyncio.create_task(initialize_tools())
 
+    # 初始化QR登录Provider（同步，快速）
+    try:
+        from src.core.qr_login import register_default_providers
+        register_default_providers()
+        logger.info("QR login providers registered")
+    except Exception as e:
+        logger.warning(f"Failed to register QR login providers: {e}")
+
     # 预热AI状态缓存（后台任务，不阻塞启动）
     def preload_ai_cache():
         from src.api.system import _preload_ai_status_cache
@@ -345,7 +353,7 @@ app.add_middleware(
 )
 
 # 导入路由
-from src.api import downloads, system, websocket, subtitle, logs, config, proxy, updates
+from src.api import downloads, system, websocket, subtitle, logs, config, proxy, updates, qr_login, channels
 
 # 注册路由
 app.include_router(downloads.router)
@@ -356,6 +364,8 @@ app.include_router(logs.router)
 app.include_router(config.router)
 app.include_router(proxy.router)
 app.include_router(updates.router)
+app.include_router(qr_login.router)
+app.include_router(channels.router)
 
 @app.get("/")
 async def root():

@@ -211,30 +211,63 @@ class BilibiliDownloader(BaseDownloader):
                 # 获取当前事件循环供 progress_hook 使用
                 loop = asyncio.get_event_loop()
                 
+                # 用于跟踪多分片下载的累积进度
+                progress_state = {
+                    'total_downloaded': 0,
+                    'estimated_total': 0,
+                    'last_progress': 0,
+                    'fragment_index': 0,
+                    'fragment_count': 0,
+                }
+                
                 def progress_hook(d):
                     if d['status'] == 'downloading':
                         try:
                             downloaded = d.get('downloaded_bytes', 0)
                             total = d.get('total_bytes') or d.get('total_bytes_estimate', 0)
+                            speed = d.get('speed', 0)
+                            eta = d.get('eta', 0)
                             
-                            if total > 0:
+                            # 获取分片信息
+                            fragment_index = d.get('fragment_index', 0)
+                            fragment_count = d.get('fragment_count', 0)
+                            
+                            # 计算进度
+                            if fragment_count > 0:
+                                fragment_progress = (downloaded / total) if total > 0 else 0
+                                progress = ((fragment_index + fragment_progress) / fragment_count) * 100
+                                progress_state['fragment_index'] = fragment_index
+                                progress_state['fragment_count'] = fragment_count
+                                if fragment_index > 0:
+                                    avg_fragment_size = (progress_state['total_downloaded'] + downloaded) / (fragment_index + fragment_progress)
+                                    progress_state['estimated_total'] = int(avg_fragment_size * fragment_count)
+                                if fragment_progress >= 0.99:
+                                    progress_state['total_downloaded'] += total
+                            elif total > 0:
                                 progress = (downloaded / total) * 100
-                                speed = d.get('speed', 0)
-                                eta = d.get('eta', 0)
-                                
-                                # 使用 run_coroutine_threadsafe 从非事件循环线程调度协程
-                                asyncio.run_coroutine_threadsafe(
-                                    progress_callback({
-                                        'task_id': task_id,
-                                        'status': 'downloading',
-                                        'progress': round(progress, 2),
-                                        'downloaded': downloaded,
-                                        'total': total,
-                                        'speed': speed,
-                                        'eta': eta
-                                    }),
-                                    loop
-                                )
+                                progress_state['estimated_total'] = total
+                            else:
+                                progress = progress_state['last_progress']
+                            
+                            progress = max(progress, progress_state['last_progress'])
+                            progress_state['last_progress'] = progress
+                            
+                            display_total = progress_state['estimated_total'] if progress_state['estimated_total'] > 0 else total
+                            display_downloaded = int(display_total * progress / 100) if display_total > 0 else downloaded
+                            
+                            # 使用 run_coroutine_threadsafe 从非事件循环线程调度协程
+                            asyncio.run_coroutine_threadsafe(
+                                progress_callback({
+                                    'task_id': task_id,
+                                    'status': 'downloading',
+                                    'progress': round(progress, 1),
+                                    'downloaded': display_downloaded,
+                                    'total': display_total,
+                                    'speed': speed,
+                                    'eta': eta
+                                }),
+                                loop
+                            )
                         except Exception as e:
                             logger.error(f"Progress callback error: {e}")
                     
