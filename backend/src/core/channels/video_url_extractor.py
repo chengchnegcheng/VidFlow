@@ -34,6 +34,7 @@ class ExtractedVideo:
     quality: Optional[str] = None
     filesize: Optional[int] = None
     detected_at: datetime = field(default_factory=datetime.now)
+    http_response: Optional[bytes] = None  # HTTP响应体，用于提取元数据
     
     def to_dict(self) -> Dict[str, Any]:
         """转换为字典"""

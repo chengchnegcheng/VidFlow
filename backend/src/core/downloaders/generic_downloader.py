@@ -86,7 +86,7 @@ class GenericDownloader(BaseDownloader):
             if platform == 'youtube':
                 ydl_opts['extractor_args'] = {
                     'youtube': {
-                        'player_client': ['tv_embedded', 'web_safari'],
+                        'player_client': ['android_sdkless', 'web_safari'],
                     }
                 }
 
@@ -237,13 +237,39 @@ class GenericDownloader(BaseDownloader):
                 ydl_opts['http_headers']['Referer'] = 'https://vimeo.com/'
                 ydl_opts['socket_timeout'] = 60
             
-            # YouTube 特殊处理：使用不需要 PO Token 的客户端
+            # YouTube 特殊处理：排除 HLS 格式（SABR 限制导致 403）
             if platform == 'youtube':
+                # 🔥 YouTube SABR 限制：HLS 片段会 403，必须排除
+                original_format = ydl_opts['format']
+                
+                # 智能修改格式选择器，为每个部分添加协议过滤
+                if '[protocol' not in original_format:
+                    filtered_parts = []
+                    for part in original_format.split('/'):
+                        # 只为 video/audio 选择器添加过滤
+                        if 'video' in part or 'audio' in part:
+                            # 在现有过滤器后添加协议过滤
+                            if '[' in part and ']' in part:
+                                # 已有过滤器，在第一个 ] 后插入
+                                part = part.replace(']', '][protocol!*=m3u8][protocol!*=dash]', 1)
+                            elif 'video' in part or 'audio' in part:
+                                # 没有过滤器，直接添加
+                                part = part + '[protocol!*=m3u8][protocol!*=dash]'
+                        filtered_parts.append(part)
+                    ydl_opts['format'] = '/'.join(filtered_parts)
+                    logger.info(f"[YouTube] Modified format to exclude HLS/DASH: {ydl_opts['format'][:100]}...")
+                
+                # 使用稳定的客户端
                 ydl_opts['extractor_args'] = {
                     'youtube': {
-                        'player_client': ['tv_embedded', 'web_safari'],
+                        'player_client': ['android_sdkless'],  # 最稳定的客户端
                     }
                 }
+                # 优化下载配置
+                ydl_opts['format_sort'] = ['proto:https', 'proto:http', 'vcodec:h264', 'acodec:aac']
+                ydl_opts['concurrent_fragment_downloads'] = 1  # 单线程，避免限流
+                ydl_opts['retries'] = 10
+                ydl_opts['fragment_retries'] = 10
 
             # 为特定平台添加 Cookie 支持（仅在非智能回退模式或允许使用 Cookie 时）
             cookie_path = None

@@ -7,17 +7,18 @@ import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { ScrollArea } from '../ui/scroll-area';
 import { Input } from '../ui/input';
-import { 
-  Download, 
-  Copy, 
-  Trash2, 
+import {
+  Download,
+  Copy,
+  Trash2,
   Video,
   Lock,
   Clock,
   HardDrive,
   Check,
   Plus,
-  Loader2
+  Loader2,
+  AlertCircle
 } from 'lucide-react';
 import { 
   DetectedVideo, 
@@ -25,6 +26,7 @@ import {
   formatFileSize, 
   formatDuration 
 } from '../../types/channels';
+import { TaskThumbnail } from '../TaskThumbnail';
 
 interface VideoListProps {
   videos: DetectedVideo[];
@@ -51,9 +53,29 @@ const VideoItem: React.FC<VideoItemProps> = ({ video, onDownload, qualityPrefere
    * 复制视频 URL
    */
   const handleCopyUrl = async () => {
-    await navigator.clipboard.writeText(video.url);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    try {
+      await navigator.clipboard.writeText(video.url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      // 如果剪贴板API失败，尝试使用传统方法
+      console.warn('Clipboard API failed, using fallback:', err);
+      try {
+        const textArea = document.createElement('textarea');
+        textArea.value = video.url;
+        textArea.style.position = 'fixed';
+        textArea.style.left = '-999999px';
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      } catch (fallbackErr) {
+        console.error('Failed to copy URL:', fallbackErr);
+      }
+    }
   };
 
   /**
@@ -66,6 +88,7 @@ const VideoItem: React.FC<VideoItemProps> = ({ video, onDownload, qualityPrefere
         url: video.url,
         quality: qualityPreference || 'best',
         auto_decrypt: video.encryption_type !== 'none',
+        decryption_key: video.decryption_key,  // 传递解密密钥
       });
     } finally {
       setDownloading(false);
@@ -87,77 +110,84 @@ const VideoItem: React.FC<VideoItemProps> = ({ video, onDownload, qualityPrefere
 
   return (
     <div className="flex items-start gap-3 p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors">
-      {/* 缩略图 */}
-      <div className="shrink-0 w-24 h-16 bg-muted rounded overflow-hidden flex items-center justify-center">
-        {video.thumbnail ? (
-          <img 
-            src={video.thumbnail} 
-            alt={video.title || '视频缩略图'}
-            className="w-full h-full object-cover"
-          />
-        ) : (
-          <Video className="h-8 w-8 text-muted-foreground" />
-        )}
-      </div>
+      {/* 缩略图 - 使用 TaskThumbnail 组件支持本地生成 */}
+      <TaskThumbnail
+        thumbnail={video.thumbnail || undefined}
+        title={video.title || '微信视频号'}
+        className="shrink-0 w-24 h-16"
+      />
 
       {/* 视频信息 */}
-      <div className="flex-1 min-w-0">
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0">
-            <h4 className="font-medium text-sm truncate">
-              {video.title || '未知标题'}
-            </h4>
-            <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
-              {video.duration && (
-                <span className="flex items-center gap-1">
-                  <Clock className="h-3 w-3" />
-                  {formatDuration(video.duration)}
-                </span>
-              )}
-              {video.filesize && (
-                <span className="flex items-center gap-1">
-                  <HardDrive className="h-3 w-3" />
-                  {formatFileSize(video.filesize)}
-                </span>
-              )}
-              {video.resolution && (
-                <Badge variant="secondary" className="text-xs">
-                  {video.resolution}
-                </Badge>
-              )}
-              {getEncryptionBadge()}
-            </div>
-          </div>
-
-          {/* 操作按钮 */}
-          <div className="flex items-center gap-1 shrink-0">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleCopyUrl}
-              title="复制链接"
-            >
-              {copied ? (
-                <Check className="h-4 w-4 text-green-500" />
-              ) : (
-                <Copy className="h-4 w-4" />
-              )}
-            </Button>
-
-            <Button
-              variant="default"
-              size="sm"
-              onClick={handleDownload}
-              disabled={downloading}
-            >
-              <Download className="h-4 w-4 mr-1" />
-              {downloading ? '下载中...' : '下载'}
-            </Button>
+      <div className="flex-1 min-w-0 space-y-2">
+        {/* 标题和元信息 */}
+        <div className="space-y-1">
+          <h4 className="font-medium text-sm truncate" title={video.title || '微信视频号'}>
+            {video.title || '微信视频号'}
+          </h4>
+          <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
+            {video.is_placeholder && video.placeholder_message && (
+              <span className="flex items-center gap-1 text-yellow-600">
+                <AlertCircle className="h-3 w-3" />
+                {video.placeholder_message}
+              </span>
+            )}
+            {video.duration && (
+              <span className="flex items-center gap-1">
+                <Clock className="h-3 w-3" />
+                {formatDuration(video.duration)}
+              </span>
+            )}
+            {video.filesize && (
+              <span className="flex items-center gap-1">
+                <HardDrive className="h-3 w-3" />
+                {formatFileSize(video.filesize)}
+              </span>
+            )}
+            {video.resolution && (
+              <Badge variant="secondary" className="text-xs">
+                {video.resolution}
+              </Badge>
+            )}
+            {getEncryptionBadge()}
           </div>
         </div>
 
+        {/* 操作按钮 - 放在下方，确保完全可见 */}
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleCopyUrl}
+            className="h-8"
+          >
+            {copied ? (
+              <>
+                <Check className="h-4 w-4 mr-1.5 text-green-500" />
+                <span>已复制</span>
+              </>
+            ) : (
+              <>
+                <Copy className="h-4 w-4 mr-1.5" />
+                <span>复制链接</span>
+              </>
+            )}
+          </Button>
+
+          <Button
+            variant="default"
+            size="sm"
+            onClick={handleDownload}
+            disabled={downloading || video.is_placeholder}
+            className="h-8"
+            title={video.is_placeholder ? (video.placeholder_message || '请先在微信中播放该视频后再下载') : undefined}
+          >
+            <Download className="h-4 w-4 mr-1.5" />
+            <span className="font-medium">{downloading ? '下载中...' : '下载'}</span>
+          </Button>
+        </div>
+
         {/* URL 预览 */}
-        <p className="text-xs text-muted-foreground mt-1 truncate font-mono">
+        <p className="text-xs text-muted-foreground truncate font-mono">
           {video.url}
         </p>
       </div>

@@ -5,6 +5,7 @@ YouTube 专用下载器
 import asyncio
 import logging
 import os
+import re
 from typing import Dict, Any, Optional, Callable
 from datetime import datetime
 from pathlib import Path
@@ -19,10 +20,63 @@ logger = logging.getLogger(__name__)
 
 class YoutubeDownloader(BaseDownloader):
     """YouTube 专用下载器"""
-    
+
+    # YouTube 格式选择器映射（多层回退策略）
+    FORMAT_SELECTORS = {
+        'best': (
+            'bestvideo[vcodec^=avc][protocol!*=m3u8][protocol!*=dash]+bestaudio[acodec^=mp4a][protocol!*=m3u8][protocol!*=dash]/'
+            'bestvideo[protocol!*=m3u8][protocol!*=dash]+bestaudio[protocol!*=m3u8][protocol!*=dash]/'
+            'bestvideo+bestaudio/best'
+        ),
+        '2160p': (
+            'bestvideo[height<=2160][vcodec^=avc][protocol!*=m3u8][protocol!*=dash]+bestaudio[acodec^=mp4a][protocol!*=m3u8][protocol!*=dash]/'
+            'bestvideo[height<=2160][protocol!*=m3u8][protocol!*=dash]+bestaudio[protocol!*=m3u8][protocol!*=dash]/'
+            'bestvideo[height<=2160]+bestaudio/best[height<=2160]/best'
+        ),
+        '1440p': (
+            'bestvideo[height<=1440][vcodec^=avc][protocol!*=m3u8][protocol!*=dash]+bestaudio[acodec^=mp4a][protocol!*=m3u8][protocol!*=dash]/'
+            'bestvideo[height<=1440][protocol!*=m3u8][protocol!*=dash]+bestaudio[protocol!*=m3u8][protocol!*=dash]/'
+            'bestvideo[height<=1440]+bestaudio/best[height<=1440]/best'
+        ),
+        '1080p': (
+            'bestvideo[height<=1080][vcodec^=avc][protocol!*=m3u8][protocol!*=dash]+bestaudio[acodec^=mp4a][protocol!*=m3u8][protocol!*=dash]/'
+            'bestvideo[height<=1080][protocol!*=m3u8][protocol!*=dash]+bestaudio[protocol!*=m3u8][protocol!*=dash]/'
+            'bestvideo[height<=1080]+bestaudio/best[height<=1080]/best'
+        ),
+        '720p': (
+            'bestvideo[height<=720][vcodec^=avc][protocol!*=m3u8][protocol!*=dash]+bestaudio[acodec^=mp4a][protocol!*=m3u8][protocol!*=dash]/'
+            'bestvideo[height<=720][protocol!*=m3u8][protocol!*=dash]+bestaudio[protocol!*=m3u8][protocol!*=dash]/'
+            'bestvideo[height<=720]+bestaudio/best[height<=720]/best'
+        ),
+        '480p': (
+            'bestvideo[height<=480][vcodec^=avc][protocol!*=m3u8][protocol!*=dash]+bestaudio[acodec^=mp4a][protocol!*=m3u8][protocol!*=dash]/'
+            'bestvideo[height<=480][protocol!*=m3u8][protocol!*=dash]+bestaudio[protocol!*=m3u8][protocol!*=dash]/'
+            'bestvideo[height<=480]+bestaudio/best[height<=480]/best'
+        ),
+        '360p': (
+            'bestvideo[height<=360][vcodec^=avc][protocol!*=m3u8][protocol!*=dash]+bestaudio[acodec^=mp4a][protocol!*=m3u8][protocol!*=dash]/'
+            'bestvideo[height<=360][protocol!*=m3u8][protocol!*=dash]+bestaudio[protocol!*=m3u8][protocol!*=dash]/'
+            'bestvideo[height<=360]+bestaudio/best[height<=360]/best'
+        ),
+        'audio': 'bestaudio[acodec^=mp4a][protocol!*=m3u8][protocol!*=dash]/bestaudio[protocol!*=m3u8][protocol!*=dash]/bestaudio/best',
+    }
+
     def __init__(self, output_dir: str = None):
         super().__init__(output_dir)
         self.platform_name = "youtube"
+    
+    def _get_format_selector(self, quality: str, format_id: Optional[str] = None) -> str:
+        """获取格式选择器字符串（YouTube 专用）"""
+        if format_id:
+            fid = str(format_id).strip().lower()
+            if fid not in ('mp4', 'mkv', 'webm', 'mp3'):
+                return format_id
+
+        q = (quality or 'best').strip().lower()
+        if re.fullmatch(r'\d{3,4}', q):
+            q = f"{q}p"
+
+        return self.FORMAT_SELECTORS.get(q, self.FORMAT_SELECTORS['best'])
     
     @staticmethod
     def supports_url(url: str) -> bool:
@@ -288,12 +342,29 @@ class YoutubeDownloader(BaseDownloader):
                     'Origin': 'https://www.youtube.com',
                     'Referer': 'https://www.youtube.com/',
                 },
-                'socket_timeout': 30,
+                'socket_timeout': 60,
                 'retries': 10,
                 'fragment_retries': 10,
-                'skip_unavailable_fragments': True,
-                'concurrent_fragment_downloads': 4,
-                'http_chunk_size': 10485760,
+                'skip_unavailable_fragments': False,
+                'extractor_retries': 3,
+                'file_access_retries': 3,
+                # 🔥 避免 HLS/DASH 格式（YouTube SABR 限制导致片段 403）
+                'format_sort': [
+                    'proto:https',      # 优先 HTTPS 直接下载
+                    'proto:http',       # 其次 HTTP
+                    'vcodec:h264',      # 优先 H.264 编码（兼容性好）
+                    'acodec:aac',       # 优先 AAC 音频
+                    'res',              # 按分辨率排序
+                    'fps',              # 按帧率排序
+                ],
+                'prefer_free_formats': False,
+                # 🔥 禁用分片下载，使用单线程（避免触发限流）
+                'concurrent_fragment_downloads': 1,
+                'http_chunk_size': 10485760,  # 10MB 分块
+                # 🔥 禁用断点续传（YouTube URL 会过期，续传会 403）
+                'continuedl': False,
+                'nopart': False,  # 使用 .part 临时文件
+                'noprogress': False,
                 # 代理配置
                 **get_ydl_proxy_opts(),
             }
@@ -428,13 +499,13 @@ class YoutubeDownloader(BaseDownloader):
             
             # 执行下载
             loop = asyncio.get_event_loop()
+            
+            # 优先使用的客户端列表（按稳定性排序）
             player_client_attempts = [
-                ['android_sdkless', 'web_safari'],  # 新版 yt-dlp 默认配置
-                ['android_sdkless'],
-                ['web_safari'],
-                None,
-                ['ios'],
-                ['android'],
+                ['android_sdkless'],        # 最稳定，支持大部分格式
+                ['web_safari'],             # 备选，HLS 格式较多但有回退
+                ['ios'],                    # iOS 客户端
+                None,                       # 默认客户端（最后回退）
             ]
 
             result = None
@@ -448,6 +519,7 @@ class YoutubeDownloader(BaseDownloader):
                     ydl_opts['cookiesfrombrowser'] = (use_browser_cookies,)
                     logger.info(f"[YouTube] Using cookies from browser for download: {use_browser_cookies}")
 
+                # 尝试不同的客户端
                 for player_clients in player_client_attempts:
                     attempt_opts = ydl_opts.copy()
                     attempt_opts['http_headers'] = ydl_opts.get('http_headers', {}).copy()
@@ -473,10 +545,13 @@ class YoutubeDownloader(BaseDownloader):
 
                     try:
                         result = await loop.run_in_executor(None, _download_with_opts)
+                        logger.info(f"[YouTube] Download succeeded with client: {player_clients}")
                         break
                     except Exception as e:
                         last_error = e
                         err_lower = str(e).lower()
+                        
+                        # 可重试的错误（切换客户端可能解决）
                         retryable_keywords = [
                             'please sign in',
                             'sign in',
@@ -486,12 +561,13 @@ class YoutubeDownloader(BaseDownloader):
                             "confirm you're not a bot",
                             'confirm your age',
                             'failed to extract any player response',
-                            'http error 403',
-                            'forbidden',
                         ]
+                        
                         if any(keyword in err_lower for keyword in retryable_keywords):
-                            logger.warning(f"YouTube download failed (player_client={player_clients}), retrying fallback...")
+                            logger.warning(f"[YouTube] Download failed with client {player_clients}, trying next...")
                             continue
+                        
+                        # 不可重试的错误，直接抛出
                         raise
 
             if result is None and last_error is not None:
@@ -532,6 +608,32 @@ class YoutubeDownloader(BaseDownloader):
                     "1. 关闭所有 Chrome 浏览器窗口后重试\n"
                     "2. 或在「系统设置 → Cookie 管理」中手动配置 YouTube Cookie\n"
                     "3. 使用浏览器扩展（如 Cookie Editor）导出 Cookie 文件\n\n"
+                    f"详细错误: {error_msg}"
+                )
+            # 检测片段 403 错误（URL 过期或限流）
+            elif 'http error 403' in error_msg.lower() and 'fragment' in error_msg.lower():
+                friendly_error = (
+                    "YouTube 视频片段下载失败（HTTP 403）。\n\n"
+                    "💡 这通常是 YouTube 的反爬虫限制导致的。\n\n"
+                    "✅ 建议操作（按优先级）：\n"
+                    "1. 等待 2-5 分钟后重试（让 IP 限流解除）\n"
+                    "2. 更换代理节点或切换网络环境\n"
+                    "3. 降低视频质量（选择 480p 或 360p）\n"
+                    "4. 配置 YouTube Cookie（在系统设置中）\n\n"
+                    "📖 说明：YouTube 对频繁下载有速率限制，这是正常的保护机制。"
+                )
+            # 检测 HTTP 403 但不是片段错误（可能是视频本身限制）
+            elif 'http error 403' in error_msg.lower():
+                friendly_error = (
+                    "YouTube 访问被拒绝（HTTP 403）。\n\n"
+                    "💡 可能原因：\n"
+                    "1. 视频有地区限制\n"
+                    "2. 需要登录才能观看\n"
+                    "3. IP 被 YouTube 临时封禁\n\n"
+                    "✅ 建议操作：\n"
+                    "1. 配置 YouTube Cookie（在系统设置中）\n"
+                    "2. 更换代理到视频允许的地区\n"
+                    "3. 等待一段时间后重试\n\n"
                     f"详细错误: {error_msg}"
                 )
             elif any(keyword in error_msg.lower() for keyword in needs_cookie_keywords):

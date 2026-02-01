@@ -184,13 +184,25 @@ class PlatformDetector:
             # 从 Content-Disposition 获取文件名/标题
             content_disp = headers.get('Content-Disposition') or headers.get('content-disposition')
             if content_disp:
-                # 尝试提取 filename
-                match = re.search(r'filename[*]?=["\']?([^"\';\n]+)', content_disp)
-                if match:
-                    filename = match.group(1)
-                    # 移除扩展名作为标题
+                filename = None
+                match_star = re.search(r'filename\*=([^;\n]+)', content_disp, re.IGNORECASE)
+                if match_star:
+                    value = match_star.group(1).strip().strip('\"\'')
+                    if "''" in value:
+                        _, value = value.split("''", 1)
+                    try:
+                        from urllib.parse import unquote
+                        filename = unquote(value)
+                    except Exception:
+                        filename = value
+                if not filename:
+                    match = re.search(r'filename="?([^";\n]+)"?', content_disp, re.IGNORECASE)
+                    if match:
+                        filename = match.group(1)
+                if filename:
+                    lower = filename.lower()
                     for ext in PlatformDetector.VIDEO_EXTENSIONS:
-                        if filename.lower().endswith(ext):
+                        if lower.endswith(ext):
                             metadata.title = filename[:-len(ext)]
                             break
                     else:
@@ -214,6 +226,19 @@ class PlatformDetector:
                     except ValueError:
                         pass
                     break
+            
+            # 缩略图处理：微信视频号的缩略图需要特殊认证，无法直接访问
+            # 1. 检查响应头中是否有缩略图链接（保留，以防某些API提供）
+            thumbnail_header = headers.get('X-Thumbnail-Url') or headers.get('x-thumbnail-url')
+            if thumbnail_header:
+                metadata.thumbnail = thumbnail_header
+            # 2. 尝试从 URL 参数中获取（保留，以防URL中包含）
+            elif 'thumbnail' in query_params:
+                metadata.thumbnail = query_params['thumbnail'][0]
+            elif 'thumb' in query_params:
+                metadata.thumbnail = query_params['thumb'][0]
+            # 3. 不再尝试构造缩略图URL，因为微信视频号的缩略图需要认证
+            # 前端会使用本地生成的缩略图或默认图标
             
             return metadata
             
@@ -342,8 +367,8 @@ class PlatformDetector:
             parsed = urlparse(url)
             query_params = parse_qs(parsed.query)
             
-            # 常见的密钥参数名
-            key_params = ['key', 'decryptkey', 'dk', 'enckey']
+            # 常见的密钥参数名（优先检查 encfilekey，这是微信视频号的主要密钥）
+            key_params = ['encfilekey', 'decodekey', 'key', 'decryptkey', 'dk', 'enckey']
             for param in key_params:
                 if param in query_params:
                     return query_params[param][0]

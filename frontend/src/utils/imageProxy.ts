@@ -1,6 +1,7 @@
 /**
  * 图片代理工具 - 解决防盗链问题
  */
+
 import { getApiBaseUrl } from '../components/TauriIntegration';
 
 /**
@@ -18,29 +19,25 @@ export function getProxiedImageUrl(url: string | undefined | null): string {
     return url;
   }
 
-  // 检查是否需要代理（常见的有防盗链的平台）
-  const needsProxy = 
-    url.includes('hdslb.com') ||      // B站
-    url.includes('bilibili.com') ||   
-    url.includes('ytimg.com') ||      // YouTube
-    url.includes('ggpht.com') ||      
-    url.includes('douyin.com') ||     // 抖音
-    url.includes('tiktok.com') ||
-    url.includes('iqiyipic.com') ||   // 爱奇艺
-    url.includes('iqiyi.com') ||
-    url.includes('mgtv.com') ||       // 芒果TV
-    url.includes('youku.com') ||      // 优酷
-    url.includes('qq.com') ||         // 腾讯视频
-    url.includes('baidu.com') ||      // 百度
-    url.includes('bdstatic.com');
-
+  // 检查是否是微信相关域名（需要代理）
+  const wechatDomains = [
+    'qpic.cn',
+    'qq.com',
+    'weixin.qq.com',
+    'wechat.com',
+  ];
+  
+  const needsProxy = wechatDomains.some(domain => url.includes(domain));
+  
   if (needsProxy) {
-    // 使用后端代理（通过 TauriIntegration 获取正确的动态端口）
-    const apiBaseUrl = getApiBaseUrl();
-    return `${apiBaseUrl}/api/v1/proxy/image?url=${encodeURIComponent(url)}`;
+    // 使用后端图片代理 API
+    const apiBase = getApiBaseUrl();
+    if (apiBase) {
+      return `${apiBase}/api/channels/proxy/image?url=${encodeURIComponent(url)}`;
+    }
   }
 
-  // 其他URL直接返回
+  // 其他情况直接返回原始URL
   return url;
 }
 

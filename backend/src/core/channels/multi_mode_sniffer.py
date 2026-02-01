@@ -836,11 +836,11 @@ class MultiModeSniffer:
         # 异步提取元数据
         metadata: Optional[VideoMetadata] = None
         try:
-            # 尝试提取元数据（不使用 yt-dlp，因为微信视频号不支持）
+            # 尝试提取元数据，传递HTTP响应体（如果有）
             metadata = await self._metadata_extractor.extract_comprehensive(
                 url=video.url,
                 try_ytdlp=False,  # 微信视频号不支持 yt-dlp
-                http_response=None,
+                http_response=video.http_response,  # 传递HTTP响应体
             )
             
             if metadata:
@@ -848,12 +848,15 @@ class MultiModeSniffer:
         except Exception as e:
             logger.warning(f"Failed to extract metadata for {video.video_id}: {e}")
         
+        # 生成更友好的默认标题
+        default_title = self._generate_default_title(video)
+        
         # 创建DetectedVideo对象，优先使用提取的元数据
         detected = DetectedVideo(
             id=video.video_id,
             url=video.url,
             detected_at=video.detected_at,
-            title=metadata.title if metadata and metadata.title else f"视频 {video.video_id[:8]}",
+            title=metadata.title if metadata and metadata.title else default_title,
             thumbnail=metadata.thumbnail if metadata else None,
             duration=metadata.duration if metadata else None,
             resolution=metadata.resolution if metadata else video.quality,
@@ -901,6 +904,50 @@ class MultiModeSniffer:
     def get_video_count(self) -> int:
         """获取检测到的视频数量"""
         return len(self._detected_videos)
+    
+    def _generate_default_title(self, video: 'ExtractedVideo') -> str:
+        """生成更友好的默认标题
+        
+        Args:
+            video: 提取的视频信息
+            
+        Returns:
+            默认标题
+        """
+        # 从URL中提取可能的信息
+        from urllib.parse import urlparse, parse_qs
+        
+        try:
+            parsed = urlparse(video.url)
+            query_params = parse_qs(parsed.query)
+            
+            # 尝试从URL参数中提取有用信息
+            # 微信视频号URL可能包含 feedid, objectid 等参数
+            if 'feedid' in query_params:
+                feed_id = query_params['feedid'][0][:8]
+                return f"视频号视频 {feed_id}"
+            elif 'objectid' in query_params:
+                obj_id = query_params['objectid'][0][:8]
+                return f"视频号视频 {obj_id}"
+        except:
+            pass
+        
+        # 根据来源生成标题
+        source_names = {
+            'http': 'HTTP捕获',
+            'sni': 'SNI捕获',
+            'clash_api': 'Clash监控',
+            'ip': 'IP识别'
+        }
+        source_name = source_names.get(video.source, video.source)
+        
+        # 添加分辨率信息（如果有）
+        if video.quality:
+            return f"微信视频号 ({source_name} - {video.quality})"
+        
+        # 添加时间信息
+        time_str = video.detected_at.strftime("%H:%M:%S")
+        return f"微信视频号 ({source_name} {time_str})"
     
     async def toggle_quic_blocking(self, enabled: bool) -> bool:
         """切换QUIC阻止

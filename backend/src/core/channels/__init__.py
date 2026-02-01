@@ -35,7 +35,7 @@ from .models import (
 )
 from .platform_detector import PlatformDetector
 from .certificate_manager import CertificateManager
-from .video_decryptor import VideoDecryptor, decrypt_video, find_wechat_video_cache, list_cached_videos
+from .video_decryptor import VideoDecryptor, decrypt_video
 from .proxy_sniffer import ProxySniffer
 from .driver_manager import DriverManager
 from .hls_assembler import HlsAssembler
@@ -74,8 +74,6 @@ __all__ = [
     "CertificateManager",
     "VideoDecryptor",
     "decrypt_video",
-    "find_wechat_video_cache",
-    "list_cached_videos",
     "ProxySniffer",
     "DriverManager",
     "HlsAssembler",

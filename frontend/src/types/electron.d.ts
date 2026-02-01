@@ -41,6 +41,7 @@ interface ElectronAPI {
     isFile: boolean;
     isDirectory: boolean;
   } | null>;
+  generateVideoThumbnail: (videoPath: string) => Promise<string | null>;
   
   // 应用信息
   getAppVersion: () => Promise<string>;

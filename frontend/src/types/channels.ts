@@ -41,6 +41,8 @@ export interface DetectedVideo {
   detected_at: string;
   encryption_type: EncryptionType;
   decryption_key: string | null;
+  is_placeholder?: boolean;
+  placeholder_message?: string;
 }
 
 /**
@@ -94,6 +96,7 @@ export interface DownloadRequest {
   quality?: string;
   output_path?: string;
   auto_decrypt?: boolean;
+  decryption_key?: string | null;  // 解密密钥（从视频信息中获取）
 }
 
 /**
@@ -707,4 +710,37 @@ export const DEEP_OPTIMIZATION_ERROR_MESSAGES: Record<string, string> = {
 export function getDeepOptimizationErrorMessage(errorCode: string | null): string {
   if (!errorCode) return '未知错误';
   return DEEP_OPTIMIZATION_ERROR_MESSAGES[errorCode] || ERROR_MESSAGES[errorCode] || errorCode;
+}
+
+// ============ 系统诊断相关类型 ============
+
+/**
+ * 诊断建议级别
+ */
+export type DiagnosticLevel = 'error' | 'warning' | 'info' | 'success';
+
+/**
+ * 诊断建议
+ */
+export interface DiagnosticRecommendation {
+  level: DiagnosticLevel;
+  message: string;
+  action: string;
+}
+
+/**
+ * 系统诊断响应
+ */
+export interface SystemDiagnosticResponse {
+  is_admin: boolean;
+  wechat_running: boolean;
+  wechat_processes: Array<{
+    pid: number;
+    name: string;
+    exe: string;
+  }>;
+  sniffer_state: SnifferState;
+  videos_detected: number;
+  port_8888_available: boolean;
+  recommendations: DiagnosticRecommendation[];
 }

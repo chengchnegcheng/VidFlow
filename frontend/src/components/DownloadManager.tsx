@@ -10,7 +10,6 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Badge } from './ui/badge';
-import { Progress } from './ui/progress';
 import { Label } from './ui/label';
 import { ScrollArea } from './ui/scroll-area';
 import { Separator } from './ui/separator';
@@ -24,17 +23,13 @@ import {
   Music,
   Video,
   Globe,
-  Trash2,
-  FolderOpen,
   Loader2,
   Cookie,
-  RotateCw,
-  AlertTriangle,
   Settings,
-  Pause,
-  Play
+  Pause
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { DownloadTaskCard } from './DownloadTaskCard';
 import { getProxiedImageUrl, handleImageError } from '../utils/imageProxy';
 
 // 格式化时长（秒 -> 分:秒 或 时:分:秒）
@@ -50,17 +45,6 @@ function formatDuration(seconds: number): string {
   } else {
     return `${minutes}:${secs.toString().padStart(2, '0')}`;
   }
-}
-
-// 格式化字节大小
-function formatBytes(bytes: number): string {
-  if (!bytes || bytes === 0) return '0 B';
-
-  const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-
-  return `${(bytes / Math.pow(k, i)).toFixed(2)} ${sizes[i]}`;
 }
 
 const platformConfig: Record<string, { icon: any, color: string, name: string }> = {
@@ -648,160 +632,21 @@ export function DownloadManager({ onNavigateToSettings }: DownloadManagerProps =
               <div className="space-y-3">
                 {currentTasks.map((task) => {
                   const statusInfo = getStatusBadge(task.status);
-                  const StatusIcon = statusInfo.icon;
                   const platform = getPlatformConfig(task.platform);
-                  const PlatformIcon = platform.icon;
                   
                   return (
-                    <div key={task.task_id} className="p-4 border rounded-lg space-y-3">
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1 space-y-1">
-                          <div className="flex items-center gap-2">
-                            <div className={`p-1 rounded ${platform.color}`}>
-                              <PlatformIcon className="size-3 text-white" />
-                            </div>
-                            <h4 className="font-medium">{task.title || '未知标题'}</h4>
-                          </div>
-                          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                            <Badge variant={statusInfo.variant}>
-                              <StatusIcon className="size-3 mr-1" />
-                              {statusInfo.text}
-                            </Badge>
-                            <span>{task.quality}</span>
-                            {task.filename && <span className="truncate max-w-[200px]">{task.filename}</span>}
-                          </div>
-                        </div>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleDeleteTask(task.task_id)}
-                        >
-                          <Trash2 className="size-4 text-muted-foreground hover:text-destructive" />
-                        </Button>
-                      </div>
-                      
-                      {(task.status === 'downloading' || task.status === 'pending') && (
-                        <div className="flex justify-end gap-2 mb-2">
-                           {task.status === 'downloading' && (
-                             <Button 
-                               variant="outline" 
-                               size="sm" 
-                               className="h-7 text-xs"
-                               onClick={() => handlePauseTask(task.task_id)}
-                             >
-                               <Pause className="size-3 mr-1" />
-                               暂停
-                             </Button>
-                           )}
-                           <Button 
-                             variant="outline" 
-                             size="sm" 
-                             className="h-7 text-xs"
-                             onClick={() => handleCancelTask(task.task_id)}
-                           >
-                             取消下载
-                           </Button>
-                        </div>
-                      )}
-                      
-                      {task.status === 'paused' && (
-                        <div className="flex justify-end gap-2 mb-2">
-                           <Button 
-                             variant="outline" 
-                             size="sm" 
-                             className="h-7 text-xs"
-                             onClick={() => handleResumeTask(task.task_id)}
-                           >
-                             <Play className="size-3 mr-1" />
-                             继续下载
-                           </Button>
-                           <Button 
-                             variant="outline" 
-                             size="sm" 
-                             className="h-7 text-xs"
-                             onClick={() => handleCancelTask(task.task_id)}
-                           >
-                             取消下载
-                           </Button>
-                        </div>
-                      )}
-                      
-                      {task.status === 'downloading' && (
-                        <div className="space-y-1">
-                          <div className="flex justify-between items-center text-sm text-muted-foreground">
-                            <div className="flex items-center gap-2">
-                              {task.downloaded && task.total ? (
-                                <span>{formatBytes(task.downloaded)} / {formatBytes(task.total)}</span>
-                              ) : null}
-                              {task.speed && typeof task.speed === 'number' ? (
-                                <span>速度: {formatBytes(task.speed)}/s</span>
-                              ) : task.speed ? (
-                                <span>速度: {task.speed}</span>
-                              ) : null}
-                            </div>
-                            <span className="font-medium">{Math.min(Math.max(task.progress || 0, 0), 100).toFixed(1)}%</span>
-                          </div>
-                          <Progress value={Math.min(Math.max(task.progress || 0, 0), 100)} className="h-2" />
-                        </div>
-                      )}
-
-                      {task.status === 'paused' && (
-                        <div className="space-y-1">
-                          <div className="flex justify-between items-center text-sm text-muted-foreground">
-                            <div className="flex items-center gap-2">
-                              {task.downloaded && task.total ? (
-                                <span>{formatBytes(task.downloaded)} / {formatBytes(task.total)}</span>
-                              ) : null}
-                              <span className="text-amber-600 dark:text-amber-400">已暂停</span>
-                            </div>
-                            <span className="font-medium">{Math.min(Math.max(task.progress || 0, 0), 100).toFixed(1)}%</span>
-                          </div>
-                          <Progress value={Math.min(Math.max(task.progress || 0, 0), 100)} className="h-2 [&>div]:bg-amber-500" />
-                        </div>
-                      )}
-
-                      {task.status === 'completed' && task.filename && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleOpenFolder((task as any).file_path)}
-                        >
-                          <FolderOpen className="size-3 mr-1" />
-                          打开文件夹
-                        </Button>
-                      )}
-
-                      {task.status === 'failed' && (
-                        <div className="space-y-2">
-                          {/* 错误信息显示 */}
-                          {task.error_message && (
-                            <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-md">
-                              <div className="flex items-start gap-2">
-                                <AlertTriangle className="size-4 text-destructive mt-0.5 flex-shrink-0" />
-                                <div className="flex-1 space-y-1">
-                                  <p className="text-sm font-medium text-destructive">下载失败</p>
-                                  <p className="text-xs text-muted-foreground whitespace-pre-wrap break-words">
-                                    {task.error_message}
-                                  </p>
-                                </div>
-                              </div>
-                            </div>
-                          )}
-                          {/* 重试按钮 */}
-                          <div className="flex gap-2">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleRetryTask(task)}
-                              className="flex-1"
-                            >
-                              <RotateCw className="size-3 mr-1" />
-                              重试下载
-                            </Button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
+                    <DownloadTaskCard
+                      key={task.task_id}
+                      task={task}
+                      statusInfo={statusInfo}
+                      platformConfig={platform}
+                      onDelete={handleDeleteTask}
+                      onPause={handlePauseTask}
+                      onResume={handleResumeTask}
+                      onCancel={handleCancelTask}
+                      onRetry={handleRetryTask}
+                      onOpenFolder={handleOpenFolder}
+                    />
                   );
                 })}
               </div>

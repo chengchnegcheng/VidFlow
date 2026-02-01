@@ -19,7 +19,8 @@ const VALID_INVOKE_CHANNELS = [
   'custom-update-check',
   'custom-update-download',
   'custom-update-install',
-  'custom-update-clean'
+  'custom-update-clean',
+  'generate-video-thumbnail'
 ];
 
 // 安全地暴露 API 到渲染进程
@@ -91,6 +92,7 @@ contextBridge.exposeInMainWorld('electron', {
   openFolder: (folderPath) => ipcRenderer.invoke('open-folder', folderPath),
   fileExists: (filePath) => ipcRenderer.invoke('file-exists', filePath),
   getFileInfo: (filePath) => ipcRenderer.invoke('get-file-info', filePath),
+  generateVideoThumbnail: (videoPath) => ipcRenderer.invoke('generate-video-thumbnail', videoPath),
   
   // 应用信息
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),

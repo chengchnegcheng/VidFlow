@@ -1199,9 +1199,23 @@ export async function invoke(command: string, args?: any): Promise<any> {
     // 获取嗅探器状态
     'channels_get_status': async () => {
       try {
-        const res = await api.get('/api/channels/sniffer/status');
+        // 使用较短的超时时间，这是高频轮询接口
+        const res = await api.get('/api/channels/sniffer/status', {
+          timeout: 5000  // 5 秒超时
+        });
         return res.data;
       } catch (error: any) {
+        // 超时或网络错误时返回默认状态
+        if (error.code === 'ECONNABORTED' || error.code === 'ERR_NETWORK') {
+          console.warn('Failed to get sniffer status (timeout/network), returning stopped status');
+          return {
+            state: 'stopped',
+            proxy_port: 8888,
+            videos_detected: 0,
+            capture_mode: 'transparent',
+            capture_state: 'stopped'
+          };
+        }
         throw new Error(error.response?.data?.detail || '获取嗅探器状态失败');
       }
     },
@@ -1232,9 +1246,17 @@ export async function invoke(command: string, args?: any): Promise<any> {
     // 获取检测到的视频列表
     'channels_get_videos': async () => {
       try {
-        const res = await api.get('/api/channels/videos');
+        // 使用较短的超时时间，避免阻塞 UI
+        const res = await api.get('/api/channels/videos', {
+          timeout: 5000  // 5 秒超时
+        });
         return res.data;
       } catch (error: any) {
+        // 超时或网络错误时返回空数组，不抛出异常
+        if (error.code === 'ECONNABORTED' || error.code === 'ERR_NETWORK') {
+          console.warn('Failed to get videos (timeout/network), returning empty list');
+          return [];
+        }
         throw new Error(error.response?.data?.detail || '获取视频列表失败');
       }
     },
@@ -1269,7 +1291,8 @@ export async function invoke(command: string, args?: any): Promise<any> {
           url: args?.url,
           quality: args?.quality,
           output_path: args?.output_path,
-          auto_decrypt: args?.auto_decrypt
+          auto_decrypt: args?.auto_decrypt,
+          decryption_key: args?.decryption_key  // 传递解密密钥
         });
         return res.data;
       } catch (error: any) {
@@ -1286,6 +1309,26 @@ export async function invoke(command: string, args?: any): Promise<any> {
         return res.data;
       } catch (error: any) {
         throw new Error(error.response?.data?.detail || '取消下载失败');
+      }
+    },
+
+    // 获取下载任务列表
+    'channels_get_download_tasks': async () => {
+      try {
+        const res = await api.get('/api/channels/download/tasks');
+        return res.data;
+      } catch (error: any) {
+        throw new Error(error.response?.data?.detail || '获取下载任务失败');
+      }
+    },
+
+    // 删除下载任务
+    'channels_delete_download_task': async () => {
+      try {
+        const res = await api.delete(`/api/channels/download/tasks/${args?.task_id}`);
+        return res.data;
+      } catch (error: any) {
+        throw new Error(error.response?.data?.detail || '删除任务失败');
       }
     },
 
@@ -1422,6 +1465,16 @@ export async function invoke(command: string, args?: any): Promise<any> {
         return res.data;
       } catch (error: any) {
         throw new Error(error.response?.data?.detail || '获取捕获统计失败');
+      }
+    },
+
+    // 系统诊断
+    'channels_diagnose': async () => {
+      try {
+        const res = await api.get('/api/channels/diagnose');
+        return res.data;
+      } catch (error: any) {
+        throw new Error(error.response?.data?.detail || '系统诊断失败');
       }
     },
 

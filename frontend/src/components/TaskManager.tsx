@@ -10,7 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Checkbox } from './ui/checkbox';
 import { toast } from 'sonner';
-import { getProxiedImageUrl, handleImageError } from '../utils/imageProxy';
+import { TaskThumbnail } from './TaskThumbnail';
 import {
   Search,
   Download,
@@ -27,13 +27,11 @@ import {
   FileVideo,
   FileText,
   Archive,
-  Film,
-  Video
+  Film
 } from 'lucide-react';
 
 export function TaskManager() {
   const { downloads: tasks, subtitleTasks, burnTasks, refreshAll, refreshDownloads, refreshSubtitles, refreshBurns, loading: tasksLoading } = useTaskProgress();
-  const [thumbnailErrors, setThumbnailErrors] = useState<Set<string>>(new Set());
   const [filteredTasks, setFilteredTasks] = useState<DownloadTask[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -665,21 +663,11 @@ export function TaskManager() {
                       </div>
 
                       {/* Thumbnail */}
-                      {task.thumbnail && !thumbnailErrors.has(task.task_id) ? (
-                        <img
-                          src={getProxiedImageUrl(task.thumbnail)}
-                          alt={task.title}
-                          className="w-32 h-20 object-cover rounded-md flex-shrink-0 bg-muted"
-                          onError={(e) => {
-                            handleImageError(e);
-                            setThumbnailErrors(prev => new Set(prev).add(task.task_id));
-                          }}
-                        />
-                      ) : task.thumbnail ? (
-                        <div className="w-32 h-20 bg-muted rounded-md flex items-center justify-center flex-shrink-0">
-                          <Video className="size-8 text-muted-foreground/50" />
-                        </div>
-                      ) : null}
+                      <TaskThumbnail
+                        filePath={(task as any).file_path}
+                        thumbnail={task.thumbnail}
+                        title={task.title}
+                      />
 
                       {/* Content */}
                       <div className="flex-1 min-w-0">

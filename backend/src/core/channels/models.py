@@ -90,6 +90,8 @@ class VideoMetadata:
     resolution: Optional[str] = None
     filesize: Optional[int] = None  # 字节
     thumbnail: Optional[str] = None
+    width: Optional[int] = None  # 视频宽度
+    height: Optional[int] = None  # 视频高度
 
 
 @dataclass
@@ -279,6 +281,9 @@ class DecryptResult:
     success: bool
     output_path: Optional[str] = None
     error_message: Optional[str] = None
+    encryption_type: Optional[EncryptionType] = None
+    key: Optional[bytes] = None
+    additional_info: Optional[Dict[str, Any]] = None  # 额外信息（如缺少 moov box 的提示）
 
     def to_dict(self) -> Dict[str, Any]:
         """转换为字典"""
@@ -286,6 +291,9 @@ class DecryptResult:
             "success": self.success,
             "output_path": self.output_path,
             "error_message": self.error_message,
+            "encryption_type": self.encryption_type.value if self.encryption_type else None,
+            "key": self.key.hex() if self.key else None,
+            "additional_info": self.additional_info,
         }
 
 

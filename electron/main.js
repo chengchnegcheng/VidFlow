@@ -1339,6 +1339,119 @@ ipcMain.handle('get-file-info', async (event, filePath) => {
   }
 });
 
+// 生成视频缩略图
+ipcMain.handle('generate-video-thumbnail', async (event, videoPath) => {
+  try {
+    if (!fs.existsSync(videoPath)) {
+      return null;
+    }
+
+    const { spawn } = require('child_process');
+    const crypto = require('crypto');
+    
+    // 生成缓存文件名
+    const hash = crypto.createHash('md5').update(videoPath).digest('hex');
+    const thumbnailDir = path.join(app.getPath('userData'), 'thumbnails');
+    const thumbnailPath = path.join(thumbnailDir, `${hash}.jpg`);
+    
+    // 如果缩略图已存在，读取并返回 base64
+    if (fs.existsSync(thumbnailPath)) {
+      try {
+        const imageBuffer = fs.readFileSync(thumbnailPath);
+        const base64Image = `data:image/jpeg;base64,${imageBuffer.toString('base64')}`;
+        return base64Image;
+      } catch (error) {
+        // Failed to read cached thumbnail
+        // 如果读取失败，删除缓存文件并重新生成
+        try {
+          fs.unlinkSync(thumbnailPath);
+        } catch (e) {
+          // 忽略删除错误
+        }
+      }
+    }
+    
+    // 创建缩略图目录
+    if (!fs.existsSync(thumbnailDir)) {
+      fs.mkdirSync(thumbnailDir, { recursive: true });
+    }
+    
+    // 查找 ffmpeg 路径
+    let ffmpegPath = null;
+    const isWindows = process.platform === 'win32';
+    const ffmpegBinary = isWindows ? 'ffmpeg.exe' : 'ffmpeg';
+    
+    const possiblePaths = [
+      path.join(__dirname, '../backend/tools/bin', ffmpegBinary),
+      path.join(__dirname, '../resources/backend/tools/bin', ffmpegBinary),
+      path.join(process.resourcesPath, 'backend/tools/bin', ffmpegBinary),
+      path.join(process.resourcesPath, 'resources/backend/tools/bin', ffmpegBinary),
+      'ffmpeg' // 系统 PATH
+    ];
+    
+    for (const p of possiblePaths) {
+      if (p === 'ffmpeg' || fs.existsSync(p)) {
+        ffmpegPath = p;
+        break;
+      }
+    }
+    
+    if (!ffmpegPath) {
+      // FFmpeg not found
+      return null;
+    }
+    
+    // 使用 ffmpeg 生成缩略图（从视频 1 秒处截取）
+    return new Promise((resolve, reject) => {
+      const ffmpeg = spawn(ffmpegPath, [
+        '-ss', '1',           // 从第 1 秒开始
+        '-i', videoPath,      // 输入文件
+        '-vframes', '1',      // 只截取 1 帧
+        '-vf', 'scale=320:-1', // 缩放到宽度 320px
+        '-y',                 // 覆盖已存在的文件
+        thumbnailPath
+      ]);
+      
+      let errorOutput = '';
+      
+      ffmpeg.stderr.on('data', (data) => {
+        errorOutput += data.toString();
+      });
+      
+      ffmpeg.on('close', (code) => {
+        if (code === 0 && fs.existsSync(thumbnailPath)) {
+          try {
+            // 读取生成的图片并转换为 base64
+            const imageBuffer = fs.readFileSync(thumbnailPath);
+            const base64Image = `data:image/jpeg;base64,${imageBuffer.toString('base64')}`;
+            resolve(base64Image);
+          } catch (error) {
+            // Failed to read generated thumbnail
+            resolve(null);
+          }
+        } else {
+          // FFmpeg execution failed
+          resolve(null);
+        }
+      });
+      
+      ffmpeg.on('error', (err) => {
+        // FFmpeg spawn failed
+        resolve(null);
+      });
+      
+      // 超时处理（5秒）
+      setTimeout(() => {
+        ffmpeg.kill();
+        resolve(null);
+      }, 5000);
+    });
+  } catch (error) {
+    // Thumbnail generation failed
+    return null;
+  }
+});
+
 // 显示桌面通知
 ipcMain.handle('show-notification', async (event, options) => {
   try {

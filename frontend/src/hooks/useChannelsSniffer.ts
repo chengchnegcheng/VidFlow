@@ -203,6 +203,16 @@ export function useChannelsSniffer() {
       // 请求成功，重置失败计数
       videosFailureCountRef.current = 0;
       
+      // 调试：打印视频信息
+      if (videos.length > 0) {
+        console.log('[Channels] Fetched videos:', videos.map(v => ({
+          id: v.id,
+          title: v.title,
+          thumbnail: v.thumbnail,
+          url: v.url.substring(0, 50) + '...'
+        })));
+      }
+      
       safeSetState({ videos });
     } catch (error: any) {
       if (!isMountedRef.current) return;

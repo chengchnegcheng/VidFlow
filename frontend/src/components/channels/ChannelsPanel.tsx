@@ -28,14 +28,18 @@ import {
 import { useChannelsSniffer } from '../../hooks/useChannelsSniffer';
 import { SnifferControl } from './SnifferControl';
 import { VideoList } from './VideoList';
+import { DownloadTaskList } from './DownloadTaskList';
 import { DriverInstallDialog } from './DriverInstallDialog';
 import { ProcessSelector } from './ProcessSelector';
 import { CaptureStatus } from './CaptureStatus';
+import { DiagnosticPanel } from './DiagnosticPanel';
 import { 
   ChannelsConfigUpdateRequest,
   CaptureMode,
   CaptureConfigUpdateRequest,
 } from '../../types/channels';
+import { invoke } from '../TauriIntegration';
+import { toast } from 'sonner';
 
 /**
  * 视频号面板组件
@@ -66,6 +70,28 @@ export const ChannelsPanel: React.FC = () => {
   const [driverDialogOpen, setDriverDialogOpen] = React.useState(false);
   const [configDraft, setConfigDraft] = React.useState<ChannelsConfigUpdateRequest>({});
   const [captureConfigDraft, setCaptureConfigDraft] = React.useState<CaptureConfigUpdateRequest>({});
+  const [downloadTasks, setDownloadTasks] = React.useState<any[]>([]);
+
+  /**
+   * 获取下载任务列表
+   */
+  const fetchDownloadTasks = React.useCallback(async () => {
+    try {
+      const tasks = await invoke('channels_get_download_tasks');
+      setDownloadTasks(tasks);
+    } catch (error) {
+      console.error('Failed to fetch download tasks:', error);
+    }
+  }, []);
+
+  /**
+   * 定期刷新下载任务
+   */
+  React.useEffect(() => {
+    fetchDownloadTasks();
+    const interval = setInterval(fetchDownloadTasks, 2000); // 每 2 秒刷新
+    return () => clearInterval(interval);
+  }, [fetchDownloadTasks]);
 
   /**
    * 同步配置草稿
@@ -118,12 +144,61 @@ export const ChannelsPanel: React.FC = () => {
    */
   const handleDownload = async (request: any) => {
     try {
+      console.log('[Channels] Starting download:', request);
       const result = await downloadVideo(request);
+      console.log('[Channels] Download result:', result);
+      
       if (!result.success) {
-        console.error('Download failed:', result.error);
+        toast.error('下载失败', { description: result.error });
+      } else {
+        toast.success('下载任务已创建');
+        // 立即刷新任务列表
+        fetchDownloadTasks();
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Download error:', err);
+      toast.error('下载失败', { description: err.message });
+    }
+  };
+
+  /**
+   * 取消下载任务
+   */
+  const handleCancelTask = async (taskId: string) => {
+    try {
+      await invoke('channels_cancel_download', { task_id: taskId });
+      toast.success('任务已取消');
+      fetchDownloadTasks();
+    } catch (err: any) {
+      toast.error('取消失败', { description: err.message });
+    }
+  };
+
+  /**
+   * 删除下载任务
+   */
+  const handleDeleteTask = async (taskId: string) => {
+    try {
+      await invoke('channels_delete_download_task', { task_id: taskId });
+      toast.success('任务已删除');
+      fetchDownloadTasks();
+    } catch (err: any) {
+      toast.error('删除失败', { description: err.message });
+    }
+  };
+
+  /**
+   * 打开文件夹
+   */
+  const handleOpenFolder = async (filePath: string) => {
+    try {
+      if (window.electron && window.electron.isElectron) {
+        await window.electron.showItemInFolder(filePath);
+      } else {
+        toast.info('浏览器环境不支持此功能');
+      }
+    } catch (err: any) {
+      toast.error('打开文件夹失败', { description: err.message });
     }
   };
 
@@ -138,10 +213,10 @@ export const ChannelsPanel: React.FC = () => {
   };
 
   /**
-   * 启动嗅探器（固定透明模式）
+   * 启动嗅探器（优先使用代理模式以获取可下载的完整URL；透明模式通常只能得到占位符）
    */
   const handleStartSniffer = async (port?: number, _mode?: CaptureMode) => {
-    return startSniffer(port, 'transparent');
+    return startSniffer(port, 'proxy');
   };
 
   return (
@@ -156,6 +231,11 @@ export const ChannelsPanel: React.FC = () => {
           <p className="text-muted-foreground mt-1">
             自动捕获 Windows PC 端微信视频号视频链接并下载
           </p>
+          {!isRunning && state.videos.length === 0 && (
+            <div className="mt-2 text-sm text-muted-foreground">
+              💡 使用提示：需要以<span className="font-semibold text-foreground">管理员身份</span>运行应用，然后在微信中播放视频号视频
+            </div>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <Button
@@ -184,6 +264,7 @@ export const ChannelsPanel: React.FC = () => {
       <Tabs defaultValue="sniffer" className="space-y-4">
         <TabsList>
           <TabsTrigger value="sniffer">嗅探器</TabsTrigger>
+          <TabsTrigger value="diagnostic">系统诊断</TabsTrigger>
           <TabsTrigger value="settings">设置</TabsTrigger>
         </TabsList>
 
@@ -240,6 +321,29 @@ export const ChannelsPanel: React.FC = () => {
               />
             </CardContent>
           </Card>
+
+          {/* 下载任务列表 */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">下载任务</CardTitle>
+              <CardDescription>
+                当前下载任务列表 ({downloadTasks.length})
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <DownloadTaskList
+                tasks={downloadTasks}
+                onCancel={handleCancelTask}
+                onDelete={handleDeleteTask}
+                onOpenFolder={handleOpenFolder}
+              />
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* 系统诊断标签页 */}
+        <TabsContent value="diagnostic" className="space-y-4">
+          <DiagnosticPanel />
         </TabsContent>
 
         {/* 设置标签页 */}
