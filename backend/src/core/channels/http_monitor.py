@@ -1,183 +1,198 @@
 """
-HTTP 流量监控器
+HTTP traffic monitor for Channels video URLs.
 
-监控 HTTP 流量，提取视频号视频 URL 和 encfilekey
+The monitor now reports a candidate only after the HTTP response is confirmed
+to be video data, which prevents image/jpg thumbnail traffic from polluting
+the detected video list.
 """
+
+from __future__ import annotations
 
 import logging
 import re
-from typing import Optional, Dict, Any, Callable
-from urllib.parse import urlparse, parse_qs
+from typing import Any, Callable, Dict, Optional
+from urllib.parse import parse_qs, urlparse
+
 from mitmproxy import http
-from mitmproxy.tools.dump import DumpMaster
-from mitmproxy.options import Options
 
 logger = logging.getLogger(__name__)
 
 
 class HTTPMonitor:
-    """HTTP 流量监控器"""
-    
-    # 视频号域名模式
-    VIDEO_DOMAINS = [
-        'wxapp.tc.qq.com',
-        'finder.video.qq.com',
-        'findermp.video.qq.com',
-    ]
-    
-    # URL 模式
-    URL_PATTERNS = [
-        r'/\d+/\d+/stodownload',  # 标准下载 URL
-        r'/finder/',  # finder 相关
-    ]
-    
-    def __init__(self, on_video_detected: Optional[Callable] = None):
-        """初始化
-        
-        Args:
-            on_video_detected: 检测到视频时的回调函数
-        """
+    """Monitor HTTP flows and emit confirmed Channels video candidates."""
+
+    VIDEO_DOMAINS = (
+        "wxapp.tc.qq.com",
+        "finder.video.qq.com",
+        "findermp.video.qq.com",
+    )
+
+    URL_PATTERNS = (
+        r"/\d+/\d+/stodownload",
+        r"/finder/",
+    )
+
+    VIDEO_CONTENT_TYPES = (
+        "video/",
+        "application/vnd.apple.mpegurl",
+        "application/x-mpegurl",
+    )
+
+    BINARY_CONTENT_TYPES = (
+        "application/octet-stream",
+        "binary/octet-stream",
+    )
+
+    # Guard rail: thumbnails are usually small image responses.
+    MIN_BINARY_VIDEO_SIZE = 300 * 1024
+
+    def __init__(self, on_video_detected: Optional[Callable[[Dict[str, Any]], None]] = None):
         self.on_video_detected = on_video_detected
-        self.detected_videos = []
-    
+        self.detected_videos: list[Dict[str, Any]] = []
+        self._seen_keys: set[str] = set()
+
     def is_video_url(self, url: str) -> bool:
-        """判断是否是视频 URL
-        
-        Args:
-            url: URL
-            
-        Returns:
-            是否是视频 URL
-        """
+        """Return True when URL belongs to Channels video endpoints."""
         try:
             parsed = urlparse(url)
-            
-            # 检查域名
             if not any(domain in parsed.netloc for domain in self.VIDEO_DOMAINS):
                 return False
-            
-            # 检查路径模式
-            if not any(re.search(pattern, parsed.path) for pattern in self.URL_PATTERNS):
-                return False
-            
-            return True
-            
-        except Exception as e:
-            logger.debug(f"判断 URL 失败: {e}")
+            return any(re.search(pattern, parsed.path) for pattern in self.URL_PATTERNS)
+        except Exception as exc:
+            logger.debug("Failed to check video URL: %s", exc)
             return False
-    
-    def extract_video_info(self, url: str) -> Optional[Dict[str, Any]]:
-        """从 URL 中提取视频信息
-        
-        Args:
-            url: 视频 URL
-            
-        Returns:
-            视频信息
-        """
+
+    def _extract_video_info(self, url: str, response: http.Response) -> Optional[Dict[str, Any]]:
         try:
             parsed = urlparse(url)
-            query_params = parse_qs(parsed.query)
-            
-            # 提取 encfilekey（解密密钥）
-            encfilekey = query_params.get('encfilekey', [None])[0]
-            if not encfilekey:
-                logger.warning(f"URL 中没有 encfilekey: {url}")
-                return None
-            
-            # 提取其他参数
-            bizid = query_params.get('bizid', [None])[0]
-            idx = query_params.get('idx', [None])[0]
-            
-            video_info = {
-                'url': url,
-                'encfilekey': encfilekey,
-                'bizid': bizid,
-                'idx': idx,
-                'domain': parsed.netloc,
+            query = parse_qs(parsed.query)
+            encfilekey = query.get("encfilekey", [None])[0]
+            bizid = query.get("bizid", [None])[0]
+            idx = query.get("idx", [None])[0]
+
+            return {
+                "url": url,
+                "encfilekey": encfilekey,
+                "bizid": bizid,
+                "idx": idx,
+                "domain": parsed.netloc,
+                "content_type": response.headers.get("Content-Type", ""),
+                "content_length": response.headers.get("Content-Length", "0"),
+                "status_code": response.status_code,
             }
-            
-            logger.info(f"✅ 提取到视频信息:")
-            logger.info(f"  URL: {url[:100]}...")
-            logger.info(f"  encfilekey: {encfilekey[:50]}...")
-            
-            return video_info
-            
-        except Exception as e:
-            logger.exception(f"提取视频信息失败: {e}")
+        except Exception as exc:
+            logger.exception("Failed to extract video info: %s", exc)
             return None
-    
-    def process_request(self, flow: http.HTTPFlow):
-        """处理 HTTP 请求
-        
-        Args:
-            flow: HTTP 流
-        """
+
+    @staticmethod
+    def _parse_content_type(raw_content_type: str) -> str:
+        if not raw_content_type:
+            return ""
+        return raw_content_type.split(";", 1)[0].strip().lower()
+
+    @staticmethod
+    def _parse_content_length(raw_content_length: str) -> int:
+        try:
+            return max(0, int(raw_content_length))
+        except Exception:
+            return 0
+
+    def _is_confirmed_video_response(self, flow: http.HTTPFlow) -> bool:
+        response = flow.response
+        if response is None:
+            return False
+
+        content_type = self._parse_content_type(response.headers.get("Content-Type", ""))
+        content_length = self._parse_content_length(response.headers.get("Content-Length", "0"))
+
+        if any(content_type.startswith(prefix) for prefix in self.VIDEO_CONTENT_TYPES):
+            return True
+
+        # Some endpoints may return generic binary streams.
+        if content_type in self.BINARY_CONTENT_TYPES and content_length >= self.MIN_BINARY_VIDEO_SIZE:
+            return True
+
+        # Last fallback for missing content type on large media.
+        if not content_type and content_length >= self.MIN_BINARY_VIDEO_SIZE:
+            return True
+
+        return False
+
+    def _make_dedup_key(self, url: str) -> str:
+        parsed = urlparse(url)
+        query = parse_qs(parsed.query)
+        stable_token = (
+            query.get("encfilekey", [None])[0]
+            or query.get("objectid", [None])[0]
+            or query.get("feedid", [None])[0]
+        )
+        if stable_token:
+            return stable_token
+        return f"{parsed.netloc}{parsed.path}"
+
+    def process_request(self, flow: http.HTTPFlow) -> None:
+        """Keep request hook lightweight; confirmation is done in response."""
         try:
             url = flow.request.pretty_url
-            
-            # 检查是否是视频 URL
             if self.is_video_url(url):
-                logger.info(f"🎬 检测到视频号视频请求: {url[:100]}...")
-                
-                # 提取视频信息
-                video_info = self.extract_video_info(url)
-                
-                if video_info:
-                    self.detected_videos.append(video_info)
-                    
-                    # 触发回调
-                    if self.on_video_detected:
-                        self.on_video_detected(video_info)
-                        
-        except Exception as e:
-            logger.debug(f"处理请求失败: {e}")
-    
-    def process_response(self, flow: http.HTTPFlow):
-        """处理 HTTP 响应
-        
-        Args:
-            flow: HTTP 流
-        """
+                logger.debug("[HTTPMonitor] Candidate request: %s", url[:140])
+        except Exception as exc:
+            logger.debug("Failed to process request: %s", exc)
+
+    def process_response(self, flow: http.HTTPFlow) -> None:
+        """Process response and emit only confirmed video candidates."""
         try:
-            # 可以在这里处理响应，例如检查 Content-Type
-            if self.is_video_url(flow.request.pretty_url):
-                content_type = flow.response.headers.get('Content-Type', '')
-                content_length = flow.response.headers.get('Content-Length', '0')
-                
-                logger.info(f"  响应: Content-Type={content_type}, Size={content_length}")
-                
-        except Exception as e:
-            logger.debug(f"处理响应失败: {e}")
-    
-    def get_detected_videos(self) -> list:
-        """获取检测到的视频列表
-        
-        Returns:
-            视频列表
-        """
+            url = flow.request.pretty_url
+            if not self.is_video_url(url):
+                return
+            if flow.response is None:
+                return
+            if not self._is_confirmed_video_response(flow):
+                logger.debug(
+                    "[HTTPMonitor] Ignore non-video response: ct=%s url=%s",
+                    flow.response.headers.get("Content-Type", ""),
+                    url[:140],
+                )
+                return
+
+            dedup_key = self._make_dedup_key(url)
+            if dedup_key in self._seen_keys:
+                return
+            self._seen_keys.add(dedup_key)
+
+            video_info = self._extract_video_info(url, flow.response)
+            if not video_info:
+                return
+
+            self.detected_videos.append(video_info)
+            logger.info(
+                "[HTTPMonitor] Confirmed video: ct=%s size=%s url=%s",
+                video_info.get("content_type", ""),
+                video_info.get("content_length", "0"),
+                url[:140],
+            )
+
+            if self.on_video_detected:
+                self.on_video_detected(video_info)
+        except Exception as exc:
+            logger.debug("Failed to process response: %s", exc)
+
+    def get_detected_videos(self) -> list[Dict[str, Any]]:
         return self.detected_videos
-    
-    def clear_detected_videos(self):
-        """清空检测到的视频列表"""
+
+    def clear_detected_videos(self) -> None:
         self.detected_videos = []
+        self._seen_keys.clear()
 
 
 class HTTPMonitorAddon:
-    """mitmproxy 插件"""
-    
+    """mitmproxy addon wrapper."""
+
     def __init__(self, monitor: HTTPMonitor):
-        """初始化
-        
-        Args:
-            monitor: HTTP 监控器
-        """
         self.monitor = monitor
-    
-    def request(self, flow: http.HTTPFlow):
-        """处理请求"""
+
+    def request(self, flow: http.HTTPFlow) -> None:
         self.monitor.process_request(flow)
-    
-    def response(self, flow: http.HTTPFlow):
-        """处理响应"""
+
+    def response(self, flow: http.HTTPFlow) -> None:
         self.monitor.process_response(flow)

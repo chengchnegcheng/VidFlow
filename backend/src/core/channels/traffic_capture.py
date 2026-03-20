@@ -691,19 +691,25 @@ class WinDivertCapture:
         Returns:
             WinDivert 过滤规则
         """
-        # 只捕获微信相关 IP 的流量，避免影响其他网络访问
-        # 这样可以确保不会影响正常上网
+        # 检查是否有 Fake-IP（代理软件）
+        has_fake_ip = False
         if self._target_ips:
-            # 构建 IP 过滤列表（最多取前 20 个 IP，避免过滤规则太长）
-            ip_list = list(self._target_ips)[:20]
-            ip_conditions = " or ".join([f"ip.DstAddr == {ip}" for ip in ip_list])
-            filter_str = f"outbound and tcp and (tcp.DstPort == 80 or tcp.DstPort == 443) and ({ip_conditions})"
-            logger.info(f"Using targeted filter for {len(ip_list)} WeChat IPs")
-            return filter_str
-        else:
-            # 如果没有解析到 IP，使用宽松规则但会在代码中快速过滤
-            logger.warning("No target IPs resolved, using broad filter (will filter in code)")
-            return "outbound and tcp and (tcp.DstPort == 80 or tcp.DstPort == 443) and ip.DstAddr != 127.0.0.1"
+            for ip in self._target_ips:
+                if ip.startswith("198.18.") or ip.startswith("198.19."):
+                    has_fake_ip = True
+                    break
+        
+        # 如果检测到 Fake-IP，使用宽松的过滤规则
+        if has_fake_ip:
+            logger.warning("Detected Fake-IP in target IPs, using broad filter for proxy compatibility")
+            logger.warning("Recommendation: Disable proxy or change DNS mode to 'redir-host' for better performance")
+            # 捕获所有 80/443 端口的流量（排除本地回环），在代码中进行精确过滤
+            return "outbound and tcp and (tcp.DstPort == 80 or tcp.DstPort == 443) and ip.DstAddr != 127.0.0.1 and ip.DstAddr != 0.0.0.0"
+        
+        # 【临时调试】使用宽松规则捕获所有流量，看看能否收到任何数据包
+        logger.warning("Using BROAD filter for debugging - will capture ALL outbound 80/443 traffic")
+        logger.warning("This is for testing only. Please disable proxy software (v2rayN/Clash) for best results")
+        return "outbound and tcp and (tcp.DstPort == 80 or tcp.DstPort == 443) and ip.DstAddr != 127.0.0.1 and ip.DstAddr != 0.0.0.0"
     
     @staticmethod
     def extract_http_url(payload: bytes) -> Optional[str]:

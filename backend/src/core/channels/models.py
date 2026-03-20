@@ -12,6 +12,8 @@ from typing import Optional, List, Dict, Any, Set
 from pathlib import Path
 import json
 
+from .process_targets import resolve_local_capture_processes
+
 
 class SnifferState(Enum):
     """嗅探器状态"""
@@ -27,6 +29,7 @@ class EncryptionType(Enum):
     NONE = "none"
     XOR = "xor"
     AES = "aes"
+    ISAAC64 = "isaac64"  # 微信视频号 ISAAC64 流加密
     UNKNOWN = "unknown"
 
 
@@ -92,6 +95,8 @@ class VideoMetadata:
     thumbnail: Optional[str] = None
     width: Optional[int] = None  # 视频宽度
     height: Optional[int] = None  # 视频高度
+    decode_key: Optional[str] = None  # ISAAC64 解密密钥（uint64 数字字符串）
+    author: Optional[str] = None  # 作者/昵称
 
 
 @dataclass
@@ -282,7 +287,6 @@ class DecryptResult:
     output_path: Optional[str] = None
     error_message: Optional[str] = None
     encryption_type: Optional[EncryptionType] = None
-    key: Optional[bytes] = None
     additional_info: Optional[Dict[str, Any]] = None  # 额外信息（如缺少 moov box 的提示）
 
     def to_dict(self) -> Dict[str, Any]:
@@ -292,7 +296,6 @@ class DecryptResult:
             "output_path": self.output_path,
             "error_message": self.error_message,
             "encryption_type": self.encryption_type.value if self.encryption_type else None,
-            "key": self.key.hex() if self.key else None,
             "additional_info": self.additional_info,
         }
 
@@ -527,7 +530,7 @@ class CaptureStatus:
 class CaptureStartResult:
     """捕获启动结果"""
     success: bool
-    mode: CaptureMode = CaptureMode.TRANSPARENT
+    mode: CaptureMode = CaptureMode.PROXY_ONLY
     proxy_address: Optional[str] = None
     error_code: Optional[str] = None
     error_message: Optional[str] = None
@@ -588,9 +591,10 @@ class HlsSegment:
 @dataclass
 class CaptureConfig:
     """透明捕获配置"""
-    capture_mode: CaptureMode = CaptureMode.TRANSPARENT  # 默认使用 Windows 透明捕获模式
+    capture_mode: CaptureMode = CaptureMode.PROXY_ONLY  # 默认优先使用显式代理模式
     use_windivert: bool = True
-    target_processes: List[str] = field(default_factory=lambda: ["WeChat.exe", "WeChatAppEx.exe"])
+    quic_blocking_enabled: bool = True
+    target_processes: List[str] = field(default_factory=resolve_local_capture_processes)
     no_detection_timeout: int = 60  # 秒
     log_unrecognized_domains: bool = True
 
@@ -599,6 +603,7 @@ class CaptureConfig:
         return {
             "capture_mode": self.capture_mode.value,
             "use_windivert": self.use_windivert,
+            "quic_blocking_enabled": self.quic_blocking_enabled,
             "target_processes": self.target_processes,
             "no_detection_timeout": self.no_detection_timeout,
             "log_unrecognized_domains": self.log_unrecognized_domains,
@@ -607,13 +612,14 @@ class CaptureConfig:
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "CaptureConfig":
         """从字典创建实例"""
-        capture_mode = data.get("capture_mode", "transparent")  # 默认使用透明捕获模式
+        capture_mode = data.get("capture_mode", "proxy_only")
         if isinstance(capture_mode, str):
             capture_mode = CaptureMode(capture_mode)
         return cls(
             capture_mode=capture_mode,
             use_windivert=data.get("use_windivert", True),
-            target_processes=data.get("target_processes", ["WeChat.exe", "WeChatAppEx.exe"]),
+            quic_blocking_enabled=data.get("quic_blocking_enabled", True),
+            target_processes=data.get("target_processes", resolve_local_capture_processes()),
             no_detection_timeout=data.get("no_detection_timeout", 60),
             log_unrecognized_domains=data.get("log_unrecognized_domains", True),
         )
@@ -791,10 +797,7 @@ class MultiModeCaptureConfig:
     quic_blocking_enabled: bool = False
     
     # 进程设置
-    target_processes: List[str] = field(default_factory=lambda: [
-        "WeChat.exe", "WeChatAppEx.exe", "WeChatApp.exe", 
-        "WeChatBrowser.exe", "WeChatPlayer.exe", "Weixin.exe"
-    ])
+    target_processes: List[str] = field(default_factory=resolve_local_capture_processes)
     
     # 诊断设置
     diagnostic_mode: bool = False
@@ -847,10 +850,7 @@ class MultiModeCaptureConfig:
             clash_api_secret=data.get("clash_api_secret", ""),
             custom_proxy_address=data.get("custom_proxy_address", ""),
             quic_blocking_enabled=data.get("quic_blocking_enabled", False),
-            target_processes=data.get("target_processes", [
-                "WeChat.exe", "WeChatAppEx.exe", "WeChatApp.exe",
-                "WeChatBrowser.exe", "WeChatPlayer.exe", "Weixin.exe"
-            ]),
+            target_processes=data.get("target_processes", resolve_local_capture_processes()),
             diagnostic_mode=data.get("diagnostic_mode", False),
             log_all_traffic=data.get("log_all_traffic", False),
             windivert_filter=data.get("windivert_filter", ""),

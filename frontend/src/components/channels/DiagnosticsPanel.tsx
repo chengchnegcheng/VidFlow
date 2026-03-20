@@ -191,7 +191,7 @@ const ProxyInfoDisplay: React.FC<{ proxyInfo: ProxyInfo | null }> = ({ proxyInfo
 /**
  * 统计信息组件
  */
-const StatisticsDisplay: React.FC<{ statistics: Record<string, number | string | null> }> = ({ statistics }) => {
+const StatisticsDisplay: React.FC<{ statistics: Record<string, boolean | number | string | null> }> = ({ statistics }) => {
   const entries = Object.entries(statistics).filter(([_, v]) => v !== null);
   
   if (entries.length === 0) {

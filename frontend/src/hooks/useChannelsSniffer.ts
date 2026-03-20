@@ -15,6 +15,7 @@ import {
   DownloadResponse,
   CertInfoResponse,
   CertGenerateResponse,
+  CertInstallResponse,
   ChannelsConfigResponse,
   ChannelsConfigUpdateRequest,
   CaptureMode,
@@ -81,6 +82,7 @@ export function useChannelsSniffer() {
   const statusPollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const videosPollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isMountedRef = useRef(true);
+  const fetchVideosRef = useRef<() => Promise<void>>(async () => {});
   
   // 熔断器状态
   const statusFailureCountRef = useRef(0);
@@ -154,9 +156,13 @@ export function useChannelsSniffer() {
       setCaptureState(response.capture_state);
       setCaptureStartedAt(response.capture_started_at || null);
       
-      // 如果嗅探器正在运行，开始视频列表轮询
+      // If sniffer is running, make sure videos polling is active.
       if (response.state === 'running' && !videosPollingRef.current) {
-        startVideosPolling();
+        clearVideosPolling();
+        void fetchVideosRef.current();
+        videosPollingRef.current = setInterval(() => {
+          void fetchVideosRef.current();
+        }, VIDEOS_POLLING_INTERVAL_MS);
       } else if (response.state !== 'running') {
         clearVideosPolling();
       }
@@ -237,6 +243,7 @@ export function useChannelsSniffer() {
       }
     }
   }, [safeSetState]);
+  fetchVideosRef.current = fetchVideos;
 
   /**
    * 开始状态轮询
@@ -269,6 +276,10 @@ export function useChannelsSniffer() {
       }) as SnifferStartResponse;
       
       if (!isMountedRef.current) return response;
+
+      if (response.proxy_info !== undefined) {
+        setProxyInfo(response.proxy_info ?? null);
+      }
       
       if (response.success) {
         // 启动成功，开始轮询
@@ -421,9 +432,9 @@ export function useChannelsSniffer() {
   /**
    * 导出证书
    */
-  const exportCert = useCallback(async (exportPath: string) => {
+  const exportCert = useCallback(async (exportPath: string, format: 'cer' | 'p12' = 'cer') => {
     try {
-      const response = await invoke('channels_export_cert', { export_path: exportPath });
+      const response = await invoke('channels_export_cert', { export_path: exportPath, format });
       return response;
     } catch (error: any) {
       console.error('Failed to export cert:', error);
@@ -434,7 +445,7 @@ export function useChannelsSniffer() {
   /**
    * 下载证书（等待 API 初始化）
    */
-  const downloadCert = useCallback(async () => {
+  const downloadCert = useCallback(async (format: 'cer' | 'p12' = 'p12') => {
     try {
       const apiBaseUrl = getApiBaseUrl();
       
@@ -444,12 +455,50 @@ export function useChannelsSniffer() {
         throw new Error('后端未就绪，请稍后重试');
       }
       
-      window.open(`${apiBaseUrl}/api/channels/certificate/download`, '_blank');
+      window.open(`${apiBaseUrl}/api/channels/certificate/download?format=${format}`, '_blank');
     } catch (error: any) {
       console.error('Failed to download cert:', error);
       throw error;
     }
   }, [safeSetState]);
+
+  /**
+   * 安装系统根证书
+   */
+  const installRootCert = useCallback(async (): Promise<CertInstallResponse> => {
+    safeSetState({ isLoading: true });
+
+    try {
+      const response = await invoke('channels_install_root_cert', {}) as CertInstallResponse;
+      if (response.success) {
+        await fetchCertInfo();
+      }
+      safeSetState({ isLoading: false });
+      return response;
+    } catch (error: any) {
+      safeSetState({ isLoading: false, error: error.message || '安装系统根证书失败' });
+      throw error;
+    }
+  }, [fetchCertInfo, safeSetState]);
+
+  /**
+   * 导入微信兼容 P12
+   */
+  const installWechatP12 = useCallback(async (): Promise<CertInstallResponse> => {
+    safeSetState({ isLoading: true });
+
+    try {
+      const response = await invoke('channels_install_wechat_p12', {}) as CertInstallResponse;
+      if (response.success) {
+        await fetchCertInfo();
+      }
+      safeSetState({ isLoading: false });
+      return response;
+    } catch (error: any) {
+      safeSetState({ isLoading: false, error: error.message || '导入微信兼容 P12 失败' });
+      throw error;
+    }
+  }, [fetchCertInfo, safeSetState]);
 
   /**
    * 获取证书安装说明
@@ -849,6 +898,8 @@ export function useChannelsSniffer() {
     generateCert,
     exportCert,
     downloadCert,
+    installRootCert,
+    installWechatP12,
     getCertInstructions,
     
     // 配置操作

@@ -57,7 +57,9 @@ def valid_channels_url_strategy(draw):
     # 对于 szextshort.weixin.qq.com，需要包含 finder
     if domain == "szextshort.weixin.qq.com":
         path = f"/finder/{path}"
-    
+    elif domain == "channels.weixin.qq.com":
+        path = f"/video/{path}?encfilekey=testkey123456"
+
     protocol = draw(st.sampled_from(["http://", "https://"]))
     return f"{protocol}{domain}/{path}"
 
@@ -171,6 +173,7 @@ class TestURLPatternDetection:
             "https://www.douyin.com/video/123",
             "https://www.qq.com/",
             "https://weixin.qq.com/",
+            "https://channels.weixin.qq.com/web/report-error?pf=web",
             "https://mp.weixin.qq.com/s/abc123",  # 公众号文章，不是视频号
             "ftp://finder.video.qq.com/video",  # 不同协议
         ]
@@ -321,16 +324,22 @@ class TestDecryptionKeyExtraction:
     """解密密钥提取测试"""
 
     def test_extract_key_from_url(self):
-        """从 URL 提取解密密钥"""
-        url = "https://finder.video.qq.com/video?key=abc123def456"
+        """从 URL 提取数字 decodeKey"""
+        url = "https://finder.video.qq.com/video?decodeKey=2065249527"
         key = PlatformDetector.extract_decryption_key(url)
-        assert key == "abc123def456"
+        assert key == "2065249527"
 
     def test_extract_key_alternative_param(self):
-        """从其他参数名提取密钥"""
+        """从其他参数名提取数字密钥"""
+        url = "https://finder.video.qq.com/video?decryptkey=1234567890"
+        key = PlatformDetector.extract_decryption_key(url)
+        assert key == "1234567890"
+
+    def test_extract_key_rejects_non_numeric_value(self):
+        """非数字 decodeKey 不应被接受"""
         url = "https://finder.video.qq.com/video?decryptkey=xyz789"
         key = PlatformDetector.extract_decryption_key(url)
-        assert key == "xyz789"
+        assert key is None
 
     def test_extract_key_no_key_param(self):
         """没有密钥参数返回 None"""

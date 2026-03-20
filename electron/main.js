@@ -2,6 +2,8 @@ const { app, BrowserWindow, ipcMain, dialog, Notification, Tray, Menu } = requir
 const path = require('path');
 const { spawn } = require('child_process');
 const fs = require('fs');
+const http = require('http');
+const crypto = require('crypto');
 const { CustomUpdater } = require('./updater-custom');
 
 // 设置应用名称和用户模型 ID（改善开发模式下的通知和任务栏体验）
@@ -53,6 +55,8 @@ let backendPort = null;
 let backendReady = false;
 let backendError = null; // 新增: 记录后端启动错误
 let updater = null;
+let backendShutdownPromise = null;
+let backendQuitCleanupDone = false;
 
 // 获取应用图标路径的辅助函数
 function getIconPath() {
@@ -99,10 +103,246 @@ function getPortFilePath() {
   return portFilePath;
 }
 
+function removeBackendPortFile() {
+  const portFilePath = getPortFilePath();
+  if (!fs.existsSync(portFilePath)) {
+    return;
+  }
+
+  try {
+    fs.unlinkSync(portFilePath);
+    console.log(`Removed stale backend port file: ${portFilePath}`);
+  } catch (error) {
+    console.warn(`Failed to remove backend port file ${portFilePath}: ${error.message}`);
+  }
+}
+
+function readBackendPortConfigFromFile() {
+  const portFilePath = getPortFilePath();
+  if (!fs.existsSync(portFilePath)) {
+    throw new Error(`Port file not found: ${portFilePath}`);
+  }
+
+  const raw = fs.readFileSync(portFilePath, 'utf8');
+  const config = JSON.parse(raw);
+  const port = Number(config.port);
+
+  if (!Number.isInteger(port) || port <= 0 || port > 65535) {
+    throw new Error(`Invalid backend port in file: ${config.port}`);
+  }
+
+  return {
+    ...config,
+    port,
+  };
+}
+
+function readBackendPortFromFile(expectedStartupToken = null) {
+  const config = readBackendPortConfigFromFile();
+
+  if (expectedStartupToken && config.startup_token !== expectedStartupToken) {
+    throw new Error(`Backend port file token mismatch: ${config.startup_token || 'missing'}`);
+  }
+
+  return config.port;
+}
+
+function checkBackendHealth(port, timeoutMs = 2000) {
+  return new Promise((resolve) => {
+    const req = http.request(
+      {
+        hostname: '127.0.0.1',
+        port,
+        path: '/health',
+        method: 'GET',
+        timeout: timeoutMs,
+      },
+      (res) => {
+        let body = '';
+        res.on('data', (chunk) => {
+          body += chunk.toString('utf8');
+        });
+        res.on('end', () => {
+          if (res.statusCode !== 200) {
+            resolve(false);
+            return;
+          }
+          if (!body) {
+            resolve(true);
+            return;
+          }
+          try {
+            const parsed = JSON.parse(body);
+            resolve(parsed.status === 'healthy' || parsed.backend === 'ready');
+          } catch (error) {
+            resolve(true);
+          }
+        });
+      }
+    );
+
+    req.on('error', () => resolve(false));
+    req.on('timeout', () => {
+      req.destroy();
+      resolve(false);
+    });
+    req.end();
+  });
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function postBackendRequest(port, requestPath, timeoutMs = 2500) {
+  return new Promise((resolve) => {
+    if (!port) {
+      resolve(false);
+      return;
+    }
+
+    const req = http.request(
+      {
+        hostname: '127.0.0.1',
+        port,
+        path: requestPath,
+        method: 'POST',
+        timeout: timeoutMs,
+      },
+      (res) => {
+        let body = '';
+        res.on('data', (chunk) => {
+          body += chunk.toString('utf8');
+        });
+        res.on('end', () => {
+          if (!(res.statusCode >= 200 && res.statusCode < 300)) {
+            resolve(false);
+            return;
+          }
+
+          if (!body) {
+            resolve(true);
+            return;
+          }
+
+          try {
+            const parsed = JSON.parse(body);
+            if (typeof parsed.success === 'boolean') {
+              resolve(parsed.success);
+              return;
+            }
+          } catch (error) {
+            // Ignore non-JSON responses from the backend cleanup endpoint.
+          }
+
+          resolve(true);
+        });
+      }
+    );
+
+    req.on('error', () => resolve(false));
+    req.on('timeout', () => {
+      req.destroy();
+      resolve(false);
+    });
+    req.end();
+  });
+}
+
+async function stopBackendServicesForQuit(reason = 'app_quit') {
+  if (backendShutdownPromise) {
+    return backendShutdownPromise;
+  }
+
+  backendShutdownPromise = (async () => {
+    let resolvedPort = backendPort;
+    if (!resolvedPort) {
+      try {
+        resolvedPort = readBackendPortFromFile();
+      } catch (error) {
+        resolvedPort = null;
+      }
+    }
+
+    if (resolvedPort) {
+      const stopped = await postBackendRequest(
+        resolvedPort,
+        '/api/channels/sniffer/stop',
+        3000,
+      );
+      console.log(`[Quit] Backend sniffer stop (${reason}): ${stopped ? 'ok' : 'skipped'}`);
+    }
+
+    if (pythonProcess && !pythonProcess.killed) {
+      const processToStop = pythonProcess;
+      pythonProcess = null;
+
+      await new Promise((resolve) => {
+        let settled = false;
+        const finish = () => {
+          if (settled) return;
+          settled = true;
+          resolve();
+        };
+
+        const timer = setTimeout(() => {
+          finish();
+        }, 1500);
+
+        processToStop.once('close', () => {
+          clearTimeout(timer);
+          finish();
+        });
+
+        try {
+          processToStop.kill();
+        } catch (error) {
+          clearTimeout(timer);
+          finish();
+        }
+      });
+    }
+
+    backendReady = false;
+    backendPort = null;
+  })().finally(() => {
+    backendQuitCleanupDone = true;
+  });
+
+  return backendShutdownPromise;
+}
+
+async function findExistingBackend(maxAttempts = 1, intervalMs = 500) {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const port = readBackendPortFromFile();
+      const healthy = await checkBackendHealth(port);
+      if (healthy) {
+        backendPort = port;
+        backendReady = true;
+        backendError = null;
+        console.log(`✅ Reusing existing backend at port: ${port}`);
+        return port;
+      }
+    } catch (error) {
+      if (attempt === maxAttempts) {
+        console.log(`ℹ️ Existing backend not available: ${error.message}`);
+      }
+    }
+
+    if (attempt < maxAttempts) {
+      await sleep(intervalMs);
+    }
+  }
+
+  return null;
+}
+
 // Python 后端进程管理
 function startPythonBackend() {
   return new Promise((resolve, reject) => {
     let settled = false;
+    const startupToken = crypto.randomUUID();
 
     const safeResolve = (port) => {
       if (!settled) {
@@ -121,17 +361,6 @@ function startPythonBackend() {
         reject(error);
       }
     };
-
-    // 清理旧的端口文件
-    const portFilePath = getPortFilePath();
-    if (fs.existsSync(portFilePath)) {
-      try {
-        fs.unlinkSync(portFilePath);
-        console.log('✅ Cleaned up old port file');
-      } catch (error) {
-        console.warn('⚠️ Failed to clean up old port file:', error);
-      }
-    }
 
     const isDev = !app.isPackaged;
     
@@ -160,6 +389,7 @@ function startPythonBackend() {
         PYTHONIOENCODING: 'utf-8',
         PYTHONUTF8: '1',
         PYTHONUNBUFFERED: '1',  // 禁用Python输出缓冲
+        VIDFLOW_STARTUP_TOKEN: startupToken,
         // Windows 控制台编码
         PYTHONLEGACYWINDOWSSTDIO: '1'
       };
@@ -212,6 +442,7 @@ function startPythonBackend() {
         PYTHONIOENCODING: 'utf-8',
         PYTHONUTF8: '1',
         PYTHONUNBUFFERED: '1',  // 禁用Python输出缓冲
+        VIDFLOW_STARTUP_TOKEN: startupToken,
         PYTHONLEGACYWINDOWSSTDIO: '1'
       };
       
@@ -242,7 +473,7 @@ function startPythonBackend() {
           console.log(`Detected port from log: ${portMatch[1]}, reading port file...`);
           setTimeout(() => {
             if (!backendReady) {
-              tryReadPortFile().then(resolve).catch(() => {});
+              tryReadPortFile(startupToken).then(resolve).catch(() => {});
             }
           }, 500);
         }
@@ -310,7 +541,7 @@ function startPythonBackend() {
           return;
         }
 
-        tryReadPortFile()
+        tryReadPortFile(startupToken)
           .then((port) => {
             clearInterval(pollInterval);
             if (!settled && !backendReady) {
@@ -338,28 +569,29 @@ function startPythonBackend() {
     setTimeout(() => {
       if (!settled && !backendReady) {
         console.warn('⚠️ Backend startup timeout (15s), trying final port file read...');
-        tryReadPortFile().then(safeResolve).catch(safeReject);
+        tryReadPortFile(startupToken).then(safeResolve).catch(safeReject);
       }
     }, 15000);
   });
 }
 
 // 尝试从文件读取端口信息
-function tryReadPortFile() {
+function tryReadPortFile(expectedStartupToken = null) {
   return new Promise((resolve, reject) => {
-    const portFilePath = getPortFilePath();
-
     try {
-      if (fs.existsSync(portFilePath)) {
-        const data = fs.readFileSync(portFilePath, 'utf8');
-        const config = JSON.parse(data);
-        backendPort = config.port;
+      const port = readBackendPortFromFile(expectedStartupToken);
+      checkBackendHealth(port).then((healthy) => {
+        if (!healthy) {
+          reject(new Error(`Backend on port ${port} is not healthy`));
+          return;
+        }
+
+        backendPort = port;
         backendReady = true;
-        console.log(`📄 Read backend port from file: ${backendPort}`);
+        backendError = null;
+        console.log(`📄 Read healthy backend port from file: ${backendPort}`);
         resolve(backendPort);
-      } else {
-        reject(new Error(`Port file not found: ${portFilePath}`));
-      }
+      });
     } catch (error) {
       reject(error);
     }
@@ -1093,24 +1325,40 @@ app.whenReady().then(async () => {
     }
   }
 
+  const isDev = !app.isPackaged;
+  const existingBackendAttempts = isDev ? 12 : 1;
+  const disableBackendAutoStart = process.env.DISABLE_BACKEND_AUTO_START === '1';
+  const reuseExistingBackend = !isDev || process.env.VIDFLOW_REUSE_EXISTING_BACKEND === '1';
+  const probeExistingBackend = disableBackendAutoStart || reuseExistingBackend || isDev;
+
+  if (probeExistingBackend) {
+    const existingPort = await findExistingBackend(existingBackendAttempts, 500);
+    if (existingPort) {
+      const reuseReason = disableBackendAutoStart
+        ? 'manual dev backend'
+        : (reuseExistingBackend ? 'requested existing backend' : 'healthy dev backend');
+      console.log(`✅ Reusing ${reuseReason}: ${existingPort}`);
+      if (mainWindow && mainWindow.webContents) {
+        mainWindow.webContents.send('backend-ready', { port: existingPort });
+        console.log('📢 Sent backend-ready event to renderer');
+      }
+      return;
+    }
+  }
+
   // 检查是否禁用后端自动启动（用于手动启动后端的开发场景）
-  if (process.env.DISABLE_BACKEND_AUTO_START === '1') {
-    console.log('⚠️ Backend auto-start disabled by environment variable');
-    console.log('⚠️ Make sure you have started the backend manually!');
-
-    // 尝试读取已存在的端口文件
-    setTimeout(() => {
-      tryReadPortFile()
-        .then(port => {
-          console.log(`✅ Found existing backend on port: ${port}`);
-        })
-        .catch(err => {
-          console.error('❌ Could not find backend port file:', err);
-          console.error('❌ Please make sure backend is running!');
-        });
-    }, 1000);
-
+  if (disableBackendAutoStart) {
+    console.error('❌ Backend auto-start is disabled, but no healthy existing backend was found');
+    console.error('❌ Please make sure the backend started by START.bat is running');
     return;
+  }
+
+  if (isDev) {
+    console.log('[DEV] No healthy existing backend found; starting a fresh backend instance');
+    backendReady = false;
+    backendPort = null;
+    backendError = null;
+    removeBackendPortFile();
   }
 
   // 异步启动后端，不阻塞窗口显示
@@ -1202,10 +1450,6 @@ app.on('window-all-closed', () => {
   // macOS 下所有窗口关闭时退出应用
   // Windows 下窗口关闭时不退出，继续在托盘运行
   if (process.platform === 'darwin') {
-    // 关闭 Python 后端
-    if (pythonProcess) {
-      pythonProcess.kill();
-    }
     app.quit();
   }
   // Windows 下窗口关闭时不退出，继续在托盘运行
@@ -1213,11 +1457,22 @@ app.on('window-all-closed', () => {
 });
 
 // 应用退出前清理
-app.on('before-quit', () => {
+app.on('before-quit', (event) => {
   console.log('========================================');
   console.log('before-quit event triggered!');
   console.log('========================================');
   app.isQuitting = true;
+
+  if (backendQuitCleanupDone) {
+    return;
+  }
+
+  event.preventDefault();
+  stopBackendServicesForQuit('before-quit').finally(() => {
+    setTimeout(() => {
+      app.quit();
+    }, 0);
+  });
 });
 
 app.on('will-quit', () => {
@@ -1563,6 +1818,73 @@ ipcMain.handle('custom-update-install', async () => {
     await updater.quitAndInstall();
     return { success: true };
   } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+function quotePowerShellArg(value) {
+  return `'${String(value).replace(/'/g, "''")}'`;
+}
+
+ipcMain.handle('restart-as-admin', async () => {
+  if (process.platform !== 'win32') {
+    return { success: false, error: 'Restart as admin is only supported on Windows' };
+  }
+
+  const executable = process.execPath;
+  const args = process.argv.slice(1);
+  const argumentList = args.length
+    ? ` -ArgumentList ${args.map(quotePowerShellArg).join(', ')}`
+    : '';
+  const command = `$ErrorActionPreference = 'Stop'; Start-Process -FilePath ${quotePowerShellArg(executable)}${argumentList} -Verb RunAs | Out-Null`;
+
+  return new Promise((resolve) => {
+    let stderr = '';
+    const relaunchProcess = spawn(
+      'powershell.exe',
+      ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', command],
+      { windowsHide: true }
+    );
+
+    relaunchProcess.stderr.on('data', (data) => {
+      stderr += data.toString('utf8');
+    });
+
+    relaunchProcess.on('error', (error) => {
+      console.error('[IPC] Failed to request admin restart:', error);
+      resolve({ success: false, error: error.message });
+    });
+
+    relaunchProcess.on('close', (code) => {
+      if (code !== 0) {
+        const error = stderr.trim() || 'Elevation request was cancelled';
+        console.warn('[IPC] Admin restart was not completed:', error);
+        resolve({ success: false, error });
+        return;
+      }
+
+      resolve({ success: true });
+
+      setTimeout(() => {
+        app.isQuitting = true;
+        app.quit();
+      }, 100);
+    });
+  });
+});
+
+// 设置/清除代理配置（用于视频号嗅探器）
+// 当嗅探器启动设置系统代理时，需要确保 Electron 的 HTTP 请求绕过 localhost
+ipcMain.handle('set-proxy-config', async (event, config) => {
+  try {
+    if (mainWindow && mainWindow.webContents) {
+      await mainWindow.webContents.session.setProxy(config);
+      console.log('[IPC] Proxy config set:', JSON.stringify(config));
+      return { success: true };
+    }
+    return { success: false, error: 'No window' };
+  } catch (error) {
+    console.error('[IPC] Failed to set proxy config:', error);
     return { success: false, error: error.message };
   }
 });

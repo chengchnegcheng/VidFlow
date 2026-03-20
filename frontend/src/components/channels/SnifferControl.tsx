@@ -17,6 +17,7 @@ import {
 } from '../ui/select';
 import { Switch } from '../ui/switch';
 import { Label } from '../ui/label';
+import { ProxyWarning } from './ProxyWarning';
 import { 
   Play, 
   Square, 
@@ -26,7 +27,6 @@ import {
   AlertCircle,
   Shield,
   Download,
-  Settings2,
   Zap,
 } from 'lucide-react';
 import { 
@@ -41,7 +41,6 @@ import {
   getSnifferStateText,
   getDriverStateText,
   getMultiCaptureModeText,
-  getProxyTypeText,
 } from '../../types/channels';
 
 interface SnifferControlProps {
@@ -112,7 +111,7 @@ export const SnifferControl: React.FC<SnifferControlProps> = ({
   onStart,
   onStop,
   driverStatus,
-  captureMode = 'transparent',
+  captureMode = 'proxy_only',
   onOpenDriverDialog,
   onRequestAdmin,
   // 多模式捕获相关
@@ -184,17 +183,26 @@ export const SnifferControl: React.FC<SnifferControlProps> = ({
       if (isRunning) {
         await onStop();
       } else if (isStopped) {
-        console.log('[SnifferControl] Calling onStart with captureMode: transparent');
-        const result = await onStart(undefined, 'transparent');
+        console.log('[SnifferControl] Calling onStart with captureMode:', captureMode);
+        const result = await onStart(undefined, captureMode);
         
         // 检查返回结果，即使 success=true 也可能有警告信息
         if (result) {
-          if (result.success && result.error_message) {
-            // 成功但有警告
-            setStartWarning(result.error_message);
+          if (result.success) {
+            const guidance = captureMode === 'transparent'
+              ? '嗅探已启动。请重新打开视频号页面并完整播放目标视频一次，否则只能抓到原始视频地址，拿不到真实标题、缩略图和 decodeKey。'
+              : '嗅探已启动。请在代理已生效的前提下重新打开视频号页面并完整播放目标视频一次。';
+            setStartWarning(result.error_message ? `${result.error_message} ${guidance}` : guidance);
+            if (captureMode !== 'transparent') {
+              const proxyGuidance = '嗅探已启动。请确认系统根证书和微信兼容 P12 已安装，然后重新打开视频号页面并完整播放目标视频一次。';
+              setStartWarning(result.error_message ? `${result.error_message} ${proxyGuidance}` : proxyGuidance);
+            }
           }
           if (!result.success) {
             setStartWarning(result.error_message || '启动失败，请检查 WinDivert 驱动和管理员权限。');
+            if (captureMode !== 'transparent' && !result.error_message) {
+              setStartWarning('启动失败，请检查 mitmproxy 证书、微信兼容 P12 和系统代理设置。');
+            }
           }
         }
       } else {
@@ -209,6 +217,9 @@ export const SnifferControl: React.FC<SnifferControlProps> = ({
    * 检查是否可以启动
    */
   const canStart = () => {
+    if (captureMode !== 'transparent') {
+      return true;
+    }
     return canStartTransparent;
   };
 
@@ -216,6 +227,7 @@ export const SnifferControl: React.FC<SnifferControlProps> = ({
    * 获取启动按钮禁用原因
    */
   const getStartDisabledReason = (): string | null => {
+    if (captureMode !== 'transparent') return null;
     if (!isDriverInstalled) return '需要先安装 WinDivert 驱动';
     if (!isAdmin) return '需要管理员权限';
     return null;
@@ -263,20 +275,7 @@ export const SnifferControl: React.FC<SnifferControlProps> = ({
 
       {/* 代理状态显示（Task 18.1） */}
       {proxyInfo && proxyInfo.proxy_type !== 'none' && (
-        <div className="flex items-center justify-between p-2 bg-muted rounded-lg">
-          <div className="flex items-center gap-2">
-            <Settings2 className="h-4 w-4" />
-            <span className="text-sm">代理软件</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <Badge variant="outline">
-              {getProxyTypeText(proxyInfo.proxy_type)}
-            </Badge>
-            {proxyInfo.is_tun_enabled && (
-              <Badge variant="secondary" className="text-xs">TUN</Badge>
-            )}
-          </div>
-        </div>
+        <ProxyWarning proxyInfo={proxyInfo} />
       )}
 
       {/* 透明捕获模式状态提示 */}
@@ -354,7 +353,7 @@ export const SnifferControl: React.FC<SnifferControlProps> = ({
           <div>
             <div className="flex items-center gap-2">
               <span className="font-medium">
-                {currentMultiMode ? getMultiCaptureModeText(currentMultiMode) : '透明嗅探器'}
+                {currentMultiMode ? getMultiCaptureModeText(currentMultiMode) : (captureMode === 'transparent' ? '透明嗅探器' : '显式代理嗅探器')}
               </span>
               <Badge variant={getStateBadgeVariant(state)}>
                 {getSnifferStateText(state)}
@@ -407,10 +406,15 @@ export const SnifferControl: React.FC<SnifferControlProps> = ({
               <p>系统代理拦截已启动，请确保已安装 CA 证书</p>
               <p>打开微信视频号，浏览想要下载的视频即可自动捕获</p>
             </>
-          ) : (
+          ) : captureMode === 'transparent' ? (
             <>
               <p>透明捕获已启动，正在监控微信流量...</p>
-              <p>打开 Windows PC 端微信视频号，浏览想要下载的视频即可自动捕获</p>
+              <p>请重新打开视频号页面并完整播放目标视频一次；如果拿不到标题、缩略图或 decodeKey，请改用显式代理模式。</p>
+            </>
+          ) : (
+            <>
+              <p>显式代理模式已启动，系统代理已切换到本地嗅探器。</p>
+              <p>请确认系统根证书和微信兼容 P12 已安装，然后重新打开视频号页面并完整播放目标视频一次。</p>
             </>
           )}
         </div>

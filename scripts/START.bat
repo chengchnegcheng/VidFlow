@@ -1,4 +1,5 @@
 @echo off
+setlocal EnableDelayedExpansion
 chcp 65001 >nul
 title VidFlow Desktop - Electron Mode
 color 0A
@@ -21,16 +22,25 @@ echo [1/3] Starting Python backend...
 start "VidFlow Backend" cmd /k "cd /d "%~dp0\..\backend" && venv\Scripts\activate && set PYTHONPATH=%CD% && python -m src.main"
 echo [INFO] Backend will use random port
 
-REM Wait for backend to initialize
-echo [WAIT] Waiting for backend to initialize...
-timeout /t 5 >nul
+REM Wait for backend to become healthy before Electron tries to reuse it
+echo [WAIT] Waiting for backend to become healthy...
+set BACKEND_PORT=
+for /l %%i in (1,1,40) do (
+    if exist "backend\data\backend_port.json" (
+        for /f "usebackq delims=" %%p in (`powershell -NoProfile -Command "try { $cfg = Get-Content 'backend\\data\\backend_port.json' | ConvertFrom-Json; if ($cfg.port) { $resp = Invoke-WebRequest -Uri ('http://127.0.0.1:' + $cfg.port + '/health') -UseBasicParsing -TimeoutSec 2; if ($resp.StatusCode -eq 200) { Write-Output $cfg.port } } } catch {}"`) do (
+            set BACKEND_PORT=%%p
+        )
+        if defined BACKEND_PORT goto :backend_ready
+    )
+    timeout /t 1 >nul
+)
 
-REM Check if port file is created
-if exist "backend\data\backend_port.json" (
-    echo [OK] Backend port file created
+:backend_ready
+if defined BACKEND_PORT (
+    echo [OK] Backend ready on port !BACKEND_PORT!
 ) else (
     color 0E
-    echo [WARN] Backend port file not found yet
+    echo [WARN] Backend did not report healthy in time. Electron will still try to reuse the existing dev backend.
 )
 
 echo.
@@ -60,7 +70,7 @@ echo [3/3] Starting Electron Desktop App...
 timeout /t 2 >nul
 
 REM Start Electron
-start "VidFlow Electron" cmd /c "cd /d "%~dp0\.." && npm run electron:dev"
+start "VidFlow Electron" "%~dp0START_ELECTRON_DEV.bat"
 
 echo.
 color 0A
@@ -69,12 +79,16 @@ echo   VidFlow Desktop Started!
 echo ========================================
 echo.
 echo   Mode: Electron Desktop App
-echo   Backend: Random port - dynamic
+if defined BACKEND_PORT (
+    echo   Backend: Existing dev backend on http://127.0.0.1:!BACKEND_PORT!
+) else (
+    echo   Backend: Existing dev backend - port pending
+)
 call :get_frontend_port
 echo   Frontend: http://localhost:%FRONTEND_PORT%
 echo.
 echo   The desktop window will open automatically.
-echo   Backend port is managed by Electron.
+echo   Electron will reuse the backend started above.
 echo.
 echo ========================================
 echo.

@@ -16,6 +16,8 @@ prepend-rules:
   - PROCESS-NAME,WeChat.exe,DIRECT
   - PROCESS-NAME,Weixin.exe,DIRECT
   - PROCESS-NAME,WeChatAppEx.exe,DIRECT
+  - PROCESS-NAME,QQBrowser.exe,DIRECT
+  - PROCESS-NAME,msedgewebview2.exe,DIRECT
   - PROCESS-NAME,WeChatApp.exe,DIRECT
   - PROCESS-NAME,WeChatPlayer.exe,DIRECT
   - PROCESS-NAME,WeChatBrowser.exe,DIRECT

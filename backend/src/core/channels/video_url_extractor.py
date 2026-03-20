@@ -77,6 +77,9 @@ class VideoURLExtractor:
         # 通用视频模式
         r'.*\.video\.qq\.com.*\.mp4',
         r'.*\.video\.qq\.com.*\.m3u8',
+        # Fake-IP/非标准主机场景：仅靠路径/参数识别
+        r'/\d+/\d+/stodownload',
+        r'[?&]encfilekey=',
         # 视频号特定模式
         r'finder.*\.video\.qq\.com',
         r'mpvideo\.qpic\.cn',
@@ -98,9 +101,19 @@ class VideoURLExtractor:
         # 缩略图
         r'thumbnail', r'thumb', r'cover', r'poster',
         r'/\d+x\d+/', r'_\d+x\d+\.',  # 尺寸标识
+        # 微信视频号缩略图路径：/20304/ 和 /20350/ 是图片路径，/20302/ 才是视频路径
+        # 带 picformat 参数的也是缩略图请求
+        r'/\d+/20304/stodownload',
+        r'/\d+/20350/stodownload',
+        r'[?&]picformat=',
+        r'[?&]wxampicformat=',
         # 其他非视频
         r'\.xml$', r'\.json$', r'\.html$',
         r'manifest', r'playlist',  # 清单文件（非视频本身）
+        # 微信视频号 HTML 页面（非视频资源）
+        r'channels\.weixin\.qq\.com/web/pages/',
+        r'channels\.weixin\.qq\.com/web/report',
+        r'channels\.weixin\.qq\.com/web$',
     ]
     
     # 视频ID提取模式
@@ -346,8 +359,8 @@ class VideoURLExtractor:
         # 提取解密密钥
         decryption_key = None
         if is_encrypted:
-            params = parse_qs(parsed.query)
-            decryption_key = params.get('encfilekey', [None])[0]
+            from .platform_detector import PlatformDetector
+            decryption_key = PlatformDetector.extract_decryption_key(url)
         
         # 提取过期时间
         expires_at = self._extract_expiration(url)

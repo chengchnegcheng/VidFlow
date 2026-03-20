@@ -414,7 +414,12 @@ class ToolManager:
             return False
 
     @staticmethod
-    async def _safe_remove_file(file_path: Path, max_retries: int = 5, retry_delay: float = 1.0) -> bool:
+    async def _safe_remove_file(
+        file_path: Path,
+        max_retries: int = 5,
+        retry_delay: float = 1.0,
+        log_failures: bool = True,
+    ) -> bool:
         """安全删除文件，带重试机制"""
         if not file_path.exists():
             return True
@@ -428,7 +433,8 @@ class ToolManager:
             try:
                 # 检查文件是否被占用
                 if ToolManager._is_file_in_use(file_path):
-                    logger.warning(f"[Tools] File is in use, attempt {attempt + 1}/{max_retries}: {file_path}")
+                    if log_failures:
+                        logger.warning(f"[Tools] File is in use, attempt {attempt + 1}/{max_retries}: {file_path}")
                     if attempt < max_retries - 1:
                         # 尝试强制垃圾回收来释放文件句柄
                         import gc
@@ -436,7 +442,8 @@ class ToolManager:
                         await asyncio.sleep(retry_delay * (attempt + 1))  # 递增延迟
                         continue
                     else:
-                        logger.error(f"[Tools] File still in use after {max_retries} attempts: {file_path}")
+                        if log_failures:
+                            logger.error(f"[Tools] File still in use after {max_retries} attempts: {file_path}")
                         return False
 
                 # 尝试删除文件
@@ -445,17 +452,37 @@ class ToolManager:
                 return True
 
             except (IOError, OSError, PermissionError) as e:
-                logger.warning(f"[Tools] Failed to remove file (attempt {attempt + 1}/{max_retries}): {file_path}, error: {e}")
+                if log_failures:
+                    logger.warning(f"[Tools] Failed to remove file (attempt {attempt + 1}/{max_retries}): {file_path}, error: {e}")
                 if attempt < max_retries - 1:
                     # 尝试强制垃圾回收
                     import gc
                     gc.collect()
                     await asyncio.sleep(retry_delay * (attempt + 1))  # 递增延迟
                 else:
-                    logger.error(f"[Tools] Failed to remove file after {max_retries} attempts: {file_path}")
+                    if log_failures:
+                        logger.error(f"[Tools] Failed to remove file after {max_retries} attempts: {file_path}")
                     return False
 
         return False
+
+    @staticmethod
+    def _defer_cleanup_file(file_path: Path, max_suffix: int = 10) -> Optional[Path]:
+        """Rename a busy temp file so it can be cleaned up on a later run."""
+        if not file_path.exists():
+            return None
+
+        for suffix in range(1, max_suffix + 1):
+            deferred_path = file_path.with_name(f"{file_path.name}.retry{suffix}")
+            if deferred_path.exists():
+                continue
+            try:
+                file_path.replace(deferred_path)
+                return deferred_path
+            except (IOError, OSError, PermissionError):
+                continue
+
+        return None
 
     @staticmethod
     async def _safe_replace_file(src: Path, dst: Path, max_retries: int = 5, retry_delay: float = 1.0) -> bool:
@@ -943,13 +970,31 @@ class ToolManager:
             # 安全清理下载文件（增加重试次数和延迟）
             # 如果清理失败，只记录警告，不影响主流程
             if download_path.exists():
-                remove_success = await self._safe_remove_file(download_path, max_retries=5, retry_delay=1.0)
+                remove_success = await self._safe_remove_file(
+                    download_path,
+                    max_retries=5,
+                    retry_delay=1.0,
+                    log_failures=False,
+                )
                 if not remove_success:
-                    logger.warning(f"Failed to remove temporary file (will be cleaned up later): {download_path}")
+                    deferred_path = self._defer_cleanup_file(download_path)
+                    if deferred_path:
+                        logger.warning(f"[Tools] Deferred cleanup for busy temporary file: {deferred_path}")
+                    else:
+                        logger.warning(f"Failed to remove temporary file (will be cleaned up later): {download_path}")
             if temp_path.exists():
-                remove_success = await self._safe_remove_file(temp_path, max_retries=5, retry_delay=1.0)
+                remove_success = await self._safe_remove_file(
+                    temp_path,
+                    max_retries=5,
+                    retry_delay=1.0,
+                    log_failures=False,
+                )
                 if not remove_success:
-                    logger.warning(f"Failed to remove temporary file (will be cleaned up later): {temp_path}")
+                    deferred_path = self._defer_cleanup_file(temp_path)
+                    if deferred_path:
+                        logger.warning(f"[Tools] Deferred cleanup for busy temporary file: {deferred_path}")
+                    else:
+                        logger.warning(f"Failed to remove temporary file (will be cleaned up later): {temp_path}")
     
     async def extract_ffmpeg(self, archive_path: Path):
         """解压 FFmpeg"""

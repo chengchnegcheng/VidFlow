@@ -39,6 +39,8 @@ rules:
   # 微信视频号直连
   - PROCESS-NAME,WeChat.exe,DIRECT
   - PROCESS-NAME,WeChatAppEx.exe,DIRECT
+  - PROCESS-NAME,QQBrowser.exe,DIRECT
+  - PROCESS-NAME,msedgewebview2.exe,DIRECT
   - DOMAIN-SUFFIX,video.qq.com,DIRECT
   - DOMAIN-SUFFIX,weixin.qq.com,DIRECT
   - DOMAIN-SUFFIX,wxapp.tc.qq.com,DIRECT

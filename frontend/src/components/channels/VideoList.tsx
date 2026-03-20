@@ -18,15 +18,28 @@ import {
   Check,
   Plus,
   Loader2,
-  AlertCircle
+  AlertCircle,
 } from 'lucide-react';
-import { 
-  DetectedVideo, 
+import {
+  DetectedVideo,
   DownloadRequest,
-  formatFileSize, 
-  formatDuration 
+  formatFileSize,
+  formatDuration,
 } from '../../types/channels';
 import { TaskThumbnail } from '../TaskThumbnail';
+
+const normalizeDecodeKey = (value?: string | null): string | null => {
+  if (!value) return null;
+  const key = String(value).trim();
+  return /^\d+$/.test(key) ? key : null;
+};
+
+const requiresDecodeKey = (url?: string | null, encryptionType?: string | null): boolean => {
+  const type = String(encryptionType || '').toLowerCase();
+  if (type === 'isaac64') return true;
+  const normalizedUrl = String(url || '').toLowerCase();
+  return normalizedUrl.includes('encfilekey=') || normalizedUrl.includes('/stodownload');
+};
 
 interface VideoListProps {
   videos: DetectedVideo[];
@@ -34,31 +47,30 @@ interface VideoListProps {
   onClearAll: () => Promise<void>;
   onAddVideo?: (url: string, title?: string) => Promise<any>;
   qualityPreference?: string;
+  downloadDir?: string;
 }
 
 interface VideoItemProps {
   video: DetectedVideo;
   onDownload: (request: DownloadRequest) => Promise<void>;
   qualityPreference?: string;
+  downloadDir?: string;
 }
 
-/**
- * 单个视频项组件
- */
-const VideoItem: React.FC<VideoItemProps> = ({ video, onDownload, qualityPreference }) => {
+const VideoItem: React.FC<VideoItemProps> = ({ video, onDownload, qualityPreference, downloadDir }) => {
   const [copied, setCopied] = React.useState(false);
   const [downloading, setDownloading] = React.useState(false);
+  const decodeKey = normalizeDecodeKey(video.decryption_key);
+  const encryptionType = String(video.encryption_type || '').toLowerCase();
+  const isEncrypted = requiresDecodeKey(video.url, encryptionType) || (encryptionType !== 'none' && encryptionType !== 'unknown');
+  const missingDecodeKey = isEncrypted && !decodeKey;
 
-  /**
-   * 复制视频 URL
-   */
   const handleCopyUrl = async () => {
     try {
       await navigator.clipboard.writeText(video.url);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch (err) {
-      // 如果剪贴板API失败，尝试使用传统方法
       console.warn('Clipboard API failed, using fallback:', err);
       try {
         const textArea = document.createElement('textarea');
@@ -78,48 +90,61 @@ const VideoItem: React.FC<VideoItemProps> = ({ video, onDownload, qualityPrefere
     }
   };
 
-  /**
-   * 下载视频
-   */
   const handleDownload = async () => {
     setDownloading(true);
     try {
-      await onDownload({
+      const request = {
         url: video.url,
         quality: qualityPreference || 'best',
-        auto_decrypt: video.encryption_type !== 'none',
-        decryption_key: video.decryption_key,  // 传递解密密钥
+        output_path: downloadDir || undefined,
+        auto_decrypt: isEncrypted && Boolean(decodeKey),
+        decryption_key: decodeKey,
+      };
+      console.info('[channels] download click', {
+        title: video.title || null,
+        urlPreview: video.url ? `${video.url.slice(0, 160)}${video.url.length > 160 ? '...' : ''}` : null,
+        encryptionType,
+        isEncrypted,
+        decodeKeyPresent: Boolean(decodeKey),
+        missingDecodeKey,
+        isPlaceholder: Boolean(video.is_placeholder),
+        placeholderMessage: video.placeholder_message || null,
+        request: {
+          ...request,
+          decryption_key: request.decryption_key ? '[present]' : null,
+        },
       });
+      await onDownload(request);
     } finally {
       setDownloading(false);
     }
   };
 
-  /**
-   * 获取加密类型显示
-   */
   const getEncryptionBadge = () => {
-    if (video.encryption_type === 'none') return null;
+    if (encryptionType === 'none' || encryptionType === 'unknown') return null;
     return (
       <Badge variant="outline" className="text-xs">
         <Lock className="h-3 w-3 mr-1" />
-        {video.encryption_type.toUpperCase()}
+        {encryptionType.toUpperCase()}
       </Badge>
     );
   };
 
+  const downloadTitle = video.is_placeholder
+    ? (video.placeholder_message || '请先在微信中播放该视频后再下载')
+    : (missingDecodeKey
+        ? '当前还没抓到 decodeKey，将下载加密原文件。如需自动解密，请在启动嗅探后重新打开视频号页面并完整播放一遍。'
+        : undefined);
+
   return (
     <div className="flex items-start gap-3 p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors">
-      {/* 缩略图 - 使用 TaskThumbnail 组件支持本地生成 */}
       <TaskThumbnail
         thumbnail={video.thumbnail || undefined}
         title={video.title || '微信视频号'}
         className="shrink-0 w-24 h-16"
       />
 
-      {/* 视频信息 */}
       <div className="flex-1 min-w-0 space-y-2">
-        {/* 标题和元信息 */}
         <div className="space-y-1">
           <h4 className="font-medium text-sm truncate" title={video.title || '微信视频号'}>
             {video.title || '微信视频号'}
@@ -149,10 +174,15 @@ const VideoItem: React.FC<VideoItemProps> = ({ video, onDownload, qualityPrefere
               </Badge>
             )}
             {getEncryptionBadge()}
+            {missingDecodeKey && (
+              <Badge variant="outline" className="text-xs text-amber-700 border-amber-300">
+                <AlertCircle className="h-3 w-3 mr-1" />
+                缺少密钥
+              </Badge>
+            )}
           </div>
         </div>
 
-        {/* 操作按钮 - 放在下方，确保完全可见 */}
         <div className="flex items-center gap-2">
           <Button
             variant="outline"
@@ -177,16 +207,15 @@ const VideoItem: React.FC<VideoItemProps> = ({ video, onDownload, qualityPrefere
             variant="default"
             size="sm"
             onClick={handleDownload}
-            disabled={downloading || video.is_placeholder}
+            disabled={downloading || !video.url}
             className="h-8"
-            title={video.is_placeholder ? (video.placeholder_message || '请先在微信中播放该视频后再下载') : undefined}
+            title={downloadTitle}
           >
             <Download className="h-4 w-4 mr-1.5" />
             <span className="font-medium">{downloading ? '下载中...' : '下载'}</span>
           </Button>
         </div>
 
-        {/* URL 预览 */}
         <p className="text-xs text-muted-foreground truncate font-mono">
           {video.url}
         </p>
@@ -195,29 +224,24 @@ const VideoItem: React.FC<VideoItemProps> = ({ video, onDownload, qualityPrefere
   );
 };
 
-/**
- * 视频列表组件
- */
 export const VideoList: React.FC<VideoListProps> = ({
   videos,
   onDownload,
   onClearAll,
   onAddVideo,
   qualityPreference,
+  downloadDir,
 }) => {
   const [manualUrl, setManualUrl] = React.useState('');
   const [isAdding, setIsAdding] = React.useState(false);
   const [addError, setAddError] = React.useState<string | null>(null);
 
-  /**
-   * 手动添加视频 URL
-   */
   const handleAddVideo = async () => {
     if (!manualUrl.trim() || !onAddVideo) return;
-    
+
     setIsAdding(true);
     setAddError(null);
-    
+
     try {
       const result = await onAddVideo(manualUrl.trim());
       if (result.success) {
@@ -234,7 +258,6 @@ export const VideoList: React.FC<VideoListProps> = ({
 
   return (
     <div className="space-y-3">
-      {/* 手动添加 URL */}
       {onAddVideo && (
         <div className="space-y-2">
           <div className="flex items-center gap-2">
@@ -282,7 +305,6 @@ export const VideoList: React.FC<VideoListProps> = ({
         </div>
       ) : (
         <>
-          {/* 列表头部 */}
           <div className="flex items-center justify-between">
             <h3 className="font-medium">
               检测到的视频 ({videos.length})
@@ -298,7 +320,6 @@ export const VideoList: React.FC<VideoListProps> = ({
             </Button>
           </div>
 
-          {/* 视频列表 */}
           <ScrollArea className="h-[400px]">
             <div className="space-y-2 pr-4">
               {videos.map((video) => (
@@ -307,6 +328,7 @@ export const VideoList: React.FC<VideoListProps> = ({
                   video={video}
                   onDownload={onDownload}
                   qualityPreference={qualityPreference}
+                  downloadDir={downloadDir}
                 />
               ))}
             </div>

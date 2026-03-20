@@ -8,6 +8,7 @@ import os
 import sys
 import ctypes
 import shutil
+import subprocess
 import logging
 from pathlib import Path
 from typing import Optional
@@ -270,20 +271,23 @@ class DriverManager:
             if getattr(sys, 'frozen', False):
                 # PyInstaller 打包后的可执行文件
                 executable = sys.executable
+                working_dir = str(Path(executable).parent)
+                params = ' '.join(sys.argv[1:]) if len(sys.argv) > 1 else ''
             else:
-                # 开发环境
+                # 开发环境：重新以管理员身份运行当前 Python 脚本
                 executable = sys.executable
-                script = sys.argv[0] if sys.argv else None
-            
-            # 使用 ShellExecute 以管理员身份运行
-            params = ' '.join(sys.argv[1:]) if len(sys.argv) > 1 else ''
+                script = Path(sys.argv[0]).resolve() if sys.argv else None
+                argv = [str(script)] if script else []
+                argv.extend(sys.argv[1:])
+                params = subprocess.list2cmdline(argv)
+                working_dir = str(script.parent) if script else None
             
             ret = ctypes.windll.shell32.ShellExecuteW(
                 None,           # hwnd
                 "runas",        # 以管理员身份运行
                 executable,     # 可执行文件
                 params,         # 参数
-                None,           # 工作目录
+                working_dir,    # 工作目录
                 1               # SW_SHOWNORMAL
             )
             

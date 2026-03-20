@@ -31,7 +31,12 @@ export function getProxiedImageUrl(url: string | undefined | null): string {
   
   if (needsProxy) {
     // 使用后端图片代理 API
-    const apiBase = getApiBaseUrl();
+    const apiBase = getApiBaseUrl()
+      || (
+        typeof window !== 'undefined' && /^https?:$/.test(window.location.protocol)
+          ? window.location.origin
+          : ''
+      );
     if (apiBase) {
       return `${apiBase}/api/channels/proxy/image?url=${encodeURIComponent(url)}`;
     }

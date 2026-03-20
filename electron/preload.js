@@ -20,7 +20,9 @@ const VALID_INVOKE_CHANNELS = [
   'custom-update-download',
   'custom-update-install',
   'custom-update-clean',
-  'generate-video-thumbnail'
+  'generate-video-thumbnail',
+  'set-proxy-config',
+  'restart-as-admin'
 ];
 
 // 安全地暴露 API 到渲染进程
@@ -108,6 +110,7 @@ contextBridge.exposeInMainWorld('electron', {
   minimize: () => ipcRenderer.invoke('window-minimize'),
   maximize: () => ipcRenderer.invoke('window-maximize'),
   close: () => ipcRenderer.invoke('window-close'),
+  restartAsAdmin: () => ipcRenderer.invoke('restart-as-admin'),
   
   // 更新相关
   checkForUpdates: () => ipcRenderer.invoke('custom-update-check'),

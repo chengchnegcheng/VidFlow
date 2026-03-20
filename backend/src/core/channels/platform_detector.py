@@ -7,7 +7,7 @@
 import re
 import hashlib
 from typing import Optional, Dict, Any
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urlparse, parse_qs, urlunparse
 
 from .models import VideoMetadata
 
@@ -72,6 +72,9 @@ class PlatformDetector:
     
     # 编译正则表达式以提高性能
     _compiled_patterns = None
+
+    # Clash/Surge 等代理软件常见 Fake-IP 段
+    _fake_ip_prefixes = ("198.18.", "198.19.", "100.64.")
     
     @classmethod
     def _get_compiled_patterns(cls):
@@ -97,17 +100,108 @@ class PlatformDetector:
             return False
         
         url_lower = url.lower()
-        
+
         # 只接受 HTTP/HTTPS 协议
         if not (url_lower.startswith('http://') or url_lower.startswith('https://')):
             return False
-        
+
+        try:
+            parsed = urlparse(url_lower)
+            host = (parsed.hostname or "").lower()
+            path_lower = (parsed.path or "").lower()
+            query_params = parse_qs(parsed.query)
+        except Exception:
+            host = ""
+            path_lower = ""
+            query_params = {}
+
+        # 排除缩略图路径：/20304/ 和 /20350/ 是图片，带 picformat 参数也是缩略图
+        is_thumbnail = (
+            "/20304/stodownload" in path_lower
+            or "/20350/stodownload" in path_lower
+            or "picformat" in query_params
+            or "wxampicformat" in query_params
+        )
+        if is_thumbnail:
+            return False
+
+        looks_like_video_path = (
+            "stodownload" in path_lower
+            or "finder" in path_lower
+            or "/video/" in path_lower
+            or PlatformDetector.is_video_url_by_extension(url_lower)
+            or any(
+                key in query_params
+                for key in ["encfilekey", "m", "taskid", "taskId", "objectid", "feedid"]
+            )
+        )
+
+        if "channels.weixin.qq.com" in host and not looks_like_video_path:
+            return False
+
         # 检查是否匹配视频号域名模式
         for pattern in PlatformDetector._get_compiled_patterns():
             if pattern.search(url_lower):
                 return True
+
+        if looks_like_video_path and any(
+            domain in host
+            for domain in ["video.qq.com", "wxapp.tc.qq.com", "tc.qq.com", "weixin.qq.com"]
+        ):
+            return True
         
         return False
+
+    @staticmethod
+    def normalize_channels_video_url(url: str) -> str:
+        """规范化视频号下载 URL。
+
+        处理代理 Fake-IP 场景：当 URL 的主机是 Fake-IP 且路径/参数看起来是视频下载链接时，
+        将主机替换为可直连域名，提升识别率与下载成功率。
+        """
+        if not url or not isinstance(url, str):
+            return url
+
+        try:
+            parsed = urlparse(url)
+            host = (parsed.hostname or "").lower()
+            if not host:
+                return url
+
+            query_params = parse_qs(parsed.query)
+            path_lower = parsed.path.lower()
+
+            looks_like_video = (
+                "stodownload" in path_lower
+                or "encfilekey" in query_params
+                or "m" in query_params
+                or path_lower.endswith(".mp4")
+                or path_lower.endswith(".m3u8")
+            )
+            if not looks_like_video:
+                return url
+
+            is_ip_host = bool(re.match(r"^\d{1,3}(?:\.\d{1,3}){3}$", host))
+            is_fake_ip = any(host.startswith(prefix) for prefix in PlatformDetector._fake_ip_prefixes)
+            if not is_fake_ip and not is_ip_host:
+                return url
+
+            replacement_host = "stodownload.wxapp.tc.qq.com" if "stodownload" in path_lower else "wxapp.tc.qq.com"
+            netloc = replacement_host
+            if parsed.port:
+                netloc = f"{replacement_host}:{parsed.port}"
+
+            normalized = urlunparse((
+                parsed.scheme or "http",
+                netloc,
+                parsed.path,
+                parsed.params,
+                parsed.query,
+                parsed.fragment,
+            ))
+            return normalized
+        except Exception:
+            return url
     
     @staticmethod
     def extract_video_id(url: str) -> Optional[str]:
@@ -139,10 +233,16 @@ class PlatformDetector:
                     return value
             
             # 尝试从路径中提取
+            # 排除已知的固定目录名，这些不是视频 ID
+            _KNOWN_PATH_SEGMENTS = {
+                'stodownload', 'findervideodownload', 'finderpcflow',
+                'finderlive', 'finderassistant', 'mmfinderassistant',
+                'finderstream', 'findersearch', 'finderuserpage',
+            }
             path_parts = parsed.path.strip('/').split('/')
             for part in path_parts:
-                # 视频 ID 通常是较长的字母数字字符串
-                if len(part) >= 10 and part.isalnum():
+                # 视频 ID 通常是较长的字母数字字符串，且不是已知目录名
+                if len(part) >= 10 and part.isalnum() and part.lower() not in _KNOWN_PATH_SEGMENTS:
                     return part
             
             # 如果无法提取，使用 URL 的哈希作为唯一标识
@@ -366,14 +466,20 @@ class PlatformDetector:
         try:
             parsed = urlparse(url)
             query_params = parse_qs(parsed.query)
-            
-            # 常见的密钥参数名（优先检查 encfilekey，这是微信视频号的主要密钥）
-            key_params = ['encfilekey', 'decodekey', 'key', 'decryptkey', 'dk', 'enckey']
-            for param in key_params:
-                if param in query_params:
-                    return query_params[param][0]
-            
+
+            # 仅接受真正的 decodeKey 参数。
+            # encfilekey 只是资源标识，不能作为解密 key 使用。
+            key_params = {"decodekey", "decode_key", "decryptkey", "decrypt_key", "dk"}
+            for param, values in query_params.items():
+                if param.lower() not in key_params or not values:
+                    continue
+                candidate = str(values[0]).strip()
+                # 当前解密流程仅支持数字 decodeKey（uint64）。
+                if candidate.isdigit():
+                    return candidate
+                return None
+
             return None
-            
+
         except Exception:
             return None

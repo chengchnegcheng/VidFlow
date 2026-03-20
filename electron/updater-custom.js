@@ -42,6 +42,48 @@ class CustomUpdater extends EventEmitter {
     // 转发增量更新事件
     this._setupDeltaEvents();
   }
+
+  _buildUnavailableResult(reason = 'server_unreachable') {
+    return {
+      has_update: false,
+      latest_version: this.currentVersion,
+      version: this.currentVersion,
+      unavailable: true,
+      reason
+    };
+  }
+
+  _isTransientCheckError(error) {
+    const code = error?.code || error?.cause?.code || '';
+    const status = error?.response?.status;
+    const message = String(error?.message || '').toLowerCase();
+    const transientCodes = new Set([
+      'ECONNREFUSED',
+      'ECONNRESET',
+      'ETIMEDOUT',
+      'ENOTFOUND',
+      'EAI_AGAIN',
+      'ERR_NETWORK'
+    ]);
+
+    if (transientCodes.has(code)) {
+      return true;
+    }
+
+    if ([502, 503, 504].includes(status)) {
+      return true;
+    }
+
+    return [
+      'econnrefused',
+      'network error',
+      'socket hang up',
+      'timed out',
+      'timeout',
+      'enotfound',
+      'eai_again'
+    ].some((token) => message.includes(token));
+  }
   
   /**
    * 设置增量更新事件转发
@@ -294,6 +336,13 @@ class CustomUpdater extends EventEmitter {
       
       return updateInfo;
     } catch (error) {
+      if (this._isTransientCheckError(error)) {
+        const unavailableResult = this._buildUnavailableResult('server_unreachable');
+        console.warn('[CustomUpdater] Update check unavailable:', error.message || error);
+        this.emit('update-not-available', unavailableResult);
+        return unavailableResult;
+      }
+
       console.error('[CustomUpdater] Check failed:', error);
       this.emit('error', error);
       throw error;
@@ -600,4 +649,3 @@ class CustomUpdater extends EventEmitter {
 }
 
 module.exports = { CustomUpdater };
-

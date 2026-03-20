@@ -1,0 +1,47 @@
+# VidFlow 微信视频号下载 - Clash 直连规则
+# 
+# 使用方法：
+# 1. 打开 Clash Verge / Clash for Windows
+# 2. 进入"规则"或"Rules"设置
+# 3. 将以下规则添加到规则列表的最前面
+#
+# 注意：这些规则需要放在 MATCH 规则之前
+
+# 微信相关进程直连（优先级最高）
+- PROCESS-NAME,WeChat.exe,DIRECT
+- PROCESS-NAME,WeChatAppEx.exe,DIRECT
+- PROCESS-NAME,QQBrowser.exe,DIRECT
+- PROCESS-NAME,msedgewebview2.exe,DIRECT
+- PROCESS-NAME,WeChatApp.exe,DIRECT
+- PROCESS-NAME,WeChatBrowser.exe,DIRECT
+- PROCESS-NAME,WeChatPlayer.exe,DIRECT
+- PROCESS-NAME,Weixin.exe,DIRECT
+- PROCESS-NAME,WXWork.exe,DIRECT
+
+# 微信视频号相关域名直连
+- DOMAIN-SUFFIX,finder.video.qq.com,DIRECT
+- DOMAIN-SUFFIX,findermp.video.qq.com,DIRECT
+- DOMAIN-SUFFIX,findervideodownload.video.qq.com,DIRECT
+- DOMAIN-SUFFIX,channels.weixin.qq.com,DIRECT
+- DOMAIN-SUFFIX,wxapp.tc.qq.com,DIRECT
+- DOMAIN-SUFFIX,stodownload.wxapp.tc.qq.com,DIRECT
+
+# 微信域名直连
+- DOMAIN-SUFFIX,weixin.qq.com,DIRECT
+- DOMAIN-SUFFIX,wx.qq.com,DIRECT
+- DOMAIN-SUFFIX,wechat.com,DIRECT
+
+# 腾讯视频 CDN 直连
+- DOMAIN-SUFFIX,video.qq.com,DIRECT
+- DOMAIN-SUFFIX,tc.qq.com,DIRECT
+- DOMAIN-SUFFIX,qpic.cn,DIRECT
+- DOMAIN-SUFFIX,gtimg.cn,DIRECT
+
+# 或者使用 IP-CIDR 规则（可选）
+# 这些是腾讯常用的 IP 段
+# - IP-CIDR,183.3.0.0/16,DIRECT
+# - IP-CIDR,183.47.0.0/16,DIRECT
+# - IP-CIDR,183.60.0.0/16,DIRECT
+# - IP-CIDR,14.17.0.0/16,DIRECT
+# - IP-CIDR,113.96.0.0/16,DIRECT
+# - IP-CIDR,119.147.0.0/16,DIRECT

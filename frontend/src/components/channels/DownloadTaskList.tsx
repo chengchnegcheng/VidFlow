@@ -1,21 +1,17 @@
-/**
- * 视频号下载任务列表组件
- * 显示下载进度、状态和管理功能
- */
 import React from 'react';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { Progress } from '../ui/progress';
 import { ScrollArea } from '../ui/scroll-area';
-import { 
-  Download, 
-  Trash2, 
+import {
+  Download,
+  Trash2,
   FolderOpen,
   X,
   CheckCircle,
   AlertCircle,
   Loader2,
-  Clock
+  Clock,
 } from 'lucide-react';
 import { TaskThumbnail } from '../TaskThumbnail';
 
@@ -24,7 +20,7 @@ interface DownloadTask {
   url: string;
   title: string;
   thumbnail?: string;
-  status: 'pending' | 'downloading' | 'decrypting' | 'completed' | 'failed' | 'cancelled';
+  status: 'pending' | 'downloading' | 'decrypting' | 'completed' | 'encrypted' | 'failed' | 'cancelled';
   progress: number;
   speed: number;
   downloaded: number;
@@ -41,9 +37,6 @@ interface DownloadTaskListProps {
   onOpenFolder: (filePath: string) => Promise<void>;
 }
 
-/**
- * 格式化文件大小
- */
 function formatFileSize(bytes: number): string {
   if (!bytes || bytes === 0) return '0 B';
   const k = 1024;
@@ -52,32 +45,24 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / Math.pow(k, i)).toFixed(2)} ${sizes[i]}`;
 }
 
-/**
- * 格式化速度
- */
 function formatSpeed(bytesPerSecond: number): string {
   if (!bytesPerSecond || bytesPerSecond === 0) return '0 B/s';
   return `${formatFileSize(bytesPerSecond)}/s`;
 }
 
-/**
- * 获取状态信息
- */
 function getStatusInfo(status: string) {
-  const statusMap: Record<string, { icon: any; text: string; variant: any }> = {
-    pending: { icon: Clock, text: '等待中', variant: 'outline' as const },
-    downloading: { icon: Download, text: '下载中', variant: 'default' as const },
-    decrypting: { icon: Loader2, text: '解密中', variant: 'default' as const },
-    completed: { icon: CheckCircle, text: '已完成', variant: 'default' as const },
-    failed: { icon: AlertCircle, text: '失败', variant: 'destructive' as const },
-    cancelled: { icon: X, text: '已取消', variant: 'outline' as const },
+  const statusMap: Record<string, { icon: any; text: string; variant: 'outline' | 'default' | 'destructive' }> = {
+    pending: { icon: Clock, text: '等待中', variant: 'outline' },
+    downloading: { icon: Download, text: '下载中', variant: 'default' },
+    decrypting: { icon: Loader2, text: '解密中', variant: 'default' },
+    completed: { icon: CheckCircle, text: '已完成', variant: 'default' },
+    encrypted: { icon: AlertCircle, text: '需密钥', variant: 'outline' },
+    failed: { icon: AlertCircle, text: '失败', variant: 'destructive' },
+    cancelled: { icon: X, text: '已取消', variant: 'outline' },
   };
   return statusMap[status] || statusMap.pending;
 }
 
-/**
- * 单个任务项组件
- */
 const TaskItem: React.FC<{
   task: DownloadTask;
   onCancel: (taskId: string) => Promise<void>;
@@ -87,6 +72,12 @@ const TaskItem: React.FC<{
   const [isProcessing, setIsProcessing] = React.useState(false);
   const statusInfo = getStatusInfo(task.status);
   const StatusIcon = statusInfo.icon;
+  const isActive = task.status === 'downloading' || task.status === 'decrypting';
+  const isEncryptedTask = task.status === 'encrypted';
+  const isCompleted = task.status === 'completed' || isEncryptedTask;
+  const isFailed = task.status === 'failed' || task.status === 'cancelled';
+  const hasWarning = Boolean(task.error);
+  const warningOnly = (task.status === 'completed' && hasWarning) || isEncryptedTask;
 
   const handleCancel = async () => {
     setIsProcessing(true);
@@ -112,33 +103,29 @@ const TaskItem: React.FC<{
     }
   };
 
-  const isActive = task.status === 'downloading' || task.status === 'decrypting';
-  const isCompleted = task.status === 'completed';
-  const isFailed = task.status === 'failed' || task.status === 'cancelled';
-
   return (
-    <div className="flex items-start gap-3 p-3 rounded-lg border bg-card">
-      {/* 缩略图 */}
+    <div className="flex items-start gap-3 rounded-lg border bg-card p-3">
       <TaskThumbnail
+        filePath={task.file_path}
         thumbnail={task.thumbnail}
         title={task.title}
-        className="shrink-0 w-20 h-14"
+        className="h-14 w-20 shrink-0"
       />
 
-      {/* 任务信息 */}
-      <div className="flex-1 min-w-0 space-y-2">
-        {/* 标题和状态 */}
+      <div className="min-w-0 flex-1 space-y-2">
         <div className="flex items-start justify-between gap-2">
-          <h4 className="font-medium text-sm truncate flex-1" title={task.title}>
+          <h4 className="flex-1 truncate text-sm font-medium" title={task.title}>
             {task.title}
           </h4>
-          <Badge variant={statusInfo.variant} className="text-xs shrink-0">
-            <StatusIcon className={`h-3 w-3 mr-1 ${task.status === 'decrypting' ? 'animate-spin' : ''}`} />
+          <Badge
+            variant={warningOnly ? 'outline' : statusInfo.variant}
+            className={`shrink-0 text-xs ${warningOnly ? 'border-amber-300 bg-amber-50 text-amber-700' : ''}`}
+          >
+            <StatusIcon className={`mr-1 h-3 w-3 ${task.status === 'decrypting' ? 'animate-spin' : ''}`} />
             {statusInfo.text}
           </Badge>
         </div>
 
-        {/* 进度条 */}
         {isActive && (
           <div className="space-y-1">
             <Progress value={task.progress} className="h-2" />
@@ -154,24 +141,17 @@ const TaskItem: React.FC<{
           </div>
         )}
 
-        {/* 错误信息 */}
-        {isFailed && task.error && (
-          <div className="flex items-center gap-1 text-xs text-red-600">
-            <AlertCircle className="h-3 w-3" />
+        {hasWarning && (
+          <div className={`flex items-center gap-1 text-xs ${isFailed ? 'text-red-600' : 'text-amber-600'}`}>
+            <AlertCircle className="h-3 w-3 shrink-0" />
             <span>{task.error}</span>
           </div>
         )}
 
-        {/* 操作按钮 */}
         <div className="flex items-center gap-2">
           {isCompleted && task.file_path && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleOpenFolder}
-              className="h-7 text-xs"
-            >
-              <FolderOpen className="h-3 w-3 mr-1" />
+            <Button variant="outline" size="sm" onClick={handleOpenFolder} className="h-7 text-xs">
+              <FolderOpen className="mr-1 h-3 w-3" />
               打开文件夹
             </Button>
           )}
@@ -184,7 +164,7 @@ const TaskItem: React.FC<{
               disabled={isProcessing}
               className="h-7 text-xs"
             >
-              <X className="h-3 w-3 mr-1" />
+              <X className="mr-1 h-3 w-3" />
               取消
             </Button>
           )}
@@ -197,7 +177,7 @@ const TaskItem: React.FC<{
               disabled={isProcessing}
               className="h-7 text-xs text-muted-foreground hover:text-destructive"
             >
-              <Trash2 className="h-3 w-3 mr-1" />
+              <Trash2 className="mr-1 h-3 w-3" />
               删除
             </Button>
           )}
@@ -207,9 +187,6 @@ const TaskItem: React.FC<{
   );
 };
 
-/**
- * 下载任务列表组件
- */
 export const DownloadTaskList: React.FC<DownloadTaskListProps> = ({
   tasks,
   onCancel,
@@ -219,7 +196,7 @@ export const DownloadTaskList: React.FC<DownloadTaskListProps> = ({
   if (tasks.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-8 text-center">
-        <Download className="h-10 w-10 text-muted-foreground mb-3 opacity-50" />
+        <Download className="mb-3 h-10 w-10 text-muted-foreground opacity-50" />
         <p className="text-sm text-muted-foreground">暂无下载任务</p>
       </div>
     );

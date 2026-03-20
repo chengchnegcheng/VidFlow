@@ -2,8 +2,8 @@
  * 视频列表组件测试
  * Validates: Requirements 2.5, 6.2, 6.3
  */
-import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 import { VideoList } from '../../../components/channels/VideoList';
 import { DetectedVideo } from '../../../types/channels';
 
@@ -34,7 +34,7 @@ describe('VideoList Component', () => {
       thumbnail: null,
       detected_at: '2026-01-11T00:01:00Z',
       encryption_type: 'xor',
-      decryption_key: 'abc123',
+      decryption_key: '123456',
     },
   ];
 
@@ -50,48 +50,32 @@ describe('VideoList Component', () => {
   });
 
   describe('Rendering', () => {
-    /**
-     * 测试空列表渲染
-     */
     it('should render empty state when no videos', () => {
       render(<VideoList {...defaultProps} videos={[]} />);
 
       expect(screen.getByText('暂无检测到的视频')).toBeInTheDocument();
     });
 
-    /**
-     * 测试视频列表渲染
-     * Validates: Requirements 6.2, 6.3
-     */
     it('should render video list with titles', () => {
       render(<VideoList {...defaultProps} />);
 
-      expect(screen.getByText('测试视频1')).toBeInTheDocument();
-      expect(screen.getByText('测试视频2')).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: '测试视频1' })).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: '测试视频2' })).toBeInTheDocument();
     });
 
-    /**
-     * 测试视频数量显示
-     */
     it('should display video count', () => {
       render(<VideoList {...defaultProps} />);
 
       expect(screen.getByText('检测到的视频 (2)')).toBeInTheDocument();
     });
 
-    /**
-     * 测试视频时长显示
-     */
     it('should display video duration', () => {
       render(<VideoList {...defaultProps} />);
 
-      expect(screen.getByText('2:00')).toBeInTheDocument(); // 120 seconds
-      expect(screen.getByText('1:00')).toBeInTheDocument(); // 60 seconds
+      expect(screen.getByText('2:00')).toBeInTheDocument();
+      expect(screen.getByText('1:00')).toBeInTheDocument();
     });
 
-    /**
-     * 测试视频分辨率显示
-     */
     it('should display video resolution', () => {
       render(<VideoList {...defaultProps} />);
 
@@ -99,37 +83,69 @@ describe('VideoList Component', () => {
       expect(screen.getByText('720p')).toBeInTheDocument();
     });
 
-    /**
-     * 测试加密标识显示
-     */
     it('should display encryption badge for encrypted videos', () => {
       render(<VideoList {...defaultProps} />);
 
       expect(screen.getByText('XOR')).toBeInTheDocument();
     });
+
+    it('should allow download when encoded video misses decode key', () => {
+      render(
+        <VideoList
+          {...defaultProps}
+          videos={[
+            {
+              ...mockVideos[0],
+              url: 'https://finder.video.qq.com/251/20302/stodownload?encfilekey=test123',
+              encryption_type: 'unknown',
+              decryption_key: null,
+            },
+          ]}
+        />
+      );
+
+      expect(screen.getByText('缺少密钥')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: '下载' })).not.toBeDisabled();
+    });
+    it('should keep placeholder videos downloadable when url exists', () => {
+      render(
+        <VideoList
+          {...defaultProps}
+          videos={[
+            {
+              ...mockVideos[0],
+              url: 'https://finder.video.qq.com/251/20302/stodownload?encfilekey=test123',
+              encryption_type: 'unknown',
+              decryption_key: null,
+              is_placeholder: true,
+              placeholder_message: 'metadata missing',
+            },
+          ]}
+        />
+      );
+
+      expect(screen.getByTitle('metadata missing')).not.toBeDisabled();
+    });
   });
 
   describe('Interactions', () => {
-    /**
-     * 测试下载按钮点击
-     * Validates: Requirements 2.5
-     */
     it('should call onDownload when clicking download button', async () => {
       render(<VideoList {...defaultProps} />);
 
       const downloadButtons = screen.getAllByText('下载');
-      fireEvent.click(downloadButtons[0]);
+      await act(async () => {
+        fireEvent.click(downloadButtons[0]);
+      });
 
       expect(mockOnDownload).toHaveBeenCalledWith({
         url: 'https://finder.video.qq.com/video1.mp4',
         quality: 'best',
+        output_path: undefined,
         auto_decrypt: false,
+        decryption_key: null,
       });
     });
 
-    /**
-     * 测试清空列表按钮
-     */
     it('should call onClearAll when clicking clear button', () => {
       render(<VideoList {...defaultProps} />);
 

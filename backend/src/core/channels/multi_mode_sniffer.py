@@ -26,6 +26,7 @@ from .video_url_extractor import VideoURLExtractor, ExtractedVideo
 from .video_metadata_extractor import VideoMetadataExtractor, VideoMetadata
 from .wechat_process_manager import WeChatProcessManager
 from .recovery_manager import RecoveryManager
+from .process_targets import resolve_quic_target_processes
 from .quic_manager import QUICManager
 from .ech_handler import ECHHandler
 
@@ -99,7 +100,7 @@ class MultiModeSniffer:
             backoff_max=self._config.recovery_backoff_max,
         )
         self._quic_manager = QUICManager(
-            target_processes=self._config.target_processes,
+            target_processes=resolve_quic_target_processes(self._config.target_processes),
         )
         self._ech_handler = ECHHandler()
         
@@ -998,7 +999,7 @@ class MultiModeSniffer:
         self._config = config
         
         # 更新组件配置
-        self._quic_manager.target_processes = config.target_processes
+        self._quic_manager.target_processes = resolve_quic_target_processes(config.target_processes)
         self._recovery_manager.max_retries = config.max_recovery_attempts
         self._recovery_manager.backoff_base = config.recovery_backoff_base
         self._recovery_manager.backoff_max = config.recovery_backoff_max

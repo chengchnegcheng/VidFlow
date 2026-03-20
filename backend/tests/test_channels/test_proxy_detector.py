@@ -504,6 +504,29 @@ class TestAsyncDetection:
             assert result.proxy_type == ProxyType.NONE
             assert result.proxy_mode == ProxyMode.NONE
 
+
+class TestSystemProxyPACDetection:
+    def test_is_system_proxy_enabled_detects_pac_url(self):
+        detector = ProxyDetector()
+
+        with patch('src.core.channels.proxy_detector.winreg') as mock_winreg:
+            mock_key = MagicMock()
+            mock_winreg.OpenKey.return_value.__enter__.return_value = mock_key
+
+            def query_value(_, name):
+                values = {
+                    "ProxyEnable": (0, None),
+                    "AutoConfigURL": ("http://127.0.0.1:33331/commands/pac", None),
+                    "AutoDetect": (0, None),
+                }
+                if name not in values:
+                    raise FileNotFoundError(name)
+                return values[name]
+
+            mock_winreg.QueryValueEx.side_effect = query_value
+
+            assert detector._is_system_proxy_enabled() is True
+
     def test_detect_no_psutil(self):
         """测试 psutil 不可用时返回 NONE"""
         detector = ProxyDetector()

@@ -10,7 +10,7 @@ export type SnifferState = 'stopped' | 'starting' | 'running' | 'stopping' | 'er
 /**
  * 加密类型枚举
  */
-export type EncryptionType = 'none' | 'xor' | 'aes' | 'unknown';
+export type EncryptionType = 'none' | 'xor' | 'aes' | 'isaac64' | 'unknown';
 
 /**
  * 捕获模式枚举
@@ -59,6 +59,7 @@ export interface SnifferStatusResponse {
   capture_state: CaptureState;
   capture_started_at: string | null;
   statistics: CaptureStatistics | null;
+  is_fallback?: boolean;
 }
 
 /**
@@ -78,6 +79,7 @@ export interface SnifferStartResponse {
   error_message: string | null;
   error_code: string | null;
   capture_mode: CaptureMode;
+  proxy_info?: ProxyInfo | null;
 }
 
 /**
@@ -128,6 +130,13 @@ export interface CertInfoResponse {
   expires_at: string | null;
   fingerprint: string | null;
   path: string | null;
+  root_installed?: boolean;
+  wechat_p12_path?: string | null;
+  wechat_p12_exists?: boolean;
+  wechat_p12_installed?: boolean;
+  wechat_p12_subject_present?: boolean;
+  wechat_p12_sources?: string[];
+  recommended_format?: 'cer' | 'p12' | string | null;
 }
 
 /**
@@ -136,6 +145,8 @@ export interface CertInfoResponse {
 export interface CertGenerateResponse {
   success: boolean;
   cert_path: string | null;
+  wechat_p12_path?: string | null;
+  wechat_p12_sources?: string[];
   error_message: string | null;
 }
 
@@ -146,6 +157,13 @@ export interface CertExportResponse {
   success: boolean;
   message: string;
   path: string | null;
+}
+
+export interface CertInstallResponse {
+  success: boolean;
+  message: string;
+  root_installed?: boolean;
+  wechat_p12_installed?: boolean;
 }
 
 /**
@@ -162,6 +180,7 @@ export interface ChannelsConfigResponse {
   proxy_port: number;
   download_dir: string;
   auto_decrypt: boolean;
+  auto_clean_wechat_cache: boolean;
   quality_preference: string;
   clear_on_exit: boolean;
 }
@@ -173,6 +192,7 @@ export interface ChannelsConfigUpdateRequest {
   proxy_port?: number;
   download_dir?: string;
   auto_decrypt?: boolean;
+  auto_clean_wechat_cache?: boolean;
   quality_preference?: string;
   clear_on_exit?: boolean;
 }
@@ -242,6 +262,7 @@ export enum ErrorCode {
   ADMIN_REQUIRED = 'ADMIN_REQUIRED',
   PROCESS_NOT_FOUND = 'PROCESS_NOT_FOUND',
   CAPTURE_FAILED = 'CAPTURE_FAILED',
+  PROXY_TUN_MODE = 'PROXY_TUN_MODE',
 }
 
 /**
@@ -258,12 +279,12 @@ export const ERROR_MESSAGES: Record<string, string> = {
   [ErrorCode.DOWNLOAD_CANCELLED]: '下载已取消',
   [ErrorCode.DECRYPT_FAILED]: '视频解密失败，原始文件已保留',
   [ErrorCode.UNKNOWN_ENCRYPTION]: '未知的加密格式，该视频可能使用了新的加密方式',
-  // 透明捕获相关
   [ErrorCode.DRIVER_MISSING]: 'WinDivert 驱动未安装，请点击"安装驱动"按钮',
   [ErrorCode.DRIVER_LOAD_FAILED]: 'WinDivert 驱动加载失败，请以管理员身份运行或重新安装驱动',
   [ErrorCode.ADMIN_REQUIRED]: '需要管理员权限，请以管理员身份运行 VidFlow',
   [ErrorCode.PROCESS_NOT_FOUND]: '目标进程未运行，请先启动微信',
   [ErrorCode.CAPTURE_FAILED]: '流量捕获启动失败，请检查防火墙设置或重启应用',
+  [ErrorCode.PROXY_TUN_MODE]: '检测到代理正在使用 TUN 模式。请先关闭 TUN，或将微信和视频号相关进程及域名设为直连后再启动透明嗅探。',
 };
 
 /**
@@ -280,11 +301,11 @@ export function getErrorMessage(errorCode: string | null): string {
 export function formatFileSize(bytes: number | null): string {
   if (bytes === null || bytes === undefined) return '未知';
   if (bytes === 0) return '0 B';
-  
+
   const units = ['B', 'KB', 'MB', 'GB', 'TB'];
   const k = 1024;
   const i = Math.floor(Math.log(bytes) / Math.log(k));
-  
+
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${units[i]}`;
 }
 
@@ -293,11 +314,11 @@ export function formatFileSize(bytes: number | null): string {
  */
 export function formatDuration(seconds: number | null): string {
   if (seconds === null || seconds === undefined) return '未知';
-  
+
   const hours = Math.floor(seconds / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);
   const secs = seconds % 60;
-  
+
   if (hours > 0) {
     return `${hours}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   }
@@ -362,6 +383,7 @@ export interface DriverInstallResponse {
 export interface CaptureConfigResponse {
   capture_mode: CaptureMode;
   use_windivert: boolean;
+  quic_blocking_enabled: boolean;
   target_processes: string[];
   no_detection_timeout: number;
   log_unrecognized_domains: boolean;
@@ -373,6 +395,7 @@ export interface CaptureConfigResponse {
 export interface CaptureConfigUpdateRequest {
   capture_mode?: CaptureMode;
   use_windivert?: boolean;
+  quic_blocking_enabled?: boolean;
   target_processes?: string[];
   no_detection_timeout?: number;
   log_unrecognized_domains?: boolean;
@@ -401,8 +424,8 @@ export interface ChannelsSnifferStateExtended extends ChannelsSnifferState {
  * 捕获模式显示文本
  */
 export const CAPTURE_MODE_TEXT: Record<CaptureMode, string> = {
-  proxy_only: '代理模式（已弃用）',
-  transparent: '透明捕获 (Windows PC)',
+  proxy_only: '显式代理模式（推荐）',
+  transparent: '透明捕获（兼容模式）',
 };
 
 /**
@@ -415,9 +438,6 @@ export const DRIVER_STATE_TEXT: Record<DriverState, string> = {
   error: '错误',
 };
 
-/**
- * 获取捕获模式文本
- */
 export function getCaptureModeText(mode: CaptureMode): string {
   return CAPTURE_MODE_TEXT[mode] || mode;
 }
@@ -434,52 +454,52 @@ export function getDriverStateText(state: DriverState): string {
  */
 export function formatLastDetectionTime(isoString: string | null): string {
   if (!isoString) return '从未';
-  
+
   const date = new Date(isoString);
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
   const diffSec = Math.floor(diffMs / 1000);
-  
+
   if (diffSec < 60) return `${diffSec} 秒前`;
   if (diffSec < 3600) return `${Math.floor(diffSec / 60)} 分钟前`;
   if (diffSec < 86400) return `${Math.floor(diffSec / 3600)} 小时前`;
-  
+
   return date.toLocaleString('zh-CN');
 }
 
 
-// ============ 深度优化相关类型（Task 17.1）============
+// ============ 深度优化相关类型（Task 17.1） ===========
 
 /**
  * 代理软件类型
  */
-export type ProxyType = 
-  | 'none' 
-  | 'clash' 
-  | 'clash_verge' 
-  | 'clash_meta' 
-  | 'surge' 
-  | 'v2ray' 
-  | 'shadowsocks' 
+export type ProxyType =
+  | 'none'
+  | 'clash'
+  | 'clash_verge'
+  | 'clash_meta'
+  | 'surge'
+  | 'v2ray'
+  | 'shadowsocks'
   | 'other';
 
 /**
  * 代理工作模式
  */
-export type ProxyMode = 
-  | 'none' 
-  | 'system_proxy' 
-  | 'tun' 
-  | 'fake_ip' 
+export type ProxyMode =
+  | 'none'
+  | 'system_proxy'
+  | 'tun'
+  | 'fake_ip'
   | 'rule';
 
 /**
  * 多模式捕获模式
  */
-export type MultiCaptureMode = 
-  | 'windivert' 
-  | 'clash_api' 
-  | 'system_proxy' 
+export type MultiCaptureMode =
+  | 'windivert'
+  | 'clash_api'
+  | 'system_proxy'
   | 'hybrid';
 
 /**
@@ -520,7 +540,17 @@ export interface DiagnosticInfo {
   proxy_info: ProxyInfo | null;
   recent_errors: string[];
   capture_log: string[];
-  statistics: Record<string, number | string | null>;
+  recent_response_samples?: DiagnosticResponseSample[];
+  statistics: Record<string, boolean | number | string | null>;
+}
+
+export interface DiagnosticResponseSample {
+  host: string;
+  path: string;
+  content_type: string;
+  status_code: number | null;
+  classification: string;
+  detail?: string | null;
 }
 
 /**
@@ -572,7 +602,7 @@ export interface SwitchModeResponse {
 }
 
 /**
- * QUIC状态响应
+ * QUIC 状态响应
  */
 export interface QUICStatusResponse {
   blocking_enabled: boolean;
@@ -582,7 +612,7 @@ export interface QUICStatusResponse {
 }
 
 /**
- * QUIC开关请求
+ * QUIC 开关请求
  */
 export interface QUICToggleRequest {
   enabled: boolean;
@@ -638,7 +668,7 @@ export const PROXY_TYPE_TEXT: Record<ProxyType, string> = {
 export const PROXY_MODE_TEXT: Record<ProxyMode, string> = {
   none: '无',
   system_proxy: '系统代理',
-  tun: 'TUN模式',
+  tun: 'TUN 模式',
   fake_ip: 'Fake-IP',
   rule: '规则模式',
 };
@@ -647,8 +677,8 @@ export const PROXY_MODE_TEXT: Record<ProxyMode, string> = {
  * 多模式捕获模式显示文本
  */
 export const MULTI_CAPTURE_MODE_TEXT: Record<MultiCaptureMode, string> = {
-  windivert: 'WinDivert透明捕获',
-  clash_api: 'Clash API监控',
+  windivert: 'WinDivert 透明捕获',
+  clash_api: 'Clash API 监控',
   system_proxy: '系统代理拦截',
   hybrid: '混合模式（自动）',
 };

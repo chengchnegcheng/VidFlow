@@ -481,6 +481,10 @@ class TestMultiModeCaptureConfigPersistence:
         assert config.clash_api_address == "127.0.0.1:9090"
         assert config.clash_api_secret == ""
         assert config.quic_blocking_enabled is False
+        assert "Weixin.exe" in config.target_processes
+        assert "WeChatAppEx.exe" in config.target_processes
+        assert "QQBrowser.exe" in config.target_processes
+        assert "msedgewebview2.exe" in config.target_processes
         assert config.diagnostic_mode is False
         assert config.no_detection_timeout == 60
         assert config.max_recovery_attempts == 3

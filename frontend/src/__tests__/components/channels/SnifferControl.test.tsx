@@ -144,8 +144,8 @@ describe('SnifferControl Component', () => {
 
       render(<SnifferControl {...defaultProps} status={status} proxyInfo={proxyInfo} />);
 
-      expect(screen.getByText('代理软件')).toBeInTheDocument();
-      expect(screen.getByText('Clash')).toBeInTheDocument();
+      expect(screen.getByText('代理配置正常')).toBeInTheDocument();
+      expect(screen.getByText(/Clash 使用系统代理模式/)).toBeInTheDocument();
     });
 
     /**

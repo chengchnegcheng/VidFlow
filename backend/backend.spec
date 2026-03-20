@@ -8,7 +8,21 @@ block_cipher = None
 
 # 收集数据文件
 import glob
+inject_script_datas = []
+inject_script_path = os.path.join(
+    os.path.dirname(os.path.abspath(SPEC)),
+    'src',
+    'core',
+    'channels',
+    'inject_script.js',
+)
+if os.path.exists(inject_script_path):
+    inject_script_datas.append((inject_script_path, 'src/core/channels'))
+    print(f"Packaged inject script: {inject_script_path}")
+else:
+    print(f"Warning: inject_script.js not found: {inject_script_path}")
 datas = []
+datas += inject_script_datas
 binaries = []  # 初始化 binaries 列表
 
 # 如果 tools/bin 目录存在且有文件，则打包工具
