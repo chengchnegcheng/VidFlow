@@ -51,10 +51,11 @@ class DeltaUpdater extends EventEmitter {
 
     this.downloading = true;
     const { delta_url, delta_hash, delta_size } = this.deltaInfo;
-    const fileName = path.basename(delta_url);
-    const localFilePath = path.join(this.customUpdater.downloadPath, fileName);
+    const trustedDeltaUrl = this.customUpdater.assertTrustedUpdateUrl(delta_url, 'Delta update URL');
+    const fileName = path.basename(new URL(trustedDeltaUrl).pathname);
+    const localFilePath = this.customUpdater.getSafeDownloadPath(fileName, 'Delta update file');
 
-    console.log('[DeltaUpdater] Starting delta download:', delta_url);
+    console.log('[DeltaUpdater] Starting delta download:', trustedDeltaUrl);
     this.emit('delta-download-start');
 
     try {
@@ -73,7 +74,7 @@ class DeltaUpdater extends EventEmitter {
       // 下载差异包
       const response = await axios({
         method: 'GET',
-        url: delta_url,
+        url: trustedDeltaUrl,
         responseType: 'stream',
         onDownloadProgress: (progressEvent) => {
           const percent = Math.round((progressEvent.loaded * 100) / delta_size);

@@ -6,11 +6,14 @@ const crypto = require('crypto');
 const axios = require('axios');
 const { DeltaUpdater } = require('./delta-updater');
 
+const DEFAULT_UPDATE_SERVER_URL = process.env.VIDFLOW_UPDATE_SERVER_URL || 'https://shcrystal.top:8321';
+const LOOPBACK_UPDATE_HOSTS = new Set(['127.0.0.1', 'localhost', '::1']);
+
 class CustomUpdater extends EventEmitter {
   constructor(options = {}) {
     super();
 
-    this.updateServerUrl = options.updateServerUrl || 'http://shcrystal.top:8321';
+    this.updateServerUrl = this.normalizeUpdateServerUrl(options.updateServerUrl || DEFAULT_UPDATE_SERVER_URL);
     this.currentVersion = app.getVersion();
     this.platform = process.platform;
     this.arch = process.arch;
@@ -83,6 +86,80 @@ class CustomUpdater extends EventEmitter {
       'enotfound',
       'eai_again'
     ].some((token) => message.includes(token));
+  }
+
+  isLoopbackUpdateHost(hostname) {
+    return LOOPBACK_UPDATE_HOSTS.has(String(hostname || '').replace(/^\[|\]$/g, '').toLowerCase());
+  }
+
+  parseUpdateUrl(rawUrl, purpose) {
+    try {
+      return new URL(String(rawUrl));
+    } catch (error) {
+      throw new Error(`${purpose} is invalid: ${rawUrl}`);
+    }
+  }
+
+  ensureSecureUpdateUrl(parsedUrl, purpose) {
+    if (parsedUrl.protocol === 'https:') {
+      return;
+    }
+
+    if (parsedUrl.protocol === 'http:' && this.isLoopbackUpdateHost(parsedUrl.hostname)) {
+      return;
+    }
+
+    throw new Error(`${purpose} must use HTTPS unless it targets localhost`);
+  }
+
+  normalizeUpdateServerUrl(rawUrl) {
+    const parsedUrl = this.parseUpdateUrl(rawUrl, 'Update server URL');
+    this.ensureSecureUpdateUrl(parsedUrl, 'Update server URL');
+    return parsedUrl.toString().replace(/\/+$/, '');
+  }
+
+  assertTrustedUpdateUrl(rawUrl, purpose = 'Update URL') {
+    const parsedUrl = this.parseUpdateUrl(rawUrl, purpose);
+    this.ensureSecureUpdateUrl(parsedUrl, purpose);
+
+    const updateServer = new URL(this.updateServerUrl);
+    if (parsedUrl.host !== updateServer.host) {
+      throw new Error(`${purpose} must use the configured update host`);
+    }
+
+    return parsedUrl.toString();
+  }
+
+  getSafeDownloadPath(fileName, purpose = 'Update file') {
+    const normalizedName = path.basename(String(fileName || ''));
+    if (!normalizedName || normalizedName !== String(fileName)) {
+      throw new Error(`${purpose} name is invalid`);
+    }
+
+    return path.join(this.downloadPath, normalizedName);
+  }
+
+  validateUpdateInfo(updateInfo) {
+    if (!updateInfo || typeof updateInfo !== 'object') {
+      throw new Error('Update server returned an invalid payload');
+    }
+
+    if (!updateInfo.has_update) {
+      return updateInfo;
+    }
+
+    if (!updateInfo.download_url || !updateInfo.file_name || !updateInfo.file_hash) {
+      throw new Error('Update metadata is incomplete');
+    }
+
+    updateInfo.download_url = this.assertTrustedUpdateUrl(updateInfo.download_url, 'Update download URL');
+    this.getSafeDownloadPath(updateInfo.file_name, 'Update file');
+
+    if (updateInfo.delta_available && updateInfo.delta_info?.delta_url) {
+      updateInfo.delta_info.delta_url = this.assertTrustedUpdateUrl(updateInfo.delta_info.delta_url, 'Delta update URL');
+    }
+
+    return updateInfo;
   }
 
   /**
@@ -300,7 +377,7 @@ class CustomUpdater extends EventEmitter {
         }
       );
 
-      const updateInfo = response.data.data;
+      const updateInfo = this.validateUpdateInfo(response.data.data);
 
       if (updateInfo.has_update) {
         console.log('[CustomUpdater] Update available:', updateInfo.latest_version);
@@ -393,9 +470,10 @@ class CustomUpdater extends EventEmitter {
 
     this.downloading = true;
     const { download_url, file_name, file_hash, file_size } = this.updateInfo;
-    const localFilePath = path.join(this.downloadPath, file_name);
+    const trustedDownloadUrl = this.assertTrustedUpdateUrl(download_url, 'Update download URL');
+    const localFilePath = this.getSafeDownloadPath(file_name, 'Update file');
 
-    console.log('[CustomUpdater] Starting download:', download_url);
+    console.log('[CustomUpdater] Starting download:', trustedDownloadUrl);
     this.emit('download-start');
 
     try {
@@ -420,7 +498,7 @@ class CustomUpdater extends EventEmitter {
       // 下载文件
       const response = await axios({
         method: 'GET',
-        url: download_url,
+        url: trustedDownloadUrl,
         responseType: 'stream',
         headers: {
           'User-Agent': `VidFlow/${this.currentVersion} (${this.platform})`

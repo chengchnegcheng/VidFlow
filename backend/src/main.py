@@ -5,6 +5,7 @@ import atexit
 import json
 import logging
 import os
+import re
 import sys
 import time
 from contextlib import asynccontextmanager
@@ -91,6 +92,8 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 _capture_cleanup_registered = False
 _capture_cleanup_running = False
+_LOCAL_LOOPBACK_ORIGIN_REGEX = r"^https?://(127\.0\.0\.1|localhost)(:\d+)?$"
+_LOCAL_LOOPBACK_ORIGIN_PATTERN = re.compile(_LOCAL_LOOPBACK_ORIGIN_REGEX)
 
 
 def _cleanup_channels_capture_resources_on_exit() -> None:
@@ -325,8 +328,8 @@ async def add_process_time_header(request: Request, call_next):
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://channels.weixin.qq.com"],
-    allow_origin_regex=r"^https?://(127\.0\.0\.1|localhost)(:\d+)?$",
+    allow_origins=[],
+    allow_origin_regex=_LOCAL_LOOPBACK_ORIGIN_REGEX,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -336,15 +339,16 @@ app.add_middleware(
 
 @app.middleware("http")
 async def allow_private_network_access(request: Request, call_next):
-    """Allow secure WeChat pages to talk to the loopback backend."""
+    """Allow local development frontends to talk to the loopback backend."""
     response = await call_next(request)
 
     request_private_network = request.headers.get("access-control-request-private-network")
     request_origin = request.headers.get("origin")
-    if request_private_network == "true" or request_origin == "https://channels.weixin.qq.com":
+    origin_is_loopback = bool(request_origin and _LOCAL_LOOPBACK_ORIGIN_PATTERN.fullmatch(request_origin))
+    if request_private_network == "true" and origin_is_loopback:
         response.headers["Access-Control-Allow-Private-Network"] = "true"
 
-    if request_private_network == "true":
+    if request_private_network == "true" and origin_is_loopback:
         vary_parts = [
             part.strip()
             for part in response.headers.get("Vary", "").split(",")

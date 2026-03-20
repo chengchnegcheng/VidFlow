@@ -94,7 +94,7 @@ releases\
 
 ### 步骤 5: 上传到更新服务器
 
-登录更新服务器管理后台 (http://shcrystal.top:8321/admin)：
+登录更新服务器管理后台 (https://shcrystal.top:8321/admin)：
 
 1. 进入「版本管理」上传新版本安装包
 2. 进入「增量更新」上传差异包文件

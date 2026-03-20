@@ -21,6 +21,37 @@ _WECHAT_IMAGE_HOST_MARKERS = (
     "wechat.com",
     "qq.com",
 )
+_ALLOWED_IMAGE_HOST_SUFFIXES = (
+    "qpic.cn",
+    "qlogo.cn",
+    "weixin.qq.com",
+    "wechat.com",
+    "qq.com",
+)
+
+
+def _is_allowed_image_host(host: str) -> bool:
+    lowered = (host or "").lower()
+    return any(lowered == suffix or lowered.endswith(f".{suffix}") for suffix in _ALLOWED_IMAGE_HOST_SUFFIXES)
+
+
+def _validate_proxy_image_url(url: str) -> str:
+    """Restrict the image proxy to a small set of known public hosts."""
+    try:
+        parsed = urlparse(url)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="Invalid image URL") from exc
+
+    scheme = (parsed.scheme or "").lower()
+    host = (parsed.hostname or "").lower()
+    if scheme not in {"http", "https"} or not host:
+        raise HTTPException(status_code=400, detail="Only http(s) image URLs are allowed")
+    if parsed.username or parsed.password:
+        raise HTTPException(status_code=400, detail="Image URL must not include credentials")
+    if not _is_allowed_image_host(host):
+        raise HTTPException(status_code=400, detail="Image host is not allowed")
+
+    return parsed.geturl()
 
 
 def _resolve_image_referer(url: str) -> str:
@@ -52,8 +83,10 @@ async def proxy_image(url: str):
         图片二进制数据
     """
     try:
+        safe_url = _validate_proxy_image_url(url)
+
         # 根据URL确定Referer
-        referer = _resolve_image_referer(url)
+        referer = _resolve_image_referer(safe_url)
 
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -68,12 +101,15 @@ async def proxy_image(url: str):
         async with httpx.AsyncClient(
             timeout=30.0,
             follow_redirects=True,
-            verify=False,
             trust_env=False,
             limits=httpx.Limits(max_keepalive_connections=5, max_connections=10)
         ) as client:
-            response = await client.get(url, headers=headers)
+            response = await client.get(safe_url, headers=headers)
             response.raise_for_status()
+            content_type = (response.headers.get('content-type') or '').split(';', 1)[0].strip().lower()
+            if not content_type.startswith('image/'):
+                logger.warning("Rejected non-image response from proxy target %s: %s", safe_url, content_type or "unknown")
+                raise HTTPException(status_code=502, detail="Upstream did not return an image")
 
             # 返回图片
             return Response(
@@ -85,6 +121,8 @@ async def proxy_image(url: str):
                 }
             )
 
+    except HTTPException:
+        raise
     except httpx.TimeoutException:
         logger.error(f"Timeout fetching image: {url}")
         raise HTTPException(status_code=504, detail="Image fetch timeout")
@@ -97,4 +135,3 @@ async def proxy_image(url: str):
     except Exception as e:
         logger.error(f"Error proxying image: {e}")
         raise HTTPException(status_code=500, detail=str(e))
-

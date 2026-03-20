@@ -107,6 +107,10 @@ _CHANNELS_DIAGNOSTIC_CRITICAL_MARKERS = (
     "contained channels markers but no complete metadata",
     "Raw server TCP stream produced no metadata yet",
 )
+_CERTIFICATE_EXPORT_EXTENSIONS = {
+    "cer": {".cer", ".crt", ".pem"},
+    "p12": {".p12", ".pfx"},
+}
 
 
 class _LegacyChannelsConfigProxy:
@@ -156,6 +160,54 @@ def _normalize_decode_key(value: Optional[str]) -> Optional[str]:
         return None
     candidate = str(value).strip()
     return candidate if candidate.isdigit() else None
+
+
+def _validate_certificate_export_target(export_path: str, cert_format: str) -> Path:
+    """Restrict certificate exports to user-owned locations with expected file types."""
+    if not export_path or not isinstance(export_path, str):
+        raise HTTPException(status_code=400, detail="导出路径不能为空")
+
+    allowed_extensions = _CERTIFICATE_EXPORT_EXTENSIONS.get(cert_format)
+    if not allowed_extensions:
+        raise HTTPException(status_code=400, detail="不支持的证书格式")
+
+    target = Path(export_path).expanduser()
+    if not target.name:
+        raise HTTPException(status_code=400, detail="导出路径必须包含文件名")
+
+    if target.suffix.lower() not in allowed_extensions:
+        expected = "、".join(sorted(allowed_extensions))
+        raise HTTPException(status_code=400, detail=f"导出文件扩展名必须为: {expected}")
+
+    try:
+        target_parent = target.parent.resolve()
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="导出目录无效") from exc
+
+    if not target_parent.exists() or not target_parent.is_dir():
+        raise HTTPException(status_code=400, detail="导出目录不存在")
+
+    allowed_roots = [Path.home().expanduser().resolve()]
+    onedrive_root = os.environ.get("OneDrive")
+    if onedrive_root:
+        try:
+            allowed_roots.append(Path(onedrive_root).expanduser().resolve())
+        except Exception:
+            pass
+
+    def _is_within_root(root: Path) -> bool:
+        if target_parent == root:
+            return True
+        try:
+            target_parent.relative_to(root)
+            return True
+        except ValueError:
+            return False
+
+    if not any(_is_within_root(root) for root in allowed_roots):
+        raise HTTPException(status_code=403, detail="只允许导出到当前用户目录")
+
+    return target_parent / target.name
 
 
 def _normalize_task_status(status: Optional[str]) -> str:
@@ -2271,10 +2323,11 @@ async def export_cert(request: CertificateExportRequest):
         if not source.exists():
             return {"success": False, "message": f"{cert_format.upper()} 证书不存在", "path": None}
 
-        target = Path(request.export_path)
-        target.parent.mkdir(parents=True, exist_ok=True)
+        target = _validate_certificate_export_target(request.export_path, cert_format)
         await asyncio.to_thread(target.write_bytes, source.read_bytes())
         return {"success": True, "message": "证书已导出", "path": str(target)}
+    except HTTPException:
+        raise
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:

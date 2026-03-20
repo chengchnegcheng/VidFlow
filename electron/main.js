@@ -55,6 +55,7 @@ let backendPort = null;
 let backendReady = false;
 let backendError = null; // 新增: 记录后端启动错误
 let updater = null;
+let updaterError = null;
 let backendShutdownPromise = null;
 let backendQuitCleanupDone = false;
 
@@ -995,12 +996,25 @@ function createWindow() {
 
 // 初始化更新器
 function initUpdater() {
-  // 创建更新器实例
-  updater = new CustomUpdater({
-    updateServerUrl: 'http://shcrystal.top:8321',
-    autoCheck: true,
-    autoDownload: false  // 不自动下载，等用户确认
-  });
+  const configuredUpdateServerUrl = process.env.VIDFLOW_UPDATE_SERVER_URL || 'https://shcrystal.top:8321';
+
+  try {
+    // 创建更新器实例
+    updater = new CustomUpdater({
+      updateServerUrl: configuredUpdateServerUrl,
+      autoCheck: true,
+      autoDownload: false  // 不自动下载，等用户确认
+    });
+    updaterError = null;
+  } catch (error) {
+    updater = null;
+    updaterError = error.message || 'Updater initialization failed';
+    console.error('[Update] Updater disabled:', updaterError);
+    if (mainWindow) {
+      mainWindow.webContents.send('update-error', updaterError);
+    }
+    return;
+  }
 
   // 监听更新事件
   updater.on('checking-for-update', () => {
@@ -1770,7 +1784,7 @@ ipcMain.handle('window-close', () => {
 ipcMain.handle('custom-update-check', async () => {
   try {
     if (!updater) {
-      return { success: false, error: 'Updater not initialized' };
+      return { success: false, error: updaterError || 'Updater not initialized' };
     }
     const result = await updater.checkForUpdates();
     return { success: true, data: result };
@@ -1783,7 +1797,7 @@ ipcMain.handle('custom-update-check', async () => {
 ipcMain.handle('custom-update-download', async () => {
   try {
     if (!updater) {
-      return { success: false, error: 'Updater not initialized' };
+      return { success: false, error: updaterError || 'Updater not initialized' };
     }
 
     // 检查是否有增量更新可用，优先使用增量更新
@@ -1813,7 +1827,7 @@ ipcMain.handle('custom-update-download', async () => {
 ipcMain.handle('custom-update-install', async () => {
   try {
     if (!updater) {
-      return { success: false, error: 'Updater not initialized' };
+      return { success: false, error: updaterError || 'Updater not initialized' };
     }
     await updater.quitAndInstall();
     return { success: true };

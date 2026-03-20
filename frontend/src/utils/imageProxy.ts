@@ -19,15 +19,23 @@ export function getProxiedImageUrl(url: string | undefined | null): string {
     return url;
   }
 
-  // 检查是否是微信相关域名（需要代理）
-  const wechatDomains = [
-    'qpic.cn',
-    'qq.com',
-    'weixin.qq.com',
-    'wechat.com',
-  ];
+  let needsProxy = false;
+  try {
+    const parsed = new URL(url);
+    const hostname = parsed.hostname.toLowerCase();
+    const wechatDomains = [
+      'qpic.cn',
+      'qlogo.cn',
+      'qq.com',
+      'weixin.qq.com',
+      'wechat.com',
+    ];
 
-  const needsProxy = wechatDomains.some(domain => url.includes(domain));
+    needsProxy = ['http:', 'https:'].includes(parsed.protocol)
+      && wechatDomains.some(domain => hostname === domain || hostname.endsWith(`.${domain}`));
+  } catch {
+    needsProxy = false;
+  }
 
   if (needsProxy) {
     // 使用后端图片代理 API

@@ -175,6 +175,12 @@ class ProxySniffer:
         self._renderer_recycle_at: Optional[datetime] = None
         self._recent_renderer_process_activity: Dict[int, Tuple[str, float]] = {}
 
+        # 端口-进程缓存（后台线程刷新，避免在 mitmproxy 回调中调用 psutil）
+        self._port_process_cache: Dict[int, Tuple[Optional[str], Optional[int], float]] = {}
+        self._port_process_cache_lock = Lock()
+        self._port_cache_refresh_stop = Event()
+        self._port_cache_refresh_thread: Optional[Thread] = None
+
     @property
     def is_running(self) -> bool:
         """代理是否正在运行"""
@@ -2013,6 +2019,89 @@ class ProxySniffer:
         except OSError:
             return False
 
+    def _start_port_cache_refresh_thread(self) -> None:
+        """启动后台端口-进程缓存刷新线程，避免在 mitmproxy 回调中调用 psutil。"""
+        if self._port_cache_refresh_thread and self._port_cache_refresh_thread.is_alive():
+            return
+        self._port_cache_refresh_stop.clear()
+        # 先做一次同步刷新，避免启动后前 2 秒缓存为空
+        self._port_cache_refresh_once()
+        self._port_cache_refresh_thread = Thread(
+            target=self._port_cache_refresh_loop, daemon=True, name="port-cache-refresh"
+        )
+        self._port_cache_refresh_thread.start()
+
+    def _stop_port_cache_refresh_thread(self) -> None:
+        """停止后台端口-进程缓存刷新线程。"""
+        self._port_cache_refresh_stop.set()
+        if self._port_cache_refresh_thread and self._port_cache_refresh_thread.is_alive():
+            self._port_cache_refresh_thread.join(timeout=3.0)
+        self._port_cache_refresh_thread = None
+
+    def _port_cache_refresh_once(self) -> None:
+        """执行一次端口-进程缓存刷新。"""
+        try:
+            import psutil
+        except ImportError:
+            return
+
+        try:
+            connections = None
+            for kind in ("inet", "tcp"):
+                try:
+                    connections = psutil.net_connections(kind=kind)
+                    break
+                except Exception:
+                    continue
+
+            if connections is not None:
+                now = time.monotonic()
+                refreshed: Dict[int, Tuple[Optional[str], Optional[int], float]] = {}
+                for conn in connections:
+                    laddr = getattr(conn, "laddr", None)
+                    pid = getattr(conn, "pid", None)
+                    if not laddr or not pid:
+                        continue
+                    local_port = getattr(laddr, "port", None)
+                    if local_port is None and isinstance(laddr, tuple) and len(laddr) >= 2:
+                        local_port = laddr[1]
+                    if not isinstance(local_port, int):
+                        continue
+                    process_name: Optional[str] = None
+                    try:
+                        process_name = psutil.Process(pid).name()
+                    except Exception:
+                        pass
+                    refreshed[local_port] = (process_name, pid, now)
+
+                with self._port_process_cache_lock:
+                    self._port_process_cache.update(refreshed)
+        except Exception:
+            logger.debug("端口缓存刷新异常", exc_info=True)
+
+    def _port_cache_refresh_loop(self) -> None:
+        """后台定期刷新端口-进程映射缓存。"""
+        while not self._port_cache_refresh_stop.is_set():
+            self._port_cache_refresh_once()
+            # 每 2 秒刷新一次
+            self._port_cache_refresh_stop.wait(timeout=2.0)
+
+    def _lookup_process_info_by_client_port(self, client_port: Optional[int]) -> Tuple[Optional[str], Optional[int]]:
+        """从缓存中查找端口对应的进程信息（不再内联调用 psutil）。"""
+        if not isinstance(client_port, int) or client_port <= 0:
+            return None, None
+
+        with self._port_process_cache_lock:
+            cached = self._port_process_cache.get(client_port)
+            if cached:
+                return cached[0], cached[1]
+
+        return None, None
+
+    def _lookup_process_name_by_client_port(self, client_port: Optional[int]) -> Optional[str]:
+        process_name, _ = self._lookup_process_info_by_client_port(client_port)
+        return process_name
+
 
 class VideoSnifferAddon:
     """mitmproxy 插件，用于嗅探视频 URL
@@ -2035,10 +2124,6 @@ class VideoSnifferAddon:
         self._metadata_cache_timestamps: Dict[str, float] = {}  # 缓存条目的写入时间戳
         self._inject_script_cache: Optional[str] = None
         self._last_html_injection_at: Optional[datetime] = None
-        self._port_process_cache: Dict[int, Tuple[Optional[str], Optional[int], float]] = {}
-        self._port_process_cache_lock = Lock()
-        self._port_cache_refresh_stop = Event()
-        self._port_cache_refresh_thread: Optional[Thread] = None
         self._page_prefetch_lock = Lock()
         self._recent_page_prefetches: Dict[str, float] = {}
         # 视频 URL 去重：避免同一视频的 Range 分段请求被重复完整处理
@@ -2363,83 +2448,12 @@ class VideoSnifferAddon:
             return False
         return True
 
-    def _start_port_cache_refresh_thread(self) -> None:
-        """启动后台端口-进程缓存刷新线程，避免在 mitmproxy 回调中调用 psutil。"""
-        if self._port_cache_refresh_thread and self._port_cache_refresh_thread.is_alive():
-            return
-        self._port_cache_refresh_stop.clear()
-        self._port_cache_refresh_thread = Thread(
-            target=self._port_cache_refresh_loop, daemon=True, name="port-cache-refresh"
-        )
-        self._port_cache_refresh_thread.start()
-
-    def _stop_port_cache_refresh_thread(self) -> None:
-        """停止后台端口-进程缓存刷新线程。"""
-        self._port_cache_refresh_stop.set()
-        if self._port_cache_refresh_thread and self._port_cache_refresh_thread.is_alive():
-            self._port_cache_refresh_thread.join(timeout=3.0)
-        self._port_cache_refresh_thread = None
-
-    def _port_cache_refresh_loop(self) -> None:
-        """后台定期刷新端口-进程映射缓存。"""
-        try:
-            import psutil
-        except ImportError:
-            return
-
-        while not self._port_cache_refresh_stop.is_set():
-            try:
-                now = time.monotonic()
-                connections = None
-                for kind in ("inet", "tcp"):
-                    try:
-                        connections = psutil.net_connections(kind=kind)
-                        break
-                    except Exception:
-                        continue
-
-                if connections is not None:
-                    refreshed: Dict[int, Tuple[Optional[str], Optional[int], float]] = {}
-                    for conn in connections:
-                        laddr = getattr(conn, "laddr", None)
-                        pid = getattr(conn, "pid", None)
-                        if not laddr or not pid:
-                            continue
-                        local_port = getattr(laddr, "port", None)
-                        if local_port is None and isinstance(laddr, tuple) and len(laddr) >= 2:
-                            local_port = laddr[1]
-                        if not isinstance(local_port, int):
-                            continue
-                        process_name: Optional[str] = None
-                        try:
-                            process_name = psutil.Process(pid).name()
-                        except Exception:
-                            pass
-                        refreshed[local_port] = (process_name, pid, now)
-
-                    with self._port_process_cache_lock:
-                        self._port_process_cache.update(refreshed)
-            except Exception:
-                logger.debug("端口缓存刷新异常", exc_info=True)
-
-            # 每 2 秒刷新一次
-            self._port_cache_refresh_stop.wait(timeout=2.0)
-
     def _lookup_process_info_by_client_port(self, client_port: Optional[int]) -> Tuple[Optional[str], Optional[int]]:
-        """从缓存中查找端口对应的进程信息（不再内联调用 psutil）。"""
-        if not isinstance(client_port, int) or client_port <= 0:
-            return None, None
-
-        with self._port_process_cache_lock:
-            cached = self._port_process_cache.get(client_port)
-            if cached:
-                return cached[0], cached[1]
-
-        return None, None
+        """委托给 ProxySniffer 的缓存查找。"""
+        return self.sniffer._lookup_process_info_by_client_port(client_port)
 
     def _lookup_process_name_by_client_port(self, client_port: Optional[int]) -> Optional[str]:
-        process_name, _ = self._lookup_process_info_by_client_port(client_port)
-        return process_name
+        return self.sniffer._lookup_process_name_by_client_port(client_port)
 
     @staticmethod
     def _read_request_text(flow) -> str:
