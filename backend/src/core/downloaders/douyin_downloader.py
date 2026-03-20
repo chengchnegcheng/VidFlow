@@ -21,134 +21,39 @@ from .proxy_config import get_proxy_url
 
 logger = logging.getLogger(__name__)
 
-# Playwright 可用状态缓存
-_playwright_available: Optional[bool] = None
-_playwright_error_code: Optional[str] = None  # 缓存错误码
 # Playwright 安装锁，防止并发安装
 _playwright_install_lock: Optional[asyncio.Lock] = None
 
 
-def reset_playwright_cache():
-    """重置 Playwright 可用状态缓存（安装后调用）"""
-    global _playwright_available, _playwright_error_code
-    _playwright_available = None
-    _playwright_error_code = None
-    logger.info("[Playwright] Cache reset")
-
-
-def check_playwright_available() -> tuple:
+async def check_playwright_available() -> tuple:
     """
-    检查 Playwright 是否可用（延迟检查，不在模块导入时执行）
+    检查 Playwright 是否可用。
 
     Returns:
         (是否可用, 错误码)
         错误码: "" (可用), "playwright_not_installed", "chromium_not_installed", "check_failed:xxx"
     """
-    global _playwright_available, _playwright_error_code
-    import sys
+    try:
+        from src.core.tool_manager import get_tool_manager
 
-    # 使用缓存
-    if _playwright_available is not None:
-        if _playwright_available:
+        tool_mgr = get_tool_manager()
+        status = await tool_mgr.check_playwright_status(force_refresh=True)
+
+        if status.get("installed"):
             return True, ""
-        else:
-            return False, _playwright_error_code or "playwright_not_installed"
 
-    # 检查 Playwright 包（延迟导入）
-    try:
-        import playwright
-        from playwright.sync_api import sync_playwright
-    except ImportError:
-        _playwright_available = False
-        _playwright_error_code = "playwright_not_installed"
+        if not status.get("package_installed"):
+            return False, "playwright_not_installed"
+
+        if status.get("error"):
+            return False, f"check_failed:{status['error']}"
+
+        if not status.get("browser_installed"):
+            return False, "chromium_not_installed"
+
         return False, "playwright_not_installed"
-
-    # 检查 Chromium 浏览器 - 需要检查多个可能的位置
-    try:
-        # 可能的浏览器路径列表
-        possible_browser_paths = []
-
-        # 1. 用户目录（标准安装位置）
-        if sys.platform == 'win32':
-            user_pw_path = Path.home() / 'AppData' / 'Local' / 'ms-playwright'
-        elif sys.platform == 'darwin':
-            user_pw_path = Path.home() / 'Library' / 'Caches' / 'ms-playwright'
-        else:
-            user_pw_path = Path.home() / '.cache' / 'ms-playwright'
-        possible_browser_paths.append(user_pw_path)
-
-        # 2. 打包环境中 Playwright 的 .local-browsers 目录
-        if getattr(sys, 'frozen', False):
-            # PyInstaller 打包后的路径
-            if hasattr(sys, '_MEIPASS'):
-                internal_path = Path(sys._MEIPASS)
-            else:
-                internal_path = Path(sys.executable).parent / '_internal'
-
-            # Playwright driver 的 .local-browsers 目录
-            playwright_local = internal_path / 'playwright' / 'driver' / 'package' / '.local-browsers'
-            possible_browser_paths.append(playwright_local)
-            logger.debug(f"[Playwright] Packaged env, checking: {playwright_local}")
-
-        logger.info(f"[Playwright] Checking browser paths: {possible_browser_paths}")
-
-        # 检查每个可能的路径
-        for pw_browsers_path in possible_browser_paths:
-            logger.info(f"[Playwright] Checking path: {pw_browsers_path}, exists: {pw_browsers_path.exists()}")
-            if not pw_browsers_path.exists():
-                continue
-
-            # 查找 chromium_headless_shell 或 chromium 目录
-            # 优先检查 chromium_headless_shell，因为这是我们默认安装的（更小）
-            chromium_patterns = ['chromium_headless_shell-*', 'chromium-*']
-            for pattern in chromium_patterns:
-                chromium_dirs = list(pw_browsers_path.glob(pattern))
-                logger.info(f"[Playwright] Pattern {pattern} found dirs: {chromium_dirs}")
-                if chromium_dirs:
-                    chromium_dir = sorted(chromium_dirs, reverse=True)[0]
-
-                    # 查找可执行文件 - 支持多种目录结构
-                    chrome_exe = None
-                    if sys.platform == 'win32':
-                        possible_exes = [
-                            chromium_dir / 'chrome-headless-shell-win64' / 'chrome-headless-shell.exe',
-                            chromium_dir / 'chrome-win64' / 'chrome.exe',
-                            chromium_dir / 'chrome-win' / 'chrome.exe',
-                        ]
-                    elif sys.platform == 'darwin':
-                        possible_exes = [
-                            chromium_dir / 'chrome-headless-shell-mac-arm64' / 'chrome-headless-shell',
-                            chromium_dir / 'chrome-headless-shell-mac' / 'chrome-headless-shell',
-                            chromium_dir / 'chrome-mac' / 'Chromium.app' / 'Contents' / 'MacOS' / 'Chromium',
-                            chromium_dir / 'chrome-mac-arm64' / 'Chromium.app' / 'Contents' / 'MacOS' / 'Chromium',
-                        ]
-                    else:
-                        possible_exes = [
-                            chromium_dir / 'chrome-headless-shell-linux' / 'chrome-headless-shell',
-                            chromium_dir / 'chrome-linux' / 'chrome',
-                        ]
-
-                    for exe_path in possible_exes:
-                        logger.info(f"[Playwright] Checking exe: {exe_path}, exists: {exe_path.exists()}")
-                        if exe_path.exists():
-                            chrome_exe = exe_path
-                            break
-
-                    if chrome_exe:
-                        _playwright_available = True
-                        _playwright_error_code = ""
-                        logger.info(f"[Playwright] Available and ready: {chrome_exe}")
-                        return True, ""
-
-        logger.info(f"[Playwright] Chromium not found in any of: {possible_browser_paths}")
-        _playwright_available = False
-        _playwright_error_code = "chromium_not_installed"
-        return False, "chromium_not_installed"
-
     except Exception as e:
         logger.error(f"[Playwright] Check failed: {e}")
-        _playwright_available = False
-        _playwright_error_code = f"check_failed:{str(e)}"
         return False, f"check_failed:{str(e)}"
 
 
@@ -178,8 +83,6 @@ async def auto_install_playwright(progress_callback: Optional[Callable] = None) 
             result = await tool_mgr.install_playwright(progress_callback)
 
             if result.get("success"):
-                # 重置缓存，下次检查会重新验证
-                reset_playwright_cache()
                 logger.info("[Playwright] Auto-installation completed successfully")
             else:
                 logger.error(f"[Playwright] Auto-installation failed: {result.get('error')}")
@@ -264,7 +167,7 @@ class DouyinDownloader(BaseDownloader):
             retry_after_install: 如果 Playwright 未安装，是否自动安装后重试
         """
         # 检查 Playwright 是否可用
-        available, error_code = check_playwright_available()
+        available, error_code = await check_playwright_available()
         logger.info(f"[DouyinDownloader] Playwright check: available={available}, error_code={error_code}")
 
         if not available:

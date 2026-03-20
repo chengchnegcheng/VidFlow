@@ -114,6 +114,21 @@ def _preload_ai_status_cache():
         _ai_status_cache_time = datetime.now()
         logger.warning(f"[AI Status] 缓存预热失败: {e}")
 
+def _get_ai_status_snapshot() -> Dict[str, Any]:
+    if _ai_status_cache is not None:
+        return dict(_ai_status_cache)
+
+    return {
+        "installed": False,
+        "faster_whisper": False,
+        "torch": False,
+        "version": None,
+        "torch_version": None,
+        "device": "unknown",
+        "python_compatible": True,
+    }
+
+
 _ALLOWED_OPEN_FOLDER_BASE = os.environ.get("VIDFLOW_ALLOWED_OPEN_BASE")
 
 def _handle_task_exception(task: asyncio.Task):
@@ -452,8 +467,7 @@ async def _get_tool_version(tool_path: str, version_arg: str, parse_fn=None, tim
 @router.get("/tools/status", response_model=List[ToolStatus])
 async def check_tools_status():
     """检查工具安装状态"""
-    from src.core.tool_manager import get_tool_manager
-    import sys
+    from src.core.tool_manager import BUNDLED_BIN_DIR, get_tool_manager
     import asyncio
 
     tools = []
@@ -464,61 +478,76 @@ async def check_tools_status():
     ytdlp_path = tool_mgr.get_ytdlp_path() or shutil.which("yt-dlp")
 
     # 检查内置版本
-    from src.core.tool_manager import BUNDLED_BIN_DIR
-
     def is_bundled(tool_path):
         if not tool_path or not BUNDLED_BIN_DIR:
             return False
         try:
             return Path(tool_path).is_relative_to(BUNDLED_BIN_DIR)
-        except:
+        except Exception:
             # Python < 3.9 兼容
             return str(BUNDLED_BIN_DIR) in str(tool_path)
 
     ffmpeg_bundled = is_bundled(ffmpeg_path)
     ytdlp_bundled = is_bundled(ytdlp_path)
 
-    # 并行检查版本（性能优化：2秒而非4秒）
     def parse_ffmpeg_version(output):
-        """解析 FFmpeg 版本"""
-        lines = output.split('\n')
-        for line in lines:
-            if 'version' in line.lower():
-                # FFmpeg 版本格式: "ffmpeg version 6.0 ..."
-                parts = line.split()
-                for i, part in enumerate(parts):
-                    if part.lower() == 'version' and i + 1 < len(parts):
-                        return parts[i + 1]
+        for line in output.splitlines():
+            if "version" not in line.lower():
+                continue
+
+            parts = line.split()
+            for index, part in enumerate(parts):
+                if part.lower() == "version" and index + 1 < len(parts):
+                    return parts[index + 1]
         return None
 
-    version_tasks = []
+    def parse_ytdlp_version(output):
+        for line in output.splitlines():
+            version = line.strip()
+            if version:
+                return version
+        return None
 
-    # FFmpeg 优先从 GitHub 获取版本（使用 BtbN/FFmpeg-Builds 仓库）
-    if ffmpeg_path:
-        version_tasks.append(_get_github_version("BtbN/FFmpeg-Builds", timeout=5.0))
-    else:
-        version_tasks.append(asyncio.sleep(0, result=None))  # 占位任务
+    async def get_ffmpeg_version():
+        if not ffmpeg_path:
+            return None
+        return await _get_tool_version(
+            str(ffmpeg_path),
+            "-version",
+            parse_ffmpeg_version,
+            timeout=2.0,
+        )
 
-    # yt-dlp 优先从 GitHub 获取版本
-    if ytdlp_path:
-        version_tasks.append(_get_github_version("yt-dlp/yt-dlp", timeout=5.0))
-    else:
-        version_tasks.append(asyncio.sleep(0, result=None))  # 占位任务
+    async def get_ytdlp_version():
+        if not ytdlp_path:
+            return None
+        return await _get_tool_version(
+            str(ytdlp_path),
+            "--version",
+            parse_ytdlp_version,
+            timeout=2.0,
+        )
 
-    # 并行执行版本检查
-    ffmpeg_version, ytdlp_version = await asyncio.gather(*version_tasks, return_exceptions=True)
+    ffmpeg_version, ytdlp_version, playwright_status = await asyncio.gather(
+        get_ffmpeg_version(),
+        get_ytdlp_version(),
+        tool_mgr.check_playwright_status(),
+        return_exceptions=True,
+    )
 
-    # 处理异常结果
     if isinstance(ffmpeg_version, Exception):
         ffmpeg_version = None
+
     if isinstance(ytdlp_version, Exception):
         ytdlp_version = None
 
-    if ffmpeg_path and not ffmpeg_version:
-        try:
-            ffmpeg_version = await _get_tool_version(str(ffmpeg_path), "-version", parse_ffmpeg_version)
-        except Exception:
-            ffmpeg_version = None
+    if isinstance(playwright_status, Exception):
+        playwright_status = {
+            "installed": False,
+            "version": None,
+            "browser_path": None,
+            "error": str(playwright_status),
+        }
 
     # 添加 FFmpeg 工具状态
     tools.append(ToolStatus(
@@ -532,11 +561,6 @@ async def check_tools_status():
         official_url="https://ffmpeg.org",
         bundled=ffmpeg_bundled
     ))
-
-    # 调试日志（yt-dlp）
-    logger.info(f"[yt-dlp] Path from tool_mgr: {tool_mgr.get_ytdlp_path()}")
-    logger.info(f"[yt-dlp] Path from which: {shutil.which('yt-dlp')}")
-    logger.info(f"[yt-dlp] Final path: {ytdlp_path}")
 
     # 添加 yt-dlp 工具状态
     tools.append(ToolStatus(
@@ -552,28 +576,11 @@ async def check_tools_status():
         updating=tool_mgr._updating_tools.get("ytdlp", False)
     ))
 
-    # 检查 faster-whisper
-    whisper_available = await tool_mgr.check_faster_whisper()
-    whisper_version = None
-    whisper_compatible = True
-    whisper_reason = None
-
-    # 注意：不再硬编码Python版本检查
-    # faster-whisper的兼容性由pip在安装时自然处理
-
-    if whisper_available:
-        try:
-            try:
-                from importlib.metadata import version as get_version, PackageNotFoundError
-            except ImportError:
-                from importlib_metadata import version as get_version, PackageNotFoundError  # type: ignore[import-not-found]
-
-            try:
-                whisper_version = get_version("faster-whisper")
-            except PackageNotFoundError:
-                pass
-        except Exception:
-            pass
+    ai_status = _get_ai_status_snapshot()
+    whisper_available = bool(ai_status.get("installed"))
+    whisper_version = ai_status.get("version")
+    whisper_compatible = bool(ai_status.get("python_compatible", True))
+    whisper_reason = ai_status.get("error")
 
     tools.append(ToolStatus(
         id="faster-whisper",
@@ -587,8 +594,6 @@ async def check_tools_status():
         incompatible_reason=whisper_reason
     ))
 
-    # 检查 Playwright（用于抖音/TikTok下载）
-    playwright_status = await tool_mgr.check_playwright_status()
     tools.append(ToolStatus(
         id="playwright",
         name="Playwright",
@@ -931,7 +936,7 @@ async def install_playwright(background_tasks: BackgroundTasks = None):
         ws_manager = get_ws_manager()
 
         # 先检查是否已安装
-        status = await tool_mgr.check_playwright_status()
+        status = await tool_mgr.check_playwright_status(force_refresh=True)
         if status.get("installed"):
             return {
                 "success": True,

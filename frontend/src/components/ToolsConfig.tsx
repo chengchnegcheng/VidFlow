@@ -71,10 +71,14 @@ interface GPUInfo {
   installing?: boolean;
 }
 
-export function ToolsConfig() {
+interface ToolsConfigProps {
+  active?: boolean;
+}
+
+export function ToolsConfig({ active = true }: ToolsConfigProps) {
   const [tools, setTools] = useState<ToolInfo[]>([]);
   const [gpuInfo, setGpuInfo] = useState<GPUInfo | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(active);
   const [installing, setInstalling] = useState<string | null>(null);
 
   // 使用全局安装进度状态
@@ -119,15 +123,15 @@ export function ToolsConfig() {
 
   // 获取工具状态
   const fetchToolsStatus = useCallback(async () => {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
+
     try {
       const apiUrl = getApiBaseUrl();
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000); // 增加到10秒
 
       const response = await fetch(`${apiUrl}/api/v1/system/tools/status`, {
         signal: controller.signal
       });
-      clearTimeout(timeoutId);
 
       if (response.ok) {
         const data = await response.json();
@@ -142,40 +146,49 @@ export function ToolsConfig() {
       } else {
         console.error('[ToolsConfig] Failed to fetch tools status:', error);
       }
+    } finally {
+      clearTimeout(timeoutId);
     }
   }, []);
 
   // 获取 GPU 状态
   const fetchGPUStatus = useCallback(async () => {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
+
     try {
       const apiUrl = getApiBaseUrl();
-      console.log('[GPU] Fetching GPU status from:', `${apiUrl}/api/v1/system/gpu/status`);
-      const response = await fetch(`${apiUrl}/api/v1/system/gpu/status`);
-      console.log('[GPU] Response status:', response.status);
+      const response = await fetch(`${apiUrl}/api/v1/system/gpu/status`, {
+        signal: controller.signal
+      });
       if (response.ok) {
         const data = await response.json();
-        console.log('[GPU] Received GPU data:', data);
         setGpuInfo(data?.data ?? data);
       } else {
-        console.error('[GPU] Failed to fetch GPU status:', response.status, response.statusText);
+        console.error('[ToolsConfig] Failed to fetch GPU status:', response.status, response.statusText);
       }
     } catch (error) {
-      console.error('[GPU] Failed to fetch GPU status:', error);
+      if (error instanceof Error && error.name === 'AbortError') {
+        console.debug('[ToolsConfig] GPU status request timed out');
+      } else {
+        console.error('[ToolsConfig] Failed to fetch GPU status:', error);
+      }
+    } finally {
+      clearTimeout(timeoutId);
     }
   }, []);
 
   // 获取 AI 工具状态
   const fetchAIToolsStatus = useCallback(async () => {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 20000);
+
     try {
       const apiUrl = getApiBaseUrl();
-      const controller = new AbortController();
-      // AI工具状态接口可能需要加载torch，增加到20秒超时
-      const timeoutId = setTimeout(() => controller.abort(), 20000);
 
       const response = await fetch(`${apiUrl}/api/v1/system/tools/ai/status`, {
         signal: controller.signal
       });
-      clearTimeout(timeoutId);
 
       if (response.ok) {
         const data = await response.json();
@@ -184,19 +197,17 @@ export function ToolsConfig() {
     } catch (error) {
       // 静默处理超时错误，避免控制台噪音和影响其他状态
       if (error instanceof Error && error.name === 'AbortError') {
-        console.warn('[ToolsConfig] AI 工具状态请求超时（20秒），使用缓存数据，将在下次轮询时重试');
-        // 超时时保持当前状态，不清空数据
+        console.debug('[ToolsConfig] AI tools status request timed out');
       } else {
         console.error('[ToolsConfig] Failed to fetch AI tools status:', error);
       }
+    } finally {
+      clearTimeout(timeoutId);
     }
   }, []);
 
   // 监听安装进度变化
   useEffect(() => {
-    console.log('[ToolsConfig] installProgress changed:', installProgress);
-    console.log('[ToolsConfig] State:', { installing, installingAI, uninstallingAI });
-
     // 同步状态到 ref，供定时器使用
     installingAIRef.current = installingAI;
     uninstallingAIRef.current = uninstallingAI;
@@ -213,8 +224,6 @@ export function ToolsConfig() {
     // 修复：即使 installingAI 为 false，也要检测安装完成状态
     // 这样即使用户刷新页面，也能正确显示安装完成状态
     if (aiProgress && aiProgress.progress === 100) {
-      console.log('[ToolsConfig] AI installation complete:', aiProgress, 'installingAI:', installingAI);
-
       // 如果正在安装中，执行完成逻辑
       if (installingAI) {
         setTimeout(() => {
@@ -238,7 +247,6 @@ export function ToolsConfig() {
         const now = Date.now();
         if (!lastRefresh || now - parseInt(lastRefresh) > 5000) {
           sessionStorage.setItem(lastRefreshKey, now.toString());
-          console.log('[ToolsConfig] AI installation detected as complete, refreshing status...');
           fetchAIToolsStatus();
           fetchToolsStatus();
           fetchGPUStatus();
@@ -250,8 +258,6 @@ export function ToolsConfig() {
     const aiUninstallProgress = installProgress['ai-tools-uninstall'];
     // 修复：即使 uninstallingAI 为 false，也要检测卸载完成状态
     if (aiUninstallProgress && aiUninstallProgress.progress === 100) {
-      console.log('[ToolsConfig] AI uninstallation complete:', aiUninstallProgress, 'uninstallingAI:', uninstallingAI);
-
       if (uninstallingAI) {
         clearUninstallTimeout();
         setTimeout(async () => {
@@ -271,7 +277,6 @@ export function ToolsConfig() {
             // 如果还显示已安装，继续重试
             retries--;
             if (retries > 0) {
-              console.log(`[ToolsConfig] Retrying status fetch, ${retries} attempts left`);
               await new Promise(resolve => setTimeout(resolve, 2000));
             }
           }
@@ -292,7 +297,6 @@ export function ToolsConfig() {
         const now = Date.now();
         if (!lastRefresh || now - parseInt(lastRefresh) > 5000) {
           sessionStorage.setItem(lastRefreshKey, now.toString());
-          console.log('[ToolsConfig] AI uninstallation detected as complete, refreshing status...');
           fetchAIToolsStatus();
           fetchToolsStatus();
         }
@@ -387,7 +391,6 @@ export function ToolsConfig() {
     }
   };
 
-  const hasInitialized = useRef(false);
   const isMountedRef = useRef(true);
   const uninstallTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const installingAIRef = useRef(false);
@@ -398,146 +401,120 @@ export function ToolsConfig() {
   const lastToastTimeRef = useRef(0);
   const MAX_FAILURES = 3; // 最多连续失败3次后降低频率
 
-  const refreshAll = useCallback(
-    async (options?: { skipDelay?: boolean }) => {
-      if (!isMountedRef.current) return;
-      setLoading(true);
+  const refreshAll = useCallback(async () => {
+    if (!active || !isMountedRef.current) return;
+    setLoading(true);
+    let coreTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
-      // 首次进入时等待端口初始化，后续跳过
-      if (!hasInitialized.current && !options?.skipDelay) {
-        await new Promise(resolve => setTimeout(resolve, 300));
-        hasInitialized.current = true;
+    try {
+      const coreTimeoutPromise = new Promise((_, reject) => {
+        coreTimeoutId = setTimeout(() => reject(new Error('Core request timeout')), 10000);
+      });
+
+      await Promise.race([
+        Promise.all([
+          fetchToolsStatus().catch(err => {
+            console.error('[ToolsConfig] Failed to fetch tools status:', err);
+          }),
+          fetchGPUStatus().catch(err => {
+            console.error('[ToolsConfig] Failed to fetch GPU status:', err);
+          })
+        ]),
+        coreTimeoutPromise
+      ]);
+
+      failureCountRef.current = 0;
+
+      void fetchAIToolsStatus().catch(err => {
+        console.debug('[ToolsConfig] AI tools status refresh skipped:', err);
+      });
+    } catch (error) {
+      failureCountRef.current += 1;
+
+      const shouldShowToast = Date.now() - lastToastTimeRef.current > 30000;
+
+      if (failureCountRef.current <= MAX_FAILURES) {
+        console.warn(`[ToolsConfig] 核心工具状态请求失败 (${failureCountRef.current}/${MAX_FAILURES})，将在下次轮询时重试`);
       }
 
-      if (!isMountedRef.current) return;
-
-      try {
-        // 核心接口：必须成功，失败才提示（10秒超时）
-        const coreTimeoutPromise = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('Core request timeout')), 10000)
-        );
-
-        await Promise.race([
-          Promise.all([
-            fetchToolsStatus().catch(err => {
-              console.error('[ToolsConfig] Failed to fetch tools status:', err);
-            }),
-            fetchGPUStatus().catch(err => {
-              console.error('[ToolsConfig] Failed to fetch GPU status:', err);
-            })
-          ]),
-          coreTimeoutPromise
-        ]);
-
-        // 成功时重置失败计数
-        failureCountRef.current = 0;
-
-        // AI接口：完全异步非阻塞，超时静默，不影响其他状态
-        // 即使超时也不触发任何Toast，仅打印debug日志
-        (async () => {
-          try {
-            await fetchAIToolsStatus();
-          } catch (err) {
-            // AI接口超时/失败：完全静默，仅debug日志
-            if (err instanceof Error && err.name === 'AbortError') {
-              console.debug('[ToolsConfig] AI接口超时（静默处理，不影响体验）');
-            } else {
-              console.debug('[ToolsConfig] AI接口请求失败（静默处理）:', err);
-            }
-            // 沿用上次的AI状态，不更新也不清空
-          }
-        })();
-
-      } catch (error) {
-        failureCountRef.current += 1;
-
-        // 限流：连续失败时减少日志和 toast 频率
-        const shouldShowToast = Date.now() - lastToastTimeRef.current > 30000; // 30秒内最多显示1次toast
-
-        if (failureCountRef.current <= MAX_FAILURES) {
-          console.warn(`[ToolsConfig] 核心工具状态请求失败 (${failureCountRef.current}/${MAX_FAILURES})，将在下次轮询时重试`);
-        }
-
-        if (error instanceof Error && error.message === 'Core request timeout') {
-          if (shouldShowToast && failureCountRef.current === 1) {
-            // 第一次失败：温和的info提示
-            toast.info('工具基础状态加载中，请稍候...', {
-              duration: 3000
-            });
-            lastToastTimeRef.current = Date.now();
-          }
-        } else if (failureCountRef.current === MAX_FAILURES && shouldShowToast) {
-          // 连续失败3次才显示错误提示
-          console.error('[ToolsConfig] Failed to refresh:', error);
-          toast.error('核心工具状态加载失败', {
-            description: '请检查后端服务是否正常运行'
+      if (error instanceof Error && error.message === 'Core request timeout') {
+        if (shouldShowToast && failureCountRef.current === 1) {
+          toast.info('工具基础状态加载中，请稍候...', {
+            duration: 3000
           });
           lastToastTimeRef.current = Date.now();
         }
-      } finally {
-        if (isMountedRef.current) {
-          setLoading(false);
-        }
+      } else if (failureCountRef.current === MAX_FAILURES && shouldShowToast) {
+        console.error('[ToolsConfig] Failed to refresh:', error);
+        toast.error('核心工具状态加载失败', {
+          description: '请检查后端服务是否正常运行'
+        });
+        lastToastTimeRef.current = Date.now();
       }
-    },
-    [fetchAIToolsStatus, fetchGPUStatus, fetchToolsStatus]
-  );
+    } finally {
+      if (coreTimeoutId) {
+        clearTimeout(coreTimeoutId);
+      }
+      if (isMountedRef.current) {
+        setLoading(false);
+      }
+    }
+  }, [active, fetchAIToolsStatus, fetchGPUStatus, fetchToolsStatus]);
 
   useEffect(() => {
     isMountedRef.current = true;
 
-    const runInitial = async () => {
-      // 初始化防抖：延迟1秒触发，给后端缓冲时间
-      // 避免页面刚加载就立即触发超时
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      if (isMountedRef.current) {
-        await refreshAll();
-      }
+    return () => {
+      isMountedRef.current = false;
     };
+  }, []);
 
-    runInitial();
+  useEffect(() => {
+    if (!active) {
+      return;
+    }
+
+    void refreshAll();
 
     const onVisibilityChange = () => {
-      // 只有在没有进行安装/卸载操作且连续失败次数少于阈值时才刷新
       if (!document.hidden && !installingAIRef.current && !uninstallingAIRef.current) {
-        // 如果已经连续失败多次，延迟触发避免雪崩
         if (failureCountRef.current >= MAX_FAILURES) {
-          setTimeout(() => refreshAll({ skipDelay: true }), 3000);
+          setTimeout(() => {
+            void refreshAll();
+          }, 3000);
         } else {
-          refreshAll({ skipDelay: true });
+          void refreshAll();
         }
       }
     };
 
-    // 动态轮询间隔：失败时延长间隔
     const getPollingInterval = () => {
-      if (failureCountRef.current === 0) return 30000; // 30秒（正常）
-      if (failureCountRef.current < MAX_FAILURES) return 45000; // 45秒（有失败）
-      return 60000; // 60秒（连续失败）
+      if (failureCountRef.current === 0) return 30000;
+      if (failureCountRef.current < MAX_FAILURES) return 45000;
+      return 60000;
     };
 
-    let pollingTimer: ReturnType<typeof setTimeout>;
+    let pollingTimer: ReturnType<typeof setTimeout> | null = null;
     const schedulePoll = () => {
       const interval = getPollingInterval();
       pollingTimer = setTimeout(() => {
-        // 在安装或卸载 AI 工具时，跳过自动刷新，避免打断用户体验
         if (!document.hidden && !installingAIRef.current && !uninstallingAIRef.current) {
-          refreshAll({ skipDelay: true });
+          void refreshAll();
         }
-        schedulePoll(); // 递归调度下次轮询
+        schedulePoll();
       }, interval);
     };
 
-    schedulePoll(); // 启动动态轮询
-
+    schedulePoll();
     document.addEventListener('visibilitychange', onVisibilityChange);
 
     return () => {
-      isMountedRef.current = false;
-      clearTimeout(pollingTimer);
+      if (pollingTimer) {
+        clearTimeout(pollingTimer);
+      }
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
-  }, [refreshAll]); // 依赖 refreshAll（已 useCallback）
+  }, [active, refreshAll]);
 
   // 安装 AI 工具
   const handleInstallAI = async () => {
@@ -655,9 +632,7 @@ export function ToolsConfig() {
             variant="outline"
             size="sm"
             onClick={() => {
-              fetchToolsStatus();
-              fetchAIToolsStatus();
-              fetchGPUStatus();
+              void refreshAll();
             }}
             disabled={loading}
           >

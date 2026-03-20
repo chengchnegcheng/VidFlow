@@ -71,7 +71,7 @@ class TencentDownloader(BaseDownloader):
     async def _get_video_info_with_playwright(self, url: str, retry_after_install: bool = True) -> Optional[Dict]:
         """使用 Playwright 获取视频信息"""
         # 检查 Playwright 是否可用
-        available, error_code = check_playwright_available()
+        available, error_code = await check_playwright_available()
         logger.info(f"[TencentDownloader] Playwright check: available={available}, error_code={error_code}")
 
         if not available:

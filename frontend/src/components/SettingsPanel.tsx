@@ -638,7 +638,7 @@ export function SettingsPanel({ appVersion, targetCookiePlatform, onCookiePlatfo
         {/* 工具管理 */}
         <TabsContent value="tools" className="flex-1 overflow-auto data-[state=inactive]:hidden" forceMount>
           <div className="p-6" data-tab="tools">
-            <ToolsConfig />
+            <ToolsConfig active={activeSettingsTab === 'tools'} />
           </div>
         </TabsContent>
 

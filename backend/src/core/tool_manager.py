@@ -288,6 +288,7 @@ class ToolManager:
     DOWNLOAD_TOTAL_TIMEOUT = 600
     DOWNLOAD_CONNECT_TIMEOUT = 30
     DOWNLOAD_SOCK_TIMEOUT = 60
+    PLAYWRIGHT_STATUS_CACHE_TTL = 30
 
     def __init__(self):
         self.system = platform.system()
@@ -313,6 +314,9 @@ class ToolManager:
         self.DOWNLOAD_TOTAL_TIMEOUT = int(os.environ.get("TOOL_DL_TOTAL_TIMEOUT", self.DOWNLOAD_TOTAL_TIMEOUT))
         self.DOWNLOAD_CONNECT_TIMEOUT = int(os.environ.get("TOOL_DL_CONNECT_TIMEOUT", self.DOWNLOAD_CONNECT_TIMEOUT))
         self.DOWNLOAD_SOCK_TIMEOUT = int(os.environ.get("TOOL_DL_SOCK_TIMEOUT", self.DOWNLOAD_SOCK_TIMEOUT))
+        self.PLAYWRIGHT_STATUS_CACHE_TTL = int(
+            os.environ.get("TOOL_PLAYWRIGHT_STATUS_CACHE_TTL", self.PLAYWRIGHT_STATUS_CACHE_TTL)
+        )
         try:
             import yt_dlp
             self.ytdlp_version = yt_dlp.version.__version__
@@ -324,6 +328,9 @@ class ToolManager:
 
         # 标记是否已完成清理
         self._cleanup_done = False
+        self._playwright_status_cache: Optional[dict] = None
+        self._playwright_status_cache_time = 0.0
+        self._playwright_status_lock = asyncio.Lock()
 
     def _load_tools_meta(self) -> dict:
         if TOOLS_META_PATH.exists():
@@ -1235,7 +1242,7 @@ class ToolManager:
 
         # 否则尝试查找（同步版本，用于快速检测）
         exe_name = "yt-dlp.exe" if self.system == "Windows" else "yt-dlp"
-        logger.info(f"[yt-dlp] Searching for {exe_name}...")
+        logger.debug(f"[yt-dlp] Searching for {exe_name}...")
 
         # Mac 特殊处理：如果存在旧的 yt-dlp_macos 文件，删除它
         if self.system == "Darwin":
@@ -1249,29 +1256,29 @@ class ToolManager:
 
         # 1. 检查打包的内置版本
         bundled_path = BUNDLED_BIN_DIR / exe_name
-        logger.info(f"[yt-dlp] Checking bundled: {bundled_path} (exists: {bundled_path.exists()})")
+        logger.debug(f"[yt-dlp] Checking bundled: {bundled_path} (exists: {bundled_path.exists()})")
         if bundled_path.exists():
             self.ytdlp_path = bundled_path
-            logger.info(f"[yt-dlp] ✓ Found bundled version: {bundled_path}")
+            logger.debug(f"[yt-dlp] Found bundled version: {bundled_path}")
             return bundled_path
 
         # 2. 检查已下载的版本
         builtin_path = BIN_DIR / exe_name
-        logger.info(f"[yt-dlp] Checking downloaded: {builtin_path} (exists: {builtin_path.exists()})")
+        logger.debug(f"[yt-dlp] Checking downloaded: {builtin_path} (exists: {builtin_path.exists()})")
         if builtin_path.exists():
             self.ytdlp_path = builtin_path
-            logger.info(f"[yt-dlp] ✓ Found downloaded version: {builtin_path}")
+            logger.debug(f"[yt-dlp] Found downloaded version: {builtin_path}")
             return builtin_path
 
         # 3. 检查系统安装
         system_path = shutil.which("yt-dlp")
-        logger.info(f"[yt-dlp] Checking system PATH: {system_path}")
+        logger.debug(f"[yt-dlp] Checking system PATH: {system_path}")
         if system_path:
             self.ytdlp_path = Path(system_path)
-            logger.info(f"[yt-dlp] ✓ Found system version: {system_path}")
+            logger.debug(f"[yt-dlp] Found system version: {system_path}")
             return Path(system_path)
 
-        logger.warning("[yt-dlp] ✗ Not found in any location")
+        logger.debug("[yt-dlp] Not found in any location")
         return None
 
     def get_ytdlp_path(self) -> Optional[str]:
@@ -1927,7 +1934,42 @@ else:
 
     # ==================== Playwright 安装支持 ====================
 
-    async def check_playwright_status(self) -> dict:
+    def invalidate_playwright_status_cache(self):
+        self._playwright_status_cache = None
+        self._playwright_status_cache_time = 0.0
+
+    async def check_playwright_status(self, force_refresh: bool = False) -> dict:
+        """
+        检查 Playwright 和 Chromium 浏览器的安装状态
+
+        Args:
+            force_refresh: 是否忽略缓存强制重新扫描
+        """
+        now = time.monotonic()
+        cache_valid = (
+            not force_refresh
+            and self._playwright_status_cache is not None
+            and now - self._playwright_status_cache_time < self.PLAYWRIGHT_STATUS_CACHE_TTL
+        )
+        if cache_valid:
+            return dict(self._playwright_status_cache)
+
+        async with self._playwright_status_lock:
+            now = time.monotonic()
+            cache_valid = (
+                not force_refresh
+                and self._playwright_status_cache is not None
+                and now - self._playwright_status_cache_time < self.PLAYWRIGHT_STATUS_CACHE_TTL
+            )
+            if cache_valid:
+                return dict(self._playwright_status_cache)
+
+            result = await self._check_playwright_status_uncached()
+            self._playwright_status_cache = dict(result)
+            self._playwright_status_cache_time = time.monotonic()
+            return dict(result)
+
+    async def _check_playwright_status_uncached(self) -> dict:
         """
         检查 Playwright 和 Chromium 浏览器的安装状态
 
@@ -1961,10 +2003,10 @@ else:
                 pw_version = get_version("playwright")
                 result["package_installed"] = True
                 result["version"] = pw_version
-                logger.info(f"[Playwright] Package installed: v{pw_version}")
+                logger.debug(f"[Playwright] Package installed: v{pw_version}")
             except PackageNotFoundError:
                 result["package_installed"] = False
-                logger.info("[Playwright] Package not installed")
+                logger.debug("[Playwright] Package not installed")
                 return result
 
             # 检查 Chromium 浏览器是否安装
@@ -1992,7 +2034,7 @@ else:
                     playwright_local = internal_path / 'playwright' / 'driver' / 'package' / '.local-browsers'
                     possible_browser_paths.append(playwright_local)
 
-                logger.info(f"[Playwright] Checking browser paths: {possible_browser_paths}")
+                logger.debug(f"[Playwright] Checking browser paths: {possible_browser_paths}")
 
                 # 检查每个可能的路径
                 for pw_browsers_path in possible_browser_paths:
@@ -2039,12 +2081,12 @@ else:
                                 result["browser_installed"] = True
                                 result["browser_path"] = str(chrome_exe)
                                 result["installed"] = True
-                                logger.info(f"[Playwright] Chromium installed: {chrome_exe}")
+                                logger.debug(f"[Playwright] Chromium installed: {chrome_exe}")
                                 return result
 
                 # 没有找到浏览器
                 result["browser_installed"] = False
-                logger.info("[Playwright] No chromium browser found in any location")
+                logger.debug("[Playwright] No chromium browser found in any location")
 
             except Exception as e:
                 result["browser_installed"] = False
@@ -2134,7 +2176,7 @@ else:
         """
         try:
             # 检查是否已安装
-            status = await self.check_playwright_status()
+            status = await self.check_playwright_status(force_refresh=True)
             if status["installed"]:
                 logger.info("[Playwright] Already installed, skipping")
                 return {
@@ -2308,7 +2350,8 @@ else:
             await self._call_progress_callback(progress_callback, 100, "Playwright 安装完成！")
 
             # 验证安装
-            final_status = await self.check_playwright_status()
+            self.invalidate_playwright_status_cache()
+            final_status = await self.check_playwright_status(force_refresh=True)
             if final_status["installed"]:
                 logger.info(f"[Playwright] Installation completed: v{final_status['version']}")
                 return {

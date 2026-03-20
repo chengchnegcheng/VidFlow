@@ -49,13 +49,6 @@ export function AIToolsCard({
     }
   }, [supportsCudaInstall, version, onVersionChange]);
 
-  console.log('[AIToolsCard] Props:', {
-    installing,
-    uninstalling,
-    progress,
-    uninstallProgress
-  });
-
   const activeProgress = uninstalling ? uninstallProgress : progress;
   const shouldShowProgress = Boolean(activeProgress) || installing || uninstalling;
   const effectiveProgress =
@@ -65,12 +58,6 @@ export function AIToolsCard({
       : uninstalling
         ? { progress: 0, message: '正在卸载 AI 工具...' }
         : null);
-
-  console.log('[AIToolsCard] Computed:', {
-    activeProgress,
-    shouldShowProgress,
-    effectiveProgress
-  });
 
   // 使用 useMemo 缓存进度值，避免频繁重渲染导致的"心跳"
   const progressValue = React.useMemo(() => {
