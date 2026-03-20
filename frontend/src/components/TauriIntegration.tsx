@@ -1,17 +1,26 @@
 /**
  * Tauri Integration Adapter for Electron
- * 将 Tauri API 适配为 Electron + REST API
+ * �?Tauri API 适配�?Electron + REST API
  */
 import { createContext, useContext, ReactNode, useState, useEffect } from 'react';
 import axios from 'axios';
+import type { SnifferStatusResponse, DetectedVideo } from '../types/channels';
 
-// 开发模式标志
+// Extend Window for timeout warning flags.
+declare global {
+  interface Window {
+    _statusTimeoutWarned?: boolean;
+    _videosTimeoutWarned?: boolean;
+  }
+}
+
+// Development mode flag.
 const isDev = import.meta.env.DEV;
 
-// 动态获取后端端口
-let API_BASE = ''; // 将由 initializeBackendPort 动态设置
+// 动态获取后端端�?
+let API_BASE = ''; // 将由 initializeBackendPort 动态设�?
 let portInitialized = false;
-let initializationInProgress = false; // 防止并发初始化
+let initializationInProgress = false; // 防止并发初始�?
 let initializationAttempts = 0;
 const MAX_INIT_ATTEMPTS = 10;
 
@@ -21,11 +30,27 @@ const api = axios.create({
   withCredentials: true,
 });
 
+const DEFAULT_SNIFFER_STATUS: SnifferStatusResponse = {
+  state: 'stopped',
+  proxy_address: null,
+  proxy_port: 8888,
+  videos_detected: 0,
+  started_at: null,
+  error_message: null,
+  capture_mode: 'proxy_only',
+  capture_state: 'stopped',
+  capture_started_at: null,
+  statistics: null,
+};
+
+let lastSnifferStatus: SnifferStatusResponse | null = null;
+let lastVideosSnapshot: DetectedVideo[] | null = null;
+
 // 初始化后端端口配置（带重试）
 async function initializeBackendPort(): Promise<boolean> {
   if (portInitialized) return true;
   if (initializationInProgress) {
-    // 如果正在初始化，等待一下
+    // 如果正在初始化，等待一�?
     await new Promise(resolve => setTimeout(resolve, 100));
     return portInitialized;
   }
@@ -46,19 +71,19 @@ async function initializeBackendPort(): Promise<boolean> {
         // 验证后端真的可以响应
         console.log('🔍 Verifying backend health...');
         try {
-          // 使用正确的健康检查端点 /health
+          // 使用正确的健康检查端�?/health
           const healthCheck = await api.get('/health', { timeout: 5000 });
           if (healthCheck.status === 200) {
             portInitialized = true;
             initializationInProgress = false;
-            console.log('✅ Backend API URL initialized and verified:', API_BASE);
-            console.log('✅ Backend health check passed:', healthCheck.data);
+            console.log('�?Backend API URL initialized and verified:', API_BASE);
+            console.log('�?Backend health check passed:', healthCheck.data);
             return true;
           } else {
             console.warn('⚠️ Backend health check failed, status:', healthCheck.status);
           }
         } catch (healthError) {
-          console.error('❌ Backend health check failed:', healthError);
+          console.error('�?Backend health check failed:', healthError);
           console.warn('⚠️ Port received but backend not responding, will retry...');
         }
       } else if (config && config.port && !config.ready) {
@@ -67,11 +92,11 @@ async function initializeBackendPort(): Promise<boolean> {
         console.warn('⚠️ Backend port not available yet, will retry...');
       }
     } catch (error) {
-      console.error('❌ Failed to get backend port:', error);
+      console.error('�?Failed to get backend port:', error);
     }
   } else {
     console.warn('⚠️ window.electron not available, using default port');
-    // 如果不是 Electron 环境，使用默认端口
+    // 如果不是 Electron 环境，使用默认端�?
     portInitialized = true;
     initializationInProgress = false;
     return true;
@@ -81,19 +106,19 @@ async function initializeBackendPort(): Promise<boolean> {
   return false;
 }
 
-// 启动时持续尝试初始化，直到成功
+// 启动时持续尝试初始化，直到成�?
 async function startPortInitialization() {
   for (let i = 0; i < MAX_INIT_ATTEMPTS; i++) {
     const success = await initializeBackendPort();
     if (success) {
-      console.log('✅ Port initialization completed successfully');
+      console.log('�?Port initialization completed successfully');
       return;
     }
     // 等待后再重试
-    console.log(`⏳ Waiting 2 seconds before retry...`);
+    console.log(`�?Waiting 2 seconds before retry...`);
     await new Promise(resolve => setTimeout(resolve, 2000));
   }
-  console.error('❌ Failed to initialize backend port after maximum attempts');
+  console.error('�?Failed to initialize backend port after maximum attempts');
   console.error('⚠️ Frontend will continue with default port, but API calls may fail');
 }
 
@@ -103,20 +128,20 @@ console.log('🔍 window.electron exists:', !!window.electron);
 console.log('🔍 window.electron.invoke exists:', !!(window.electron && window.electron.invoke));
 startPortInitialization();
 
-// 请求拦截器 - 确保使用最新的端口
+// 请求拦截�?- 确保使用最新的端口
 api.interceptors.request.use(
   async (config) => {
     // 只在完全未初始化且没有正在初始化时才尝试
     if (!portInitialized && !initializationInProgress) {
       console.log('🔄 Port not initialized, waiting for initialization...');
-      // 等待初始化完成，最多等待5秒
+      // 等待初始化完成，最多等�?�?
       for (let i = 0; i < 50; i++) {
         if (portInitialized) break;
         await new Promise(resolve => setTimeout(resolve, 100));
       }
     }
     
-    // 总是使用最新的 API_BASE（已初始化或为空）
+    // 总是使用最新的 API_BASE（已初始化或为空�?
     config.baseURL = API_BASE;
     
     if (isDev) {
@@ -128,22 +153,25 @@ api.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-// 响应拦截器
+// 响应拦截�?
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    console.error('❌ API Error:', error.message);
-
-    // 打印后端返回的详细错误信息
-    if (error.response?.data) {
-      console.error('❌ Backend Error Details:', error.response.data);
+    const silent = error?.config?.headers?.['x-silent-error'] === '1';
+    if (!silent) {
+      console.error('[API] Request failed:', error.message);
     }
 
-    if (error.code === 'ERR_NETWORK' || error.code === 'ECONNREFUSED') {
-      console.error('❌ Backend connection refused. Backend might not be ready yet.');
+    // Log backend response details when they are available.
+    if (!silent && error.response?.data) {
+      console.error('[API] Backend error details:', error.response.data);
     }
 
-    // 如果后端返回了详细错误信息,将其附加到 error.message
+    if (!silent && (error.code === 'ERR_NETWORK' || error.code === 'ECONNREFUSED')) {
+      console.error('[API] Backend connection refused. Backend might not be ready yet.');
+    }
+
+    // Prefer the backend-provided error message when available.
     if (error.response?.data?.detail) {
       error.message = error.response.data.detail;
     }
@@ -217,10 +245,10 @@ export function useDesktopFeatures() {
   return {
     openDownloadFolder: async () => {
       console.log('Open download folder');
-      // 可以通过 Electron IPC 或打开文件管理器
+      // 可以通过 Electron IPC 或打开文件管理�?
     },
     selectDirectory: async (): Promise<string | null> => {
-      // 使用 HTML5 file API 或 Electron dialog
+      // 使用 HTML5 file API �?Electron dialog
       return null;
     },
   };
@@ -265,7 +293,7 @@ function formatBackendErrorMessage(detail: unknown, fallback: string): string {
   const structured = normalizeStructuredErrorPayload(detail);
   if (structured?.message) {
     if (structured.hint) {
-      return `${structured.message}（${structured.hint}）`;
+      return `${structured.message}�?{structured.hint}）`;
     }
     return structured.message;
   }
@@ -287,11 +315,11 @@ function getAxiosErrorMessage(error: any, fallback: string): string {
 }
 
 /**
- * 模拟 Tauri 的 invoke 函数
- * 将 Tauri 命令转换为 REST API 调用
+ * 模拟 Tauri �?invoke 函数
+ * �?Tauri 命令转换�?REST API 调用
  */
 export async function invoke(command: string, args?: any): Promise<any> {
-  // 减少日志噪音：仅在开发环境或首次调用时打印
+  // 减少日志噪音：仅在开发环境或首次调用时打�?
   if (import.meta.env.DEV) {
     console.debug(`[invoke] ${command}`, args);
   }
@@ -305,7 +333,7 @@ export async function invoke(command: string, args?: any): Promise<any> {
   }
 
   if (!API_BASE && window.electron) {
-    throw new Error('后端未就绪，请稍后重试（后端端口/健康检查未通过）');
+    throw new Error('Backend is not ready yet. Please try again.');
   }
 
   const commandMap: Record<string, () => Promise<any>> = {
@@ -315,7 +343,7 @@ export async function invoke(command: string, args?: any): Promise<any> {
       return res.data.data;
     },
 
-    // 开始下载
+    // 开始下�?
     'start_download': async () => {
       const res = await api.post('/api/v1/downloads/start', {
         url: args?.url,
@@ -339,16 +367,18 @@ export async function invoke(command: string, args?: any): Promise<any> {
       }
     },
 
-    // 获取单个任务状态
+    // 获取单个任务状�?
     'get_task_status': async () => {
       const res = await api.get(`/api/v1/downloads/tasks/${args?.task_id}`);
       return res.data.task;
     },
 
-    // 删除任务
+    // 删除任务（同时删除本机文件）
     'delete_download_task': async () => {
-      await api.delete(`/api/v1/downloads/tasks/${args?.task_id}`);
-      return { success: true };
+      const res = await api.delete(`/api/v1/downloads/tasks/${args?.task_id}`, {
+        params: { delete_file: true },
+      });
+      return res.data;
     },
 
     // 取消任务
@@ -375,7 +405,7 @@ export async function invoke(command: string, args?: any): Promise<any> {
         const res = await api.get('/api/v1/system/info');
         return res.data;
       } catch (error) {
-        // 降级到模拟数据
+        // 降级到模拟数�?
         return {
           cpu_usage: Math.random() * 30 + 10,
           memory_usage: Math.random() * 40 + 20,
@@ -390,7 +420,7 @@ export async function invoke(command: string, args?: any): Promise<any> {
       }
     },
 
-    // 队列状态 (模拟)
+    // 队列状�?(模拟)
     'get_queue_status': async () => {
       try {
         const tasks = await api.get('/api/v1/downloads/tasks');
@@ -405,13 +435,13 @@ export async function invoke(command: string, args?: any): Promise<any> {
       }
     },
 
-    // 工具状态检测
+    // 工具状态检�?
     'check_tool_status': async () => {
       try {
         const res = await api.get('/api/v1/system/tools/status');
         return res.data;
       } catch (error) {
-        // 降级到模拟数据
+        // 降级到模拟数�?
         return [
           { name: 'FFmpeg', installed: false, required: true },
           { name: 'yt-dlp', installed: false, required: true },
@@ -421,7 +451,7 @@ export async function invoke(command: string, args?: any): Promise<any> {
       }
     },
 
-    // 获取下载文件夹路径
+    // 获取下载文件夹路�?
     'get_downloads_path': async () => {
       try {
         const res = await api.get('/api/v1/system/downloads-path');
@@ -440,11 +470,11 @@ export async function invoke(command: string, args?: any): Promise<any> {
 
     // 选择目录 (使用 HTML5)
     'select_directory': async () => {
-      // 在浏览器环境中使用 input[type=file]
+      // 在浏览器环境中使�?input[type=file]
       return null;
     },
 
-    // 安装 FFmpeg（需要下载，超时时间 5 分钟）
+    // 安装 FFmpeg（需要下载，超时时间 5 分钟�?
     'install_ffmpeg': async () => {
       try {
         const res = await api.post('/api/v1/system/tools/install/ffmpeg', {}, {
@@ -456,7 +486,7 @@ export async function invoke(command: string, args?: any): Promise<any> {
       }
     },
 
-    // 安装 yt-dlp（需要下载，超时时间 5 分钟）
+    // 安装 yt-dlp（需要下载，超时时间 5 分钟�?
     'install_ytdlp': async () => {
       try {
         const res = await api.post('/api/v1/system/tools/install/ytdlp', {}, {
@@ -468,7 +498,7 @@ export async function invoke(command: string, args?: any): Promise<any> {
       }
     },
 
-    // 安装 faster-whisper（需要下载大模型，超时时间 10 分钟）
+    // 安装 faster-whisper（需要下载大模型，超时时�?10 分钟�?
     'install_whisper': async () => {
       try {
         const res = await api.post('/api/v1/system/tools/install/whisper', {}, {
@@ -480,7 +510,7 @@ export async function invoke(command: string, args?: any): Promise<any> {
       }
     },
 
-    // 一键安装所有工具（可能需要很长时间，超时时间 15 分钟）
+    // 一键安装所有工具（可能需要很长时间，超时时间 15 分钟�?
     'install_all_tools': async () => {
       try {
         const res = await api.post('/api/v1/system/tools/install/all', {}, {
@@ -492,7 +522,7 @@ export async function invoke(command: string, args?: any): Promise<any> {
       }
     },
 
-    // 更新依赖包（可能需要较长时间，超时时间 5 分钟）
+    // 更新依赖包（可能需要较长时间，超时时间 5 分钟�?
     'update_dependencies': async () => {
       try {
         const res = await api.post('/api/v1/system/tools/update/dependencies', {}, {
@@ -694,17 +724,17 @@ export async function invoke(command: string, args?: any): Promise<any> {
       }
     },
 
-    // 检测代理是否可用
+    // 检测代理是否可�?
     'check_proxy': async () => {
       try {
         const res = await api.get('/api/v1/system/network/proxy-check');
         return res.data;
       } catch (error: any) {
-        throw new Error(error.response?.data?.detail || '代理检测失败');
+        throw new Error(error.response?.data?.detail || 'Proxy check failed');
       }
     },
 
-    // 打开文件夹
+    // 打开文件�?
     'open_folder': async () => {
       try {
         const res = await api.post('/api/v1/system/open-folder', {
@@ -712,11 +742,11 @@ export async function invoke(command: string, args?: any): Promise<any> {
         });
         return res.data;
       } catch (error: any) {
-        throw new Error(error.response?.data?.detail || '打开文件夹失败');
+        throw new Error(error.response?.data?.detail || 'Failed to open folder');
       }
     },
 
-    // 烧录字幕到视频
+    // 烧录字幕到视�?
     'burn_subtitle': async () => {
       try {
         const res = await api.post('/api/v1/subtitle/burn-subtitle', {
@@ -742,7 +772,7 @@ export async function invoke(command: string, args?: any): Promise<any> {
       }
     },
 
-    // 保存文件对话框
+    // 保存文件对话�?
     'save_file': async () => {
       try {
         const res = await api.post('/api/v1/system/save-file', {
@@ -823,9 +853,9 @@ export async function invoke(command: string, args?: any): Promise<any> {
       }
     },
 
-    // ==================== GPU 加速管理 ====================
+    // ==================== GPU 加速管�?====================
     
-    // 获取GPU状态
+    // 获取GPU状�?
     'get_gpu_status': async () => {
       try {
         const res = await api.get('/api/v1/system/gpu/status');
@@ -851,9 +881,9 @@ export async function invoke(command: string, args?: any): Promise<any> {
       }
     },
 
-    // ==================== 工具状态检查 ====================
+    // ==================== 工具状态检�?====================
     
-    // 检查工具安装状态
+    // 检查工具安装状�?
     'check_tools_status': async () => {
       try {
         const res = await api.get('/api/v1/system/tools/status');
@@ -886,13 +916,13 @@ export async function invoke(command: string, args?: any): Promise<any> {
       }
     },
 
-    // 获取单个配置项
+    // 获取单个配置�?
     'get_config_value': async () => {
       try {
         const res = await api.get(`/api/v1/config/${args?.key}`);
         return res.data?.value;
       } catch (error: any) {
-        throw new Error(error.response?.data?.detail || '获取配置项失败');
+        throw new Error(error.response?.data?.detail || 'Failed to get config value');
       }
     },
 
@@ -918,7 +948,7 @@ export async function invoke(command: string, args?: any): Promise<any> {
       }
     },
 
-    // 更新队列并发数
+    // 更新队列并发�?
     'update_queue_config': async () => {
       try {
         const res = await api.post('/api/v1/downloads/queue/config', null, {
@@ -932,13 +962,13 @@ export async function invoke(command: string, args?: any): Promise<any> {
 
     // ==================== Cookie 管理 ====================
     
-    // 获取所有平台的Cookie状态
+    // 获取所有平台的Cookie状�?
     'get_cookies_status': async () => {
       try {
         const res = await api.get('/api/v1/system/cookies/status');
         return res.data;
       } catch (error: any) {
-        throw new Error(error.response?.data?.detail || '获取Cookie状态失败');
+        throw new Error(error.response?.data?.detail || 'Failed to get cookie status');
       }
     },
 
@@ -974,29 +1004,29 @@ export async function invoke(command: string, args?: any): Promise<any> {
       }
     },
 
-    // 打开Cookie文件夹
+    // 打开Cookie文件�?
     'open_cookies_folder': async () => {
       try {
         const res = await api.get('/api/v1/system/cookies/open-folder');
         return res.data;
       } catch (error: any) {
-        throw new Error(error.response?.data?.detail || '打开Cookie文件夹失败');
+        throw new Error(error.response?.data?.detail || 'Failed to open cookie folder');
       }
     },
 
     // ==================== Cookie 自动获取 ====================
     
-    // 检查Selenium状态
+    // 检查Selenium状�?
     'check_selenium_status': async () => {
       try {
         const res = await api.get('/api/v1/system/cookies/auto/selenium-status');
         return res.data;
       } catch (error: any) {
-        throw new Error(error.response?.data?.detail || '检查Selenium状态失败');
+        throw new Error(error.response?.data?.detail || 'Failed to check Selenium status');
       }
     },
 
-    // 启动受控浏览器
+    // 启动受控浏览�?
     'start_cookie_browser': async () => {
       try {
         const res = await api.post('/api/v1/system/cookies/auto/start-browser', {
@@ -1004,18 +1034,18 @@ export async function invoke(command: string, args?: any): Promise<any> {
           browser: args?.browser
         });
 
-        // ✅ 检查业务状态，将业务错误转换为异常
+        // �?检查业务状态，将业务错误转换为异常
         if (res.data?.status === 'error') {
-          throw new Error(res.data.error || '启动浏览器失败');
+          throw new Error(res.data.error || 'Failed to start browser');
         }
 
         return res.data;
       } catch (error: any) {
-        // 如果是我们自己抛出的错误，直接重新抛出
+        // 如果是我们自己抛出的错误，直接重新抛�?
         if (error.message && !error.response) {
           throw error;
         }
-        throw new Error(error.response?.data?.detail || '启动浏览器失败');
+        throw new Error(error.response?.data?.detail || 'Failed to start browser');
       }
     },
 
@@ -1024,14 +1054,14 @@ export async function invoke(command: string, args?: any): Promise<any> {
       try {
         const res = await api.post('/api/v1/system/cookies/auto/extract');
 
-        // ✅ 检查业务状态，将业务错误转换为异常
+        // �?检查业务状态，将业务错误转换为异常
         if (res.data?.status === 'error') {
           throw new Error(res.data.error || '提取Cookie失败');
         }
 
         return res.data;
       } catch (error: any) {
-        // 如果是我们自己抛出的错误，直接重新抛出
+        // 如果是我们自己抛出的错误，直接重新抛�?
         if (error.message && !error.response) {
           throw error;
         }
@@ -1039,23 +1069,23 @@ export async function invoke(command: string, args?: any): Promise<any> {
       }
     },
 
-    // 关闭浏览器
+    // 关闭浏览�?
     'close_cookie_browser': async () => {
       try {
         const res = await api.post('/api/v1/system/cookies/auto/close-browser');
 
-        // ✅ 检查业务状态，将业务错误转换为异常
+        // �?检查业务状态，将业务错误转换为异常
         if (res.data?.status === 'error') {
-          throw new Error(res.data.error || '关闭浏览器失败');
+          throw new Error(res.data.error || 'Failed to close browser');
         }
 
         return res.data;
       } catch (error: any) {
-        // 如果是我们自己抛出的错误，直接重新抛出
+        // 如果是我们自己抛出的错误，直接重新抛�?
         if (error.message && !error.response) {
           throw error;
         }
-        throw new Error(error.response?.data?.detail || '关闭浏览器失败');
+        throw new Error(error.response?.data?.detail || 'Failed to close browser');
       }
     },
 
@@ -1082,7 +1112,7 @@ export async function invoke(command: string, args?: any): Promise<any> {
 
         console.log('[DEBUG] extract_cookies_from_browser response:', res.data);
 
-        // ✅ 检查业务状态，将业务错误转换为异常
+        // �?检查业务状态，将业务错误转换为异常
         if (res.data?.status === 'error') {
           throw new Error(res.data.error || '从浏览器提取Cookie失败');
         }
@@ -1090,13 +1120,13 @@ export async function invoke(command: string, args?: any): Promise<any> {
         return res.data;
       } catch (error: any) {
         console.error('[DEBUG] extract_cookies_from_browser error:', error);
-        // 如果是我们自己抛出的错误，直接重新抛出
+        // 如果是我们自己抛出的错误，直接重新抛�?
         if (error.message && !error.response) {
           throw error;
         }
         // 422错误通常是请求体验证失败
         if (error.response?.status === 422) {
-          throw new Error('请求参数验证失败，请检查浏览器和平台参数是否正确');
+          throw new Error('Invalid request parameters. Check the browser and platform values.');
         }
         throw new Error(error.response?.data?.detail || error.response?.data?.error || '从浏览器提取Cookie失败');
       }
@@ -1126,11 +1156,11 @@ export async function invoke(command: string, args?: any): Promise<any> {
         const res = await api.get('/api/v1/system/auth/test/check');
         return res.data;
       } catch (error: any) {
-        throw new Error(error.response?.data?.detail || '检测 Cookie 失败');
+        throw new Error(error.response?.data?.detail || '检�?Cookie 失败');
       }
     },
 
-    // 恢复 yt-dlp 到内置版本
+    // 恢复 yt-dlp 到内置版�?
     'reset_ytdlp': async () => {
       try {
         const res = await api.delete('/api/v1/system/tools/ytdlp/downloaded');
@@ -1142,7 +1172,7 @@ export async function invoke(command: string, args?: any): Promise<any> {
 
     // ==================== QR 扫码登录 ====================
     
-    // 获取支持扫码登录的平台列表
+    // 获取支持扫码登录的平台列�?
     'qr_login_get_supported_platforms': async () => {
       try {
         const res = await api.get('/api/v1/admin/cookies/qr/supported');
@@ -1152,23 +1182,23 @@ export async function invoke(command: string, args?: any): Promise<any> {
       }
     },
 
-    // 获取平台登录二维码
+    // 获取平台登录二维�?
     'qr_login_get_qrcode': async () => {
       try {
         const res = await api.get(`/api/v1/admin/cookies/qr/${args?.platformId}/qrcode`);
         return res.data;
       } catch (error: any) {
-        throw new Error(error.response?.data?.detail || '获取二维码失败');
+        throw new Error(error.response?.data?.detail || 'Failed to get QR code');
       }
     },
 
-    // 检查扫码状态
+    // 检查扫码状�?
     'qr_login_check_status': async () => {
       try {
         const res = await api.post(`/api/v1/admin/cookies/qr/${args?.platformId}/qrcode/check`);
         return res.data;
       } catch (error: any) {
-        throw new Error(error.response?.data?.detail || '检查扫码状态失败');
+        throw new Error(error.response?.data?.detail || 'Failed to check QR login status');
       }
     },
 
@@ -1190,72 +1220,127 @@ export async function invoke(command: string, args?: any): Promise<any> {
         });
         return res.data;
       } catch (error: any) {
-        throw new Error(error.response?.data?.detail || '设置平台状态失败');
+        throw new Error(error.response?.data?.detail || 'Failed to update platform status');
       }
     },
 
-    // ==================== 微信视频号 API ====================
+    // ==================== 微信视频�?API ====================
 
-    // 获取嗅探器状态
+    // 获取嗅探器状�?
     'channels_get_status': async () => {
       try {
-        // 使用较短的超时时间，这是高频轮询接口
+        // 使用较长的超时时间，避免频繁超时
         const res = await api.get('/api/channels/sniffer/status', {
-          timeout: 5000  // 5 秒超时
+          timeout: 15000,  // 15 second timeout
+          headers: { 'x-silent-error': '1' },
         });
-        return res.data;
+        const data = { ...DEFAULT_SNIFFER_STATUS, ...(res.data || {}) } as SnifferStatusResponse;
+        lastSnifferStatus = data;
+        return data;
       } catch (error: any) {
-        // 超时或网络错误时返回默认状态
+        // 超时或网络错误时返回默认状态，减少日志噪音
         if (error.code === 'ECONNABORTED' || error.code === 'ERR_NETWORK') {
-          console.warn('Failed to get sniffer status (timeout/network), returning stopped status');
-          return {
-            state: 'stopped',
-            proxy_port: 8888,
-            videos_detected: 0,
-            capture_mode: 'transparent',
-            capture_state: 'stopped'
-          };
+          // 只在第一次失败时打印警告
+          if (!window._statusTimeoutWarned) {
+            console.warn('Failed to get sniffer status (timeout/network), returning stopped status');
+            window._statusTimeoutWarned = true;
+            setTimeout(() => { window._statusTimeoutWarned = false; }, 30000); // 30秒后重置
+          }
+          const fallbackBase = { ...DEFAULT_SNIFFER_STATUS, ...(lastSnifferStatus || {}) };
+          return { ...fallbackBase, is_fallback: true };
         }
-        throw new Error(error.response?.data?.detail || '获取嗅探器状态失败');
+        throw new Error(error.response?.data?.detail || 'Failed to get sniffer status');
       }
     },
 
-    // 启动嗅探器
+    // 启动嗅探�?
     'channels_start_sniffer': async () => {
       try {
         const res = await api.post('/api/channels/sniffer/start', {
           port: args?.port,
           capture_mode: args?.capture_mode
         });
+
+        if (res.data?.success !== false && window.electron) {
+          try {
+            const captureMode = String(res.data?.capture_mode || args?.capture_mode || '');
+            const shouldUseExplicitProxy = captureMode === 'proxy_only';
+            const proxyTarget = shouldUseExplicitProxy
+              ? (res.data?.system_proxy || res.data?.proxy_address || null)
+              : null;
+            const localProxy = proxyTarget
+              ? (String(proxyTarget).includes('://') ? String(proxyTarget) : `http://${proxyTarget}`)
+              : null;
+
+            if (localProxy) {
+              await window.electron.invoke('set-proxy-config', {
+                proxyRules: localProxy,
+                proxyBypassRules: '127.0.0.1,localhost,<local>'
+              });
+              console.log('[Electron] Proxy bypass configured for localhost');
+            } else {
+              await window.electron.invoke('set-proxy-config', {
+                mode: 'direct'
+              });
+              console.log('[Electron] Direct mode restored for non-proxy capture');
+            }
+          } catch (proxyErr) {
+            console.warn('⚠️ Failed to update Electron proxy mode:', proxyErr);
+          }
+        }
+
         return res.data;
       } catch (error: any) {
-        throw new Error(error.response?.data?.detail || '启动嗅探器失败');
+        throw new Error(error.response?.data?.detail || 'Failed to start sniffer');
       }
     },
 
-    // 停止嗅探器
+    // 停止嗅探�?
     'channels_stop_sniffer': async () => {
       try {
         const res = await api.post('/api/channels/sniffer/stop');
+
+        // Restore direct mode after stopping the sniffer.
+        if (window.electron) {
+          try {
+            await window.electron.invoke('set-proxy-config', {
+              mode: 'direct'
+            });
+            console.log('[Electron] Proxy cleared');
+          } catch (proxyErr) {
+            console.warn('⚠️ Failed to clear Electron proxy:', proxyErr);
+          }
+        }
+
         return res.data;
       } catch (error: any) {
-        throw new Error(error.response?.data?.detail || '停止嗅探器失败');
+        throw new Error(error.response?.data?.detail || 'Failed to stop sniffer');
       }
     },
 
-    // 获取检测到的视频列表
+    // 获取检测到的视频列�?
     'channels_get_videos': async () => {
       try {
-        // 使用较短的超时时间，避免阻塞 UI
+        // 使用较长的超时时间，避免频繁超时
         const res = await api.get('/api/channels/videos', {
-          timeout: 5000  // 5 秒超时
+          timeout: 15000,  // 15 second timeout
+          headers: { 'x-silent-error': '1' },
         });
-        return res.data;
+        const data = Array.isArray(res.data) ? res.data : [];
+        lastVideosSnapshot = data;
+        return data;
       } catch (error: any) {
-        // 超时或网络错误时返回空数组，不抛出异常
+        // Return the last known list on timeout or network errors.
         if (error.code === 'ECONNABORTED' || error.code === 'ERR_NETWORK') {
-          console.warn('Failed to get videos (timeout/network), returning empty list');
-          return [];
+          // 只在第一次失败时打印警告
+          if (!window._videosTimeoutWarned) {
+            console.warn('Failed to get videos (timeout/network), returning empty list');
+            window._videosTimeoutWarned = true;
+            setTimeout(() => { window._videosTimeoutWarned = false; }, 30000); // 30秒后重置
+          }
+          const fallback = lastVideosSnapshot ? [...lastVideosSnapshot] : [];
+          (fallback as any).__fallback = true;
+          return fallback;
         }
         throw new Error(error.response?.data?.detail || '获取视频列表失败');
       }
@@ -1287,13 +1372,20 @@ export async function invoke(command: string, args?: any): Promise<any> {
     // 下载视频
     'channels_download_video': async () => {
       try {
-        const res = await api.post('/api/channels/download', {
+        const rawDecodeKey = typeof args?.decryption_key === 'string'
+          ? args.decryption_key.trim()
+          : '';
+        const normalizedDecodeKey = /^\d+$/.test(rawDecodeKey) ? rawDecodeKey : null;
+        const payload: Record<string, unknown> = {
           url: args?.url,
           quality: args?.quality,
           output_path: args?.output_path,
-          auto_decrypt: args?.auto_decrypt,
-          decryption_key: args?.decryption_key  // 传递解密密钥
-        });
+          decryption_key: normalizedDecodeKey
+        };
+        if (typeof args?.auto_decrypt === 'boolean') {
+          payload.auto_decrypt = args.auto_decrypt;
+        }
+        const res = await api.post('/api/channels/download', payload);
         return res.data;
       } catch (error: any) {
         throw new Error(error.response?.data?.detail || '下载视频失败');
@@ -1356,7 +1448,8 @@ export async function invoke(command: string, args?: any): Promise<any> {
     'channels_export_cert': async () => {
       try {
         const res = await api.post('/api/channels/certificate/export', {
-          export_path: args?.export_path
+          export_path: args?.export_path,
+          format: args?.format,
         });
         return res.data;
       } catch (error: any) {
@@ -1365,6 +1458,24 @@ export async function invoke(command: string, args?: any): Promise<any> {
     },
 
     // 获取证书安装说明
+    'channels_install_root_cert': async () => {
+      try {
+        const res = await api.post('/api/channels/certificate/install-root');
+        return res.data;
+      } catch (error: any) {
+        throw new Error(error.response?.data?.detail || '安装系统根证书失败');
+      }
+    },
+
+    'channels_install_wechat_p12': async () => {
+      try {
+        const res = await api.post('/api/channels/certificate/install-wechat-p12');
+        return res.data;
+      } catch (error: any) {
+        throw new Error(error.response?.data?.detail || '导入微信兼容 P12 失败');
+      }
+    },
+
     'channels_get_cert_instructions': async () => {
       try {
         const res = await api.get('/api/channels/certificate/instructions');
@@ -1402,13 +1513,13 @@ export async function invoke(command: string, args?: any): Promise<any> {
 
     // ==================== 透明捕获 API ====================
 
-    // 获取驱动状态
+    // 获取驱动状�?
     'channels_get_driver_status': async () => {
       try {
         const res = await api.get('/api/channels/driver/status');
         return res.data;
       } catch (error: any) {
-        throw new Error(error.response?.data?.detail || '获取驱动状态失败');
+        throw new Error(error.response?.data?.detail || 'Failed to get driver status');
       }
     },
 
@@ -1422,13 +1533,21 @@ export async function invoke(command: string, args?: any): Promise<any> {
       }
     },
 
-    // 请求管理员权限重启
+    // 请求管理员权限重�?
     'channels_request_admin_restart': async () => {
+      if (window.electron) {
+        const result = await window.electron.invoke('restart-as-admin');
+        if (!result?.success) {
+          throw new Error(result?.error || 'Failed to request admin restart');
+        }
+        return result;
+      }
+
       try {
         const res = await api.post('/api/channels/driver/request-admin');
         return res.data;
       } catch (error: any) {
-        throw new Error(error.response?.data?.detail || '请求管理员权限失败');
+        throw new Error(error.response?.data?.detail || 'Failed to request admin restart');
       }
     },
 
@@ -1448,6 +1567,7 @@ export async function invoke(command: string, args?: any): Promise<any> {
         const res = await api.put('/api/channels/capture/config', {
           capture_mode: args?.capture_mode,
           use_windivert: args?.use_windivert,
+          quic_blocking_enabled: args?.quic_blocking_enabled,
           target_processes: args?.target_processes,
           no_detection_timeout: args?.no_detection_timeout,
           log_unrecognized_domains: args?.log_unrecognized_domains
@@ -1468,7 +1588,45 @@ export async function invoke(command: string, args?: any): Promise<any> {
       }
     },
 
+    'channels_get_quic_status': async () => {
+      try {
+        const res = await api.get('/api/channels/quic/status');
+        return res.data;
+      } catch (error: any) {
+        throw new Error(error.response?.data?.detail || 'Failed to fetch QUIC status');
+      }
+    },
+
+    'channels_toggle_quic': async () => {
+      try {
+        const res = await api.post('/api/channels/quic/toggle', {
+          enabled: args?.enabled,
+        });
+        return res.data;
+      } catch (error: any) {
+        throw new Error(error.response?.data?.detail || 'Failed to toggle QUIC blocking');
+      }
+    },
+
     // 系统诊断
+    'channels_detect_proxy': async () => {
+      try {
+        const res = await api.get('/api/channels/proxy/detect');
+        return res.data;
+      } catch (error: any) {
+        throw new Error(error.response?.data?.detail || 'Failed to detect proxy');
+      }
+    },
+
+    'channels_get_diagnostics': async () => {
+      try {
+        const res = await api.get('/api/channels/diagnostics');
+        return res.data;
+      } catch (error: any) {
+        throw new Error(error.response?.data?.detail || 'Failed to fetch diagnostics');
+      }
+    },
+
     'channels_diagnose': async () => {
       try {
         const res = await api.get('/api/channels/diagnose');
@@ -1482,11 +1640,11 @@ export async function invoke(command: string, args?: any): Promise<any> {
 
   const handler = commandMap[command];
   if (!handler) {
-    // 减少日志噪音：仅在开发环境打印未知命令
+    // 减少日志噪音：仅在开发环境打印未知命�?
     if (import.meta.env.DEV) {
       console.debug(`[invoke] Unknown command: ${command}`);
     }
-    // 返回安全的默认值而不是抛出错误
+    // 返回安全的默认值而不是抛出错�?
     return null;
   }
 
@@ -1494,11 +1652,11 @@ export async function invoke(command: string, args?: any): Promise<any> {
     return await handler();
   } catch (error) {
     console.error(`Error executing command ${command}:`, error);
-    // 根据命令类型返回合适的默认值
+    // 根据命令类型返回合适的默认�?
     if (command.includes('get_') && command.includes('tasks')) {
       return [];
     }
-    // ⚠️ 对于其他命令，重新抛出错误而不是返回 null
+    // ⚠️ 对于其他命令，重新抛出错误而不是返�?null
     // 这样上层可以捕获到真实的错误信息
     throw error;
   }
@@ -1511,7 +1669,7 @@ export function listen(event: string, _callback: (data: any) => void): Promise<(
   console.log(`[listen] ${event}`);
   
   // 可以使用 WebSocket 实现实时事件
-  // 或者使用轮询
+  // 或者使用轮�?
   
   const unlisten = () => {
     console.log(`[unlisten] ${event}`);
@@ -1521,14 +1679,14 @@ export function listen(event: string, _callback: (data: any) => void): Promise<(
 }
 
 /**
- * 获取当前的 API Base URL（包含动态端口）
- * 用于需要直接构造 API URL 的场景（如图片代理）
+ * 获取当前�?API Base URL（包含动态端口）
+ * 用于需要直接构�?API URL 的场景（如图片代理）
  */
 export function getApiBaseUrl(): string {
   return API_BASE;
 }
 
-// 导出兼容 Tauri 的 API
+// 导出兼容 Tauri �?API
 export const tauri = {
   invoke,
   event: { listen },

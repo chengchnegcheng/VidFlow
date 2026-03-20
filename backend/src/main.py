@@ -1,146 +1,73 @@
-"""
-VidFlow Backend - FastAPI Application
-"""
-# ============================================
-# pip 模式支持（必须在最开始，用于 PyInstaller 打包后）
-# ============================================
-import sys
-import os
+﻿"""VidFlow backend entrypoint."""
 
-# 如果参数是 -m pip，直接运行 pip 模块然后退出
-if len(sys.argv) >= 2 and sys.argv[1] == '-m' and len(sys.argv) >= 3 and sys.argv[2] == 'pip':
-    import runpy
-    # 移除 -m pip，保留后续参数
-    sys.argv = ['pip'] + sys.argv[3:]
-    runpy.run_module('pip', run_name='__main__')
-    sys.exit(0)
-
-# ============================================
-# 强制 UTF-8 编码
-# ============================================
-# 设置默认编码为 UTF-8
-if sys.platform == 'win32':
-    # Windows 特殊处理
-    import locale
-    # 设置环境变量
-    os.environ['PYTHONIOENCODING'] = 'utf-8'
-    os.environ['PYTHONUTF8'] = '1'
-
-    # 重新配置 stdout/stderr 为 UTF-8
-    if hasattr(sys.stdout, 'reconfigure'):
-        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
-    if hasattr(sys.stderr, 'reconfigure'):
-        sys.stderr.reconfigure(encoding='utf-8', errors='replace')
-
-# ============================================
-# 导入其他模块
-# ============================================
-import os
-import sys
-import logging
-from logging.handlers import RotatingFileHandler
-import shutil
 import asyncio
-import uvicorn
-import subprocess
-import platform
-import psutil
+import atexit
+import json
+import logging
+import os
+import sys
+import time
 from contextlib import asynccontextmanager
 from datetime import datetime
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
+
+import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-import time
 
-# 获取正确的基础目录（支持打包后的环境）
-if getattr(sys, 'frozen', False):
-    # PyInstaller 打包后的环境
-    # 使用用户数据目录作为基础目录（可写）
-    if sys.platform == 'win32':
-        # Windows: 使用 AppData/Roaming/VidFlow
-        appdata = os.environ.get('APPDATA', os.path.expanduser('~'))
-        BASE_DIR = Path(appdata) / 'VidFlow'
-    elif sys.platform == 'darwin':
-        # macOS: 使用 ~/Library/Application Support/VidFlow
-        BASE_DIR = Path.home() / 'Library' / 'Application Support' / 'VidFlow'
-    else:
-        # Linux: 使用 ~/.local/share/VidFlow
-        BASE_DIR = Path.home() / '.local' / 'share' / 'VidFlow'
 
-    # 确保目录存在
-    BASE_DIR.mkdir(parents=True, exist_ok=True)
-    print(f"📦 Running in packaged mode, data directory: {BASE_DIR}")
-else:
-    # 开发环境
-    BASE_DIR = Path(__file__).parent.parent
+if len(sys.argv) >= 3 and sys.argv[1] == "-m" and sys.argv[2] == "pip":
+    import runpy
 
-# 将 backend 目录添加到 Python 路径
+    sys.argv = ["pip"] + sys.argv[3:]
+    runpy.run_module("pip", run_name="__main__")
+    raise SystemExit(0)
+
+
+if sys.platform == "win32":
+    os.environ["PYTHONIOENCODING"] = "utf-8"
+    os.environ["PYTHONUTF8"] = "1"
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    if hasattr(sys.stderr, "reconfigure"):
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
+
+def _resolve_base_dir() -> Path:
+    if getattr(sys, "frozen", False):
+        if sys.platform == "win32":
+            root = Path(os.environ.get("APPDATA", str(Path.home())))
+            base_dir = root / "VidFlow"
+        elif sys.platform == "darwin":
+            base_dir = Path.home() / "Library" / "Application Support" / "VidFlow"
+        else:
+            base_dir = Path.home() / ".local" / "share" / "VidFlow"
+        base_dir.mkdir(parents=True, exist_ok=True)
+        return base_dir
+    return Path(__file__).resolve().parent.parent
+
+
+BASE_DIR = _resolve_base_dir()
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
-# 导入配置管理器（必须在 sys.path 设置之后）
 from src.core.config_manager import get_config_manager
-
-# 提前检查 Python 版本（AI 依赖兼容性）
-python_version = sys.version_info
-if python_version.major == 3 and python_version.minor >= 12:
-    _py_warn_lines = [
-        f"⚠️ Python {python_version.major}.{python_version.minor} detected",
-        "⚠️ AI features (faster-whisper) require Python 3.8-3.11",
-        "⚠️ Please create a virtual environment with Python 3.11 before enabling AI features",
-    ]
-    for _line in _py_warn_lines:
-        print(_line)
-        logging.warning(_line)
-
-# 检查运行环境
-print(f"🐍 Python Executable: {sys.executable}")
-print(f"🐍 Python Version: {sys.version.split()[0]}")
-in_venv = hasattr(sys, 'real_prefix') or (hasattr(sys, 'base_prefix') and sys.base_prefix != sys.prefix)
-print(f"📦 In Virtual Environment: {in_venv}")
-if in_venv:
-    print(f"📦 Virtual Environment: {sys.prefix}")
 
 DATA_DIR = BASE_DIR / "data"
 LOGS_DIR = DATA_DIR / "logs"
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+LOGS_DIR.mkdir(parents=True, exist_ok=True)
+LOG_FILE_PATH = LOGS_DIR / "app.log"
+LOG_FILE_PATH.touch(exist_ok=True)
 
-for directory in [DATA_DIR, LOGS_DIR]:
-    directory.mkdir(parents=True, exist_ok=True)
-
-print(f"BASE_DIR: {BASE_DIR}")
-print(f"DATA_DIR: {DATA_DIR}")
-print(f"LOGS_DIR: {LOGS_DIR}")
-
-# 配置日志（UTF-8 已在程序开始处配置）
-log_file_path = LOGS_DIR / "app.log"
-print(f"📝 Log file path: {log_file_path}")
-
-# 确保日志文件可以被创建
-try:
-    # 测试写入权限
-    with open(log_file_path, 'a', encoding='utf-8') as test_file:
-        test_file.write(f"\n=== Backend starting at {datetime.now()} ===\n")
-    print(f"✅ Log file is writable")
-except Exception as e:
-    print(f"❌ Cannot write to log file: {e}")
-
-file_handler = RotatingFileHandler(
-    log_file_path,
-    maxBytes=10 * 1024 * 1024,
-    backupCount=5,
-    encoding='utf-8',
-)
-stream_handler = logging.StreamHandler(sys.stdout)
-
-# 支持通过环境变量或配置文件配置日志等级/格式
 config_manager = get_config_manager()
 log_level_raw = os.environ.get("LOG_LEVEL") or config_manager.get("advanced.log_level", "INFO")
 log_format = os.environ.get("LOG_FORMAT") or config_manager.get(
     "advanced.log_format",
     "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
-LOG_LEVEL = str(log_level_raw).upper()
 valid_levels = {
     "CRITICAL": logging.CRITICAL,
     "ERROR": logging.ERROR,
@@ -149,202 +76,256 @@ valid_levels = {
     "DEBUG": logging.DEBUG,
 }
 logging.basicConfig(
-    level=valid_levels.get(LOG_LEVEL, logging.INFO),
+    level=valid_levels.get(str(log_level_raw).upper(), logging.INFO),
     format=log_format,
-    handlers=[file_handler, stream_handler]
+    handlers=[
+        RotatingFileHandler(
+            LOG_FILE_PATH,
+            maxBytes=10 * 1024 * 1024,
+            backupCount=5,
+            encoding="utf-8",
+        ),
+        logging.StreamHandler(sys.stdout),
+    ],
 )
-
 logger = logging.getLogger(__name__)
+_capture_cleanup_registered = False
+_capture_cleanup_running = False
 
-# Lifespan 事件管理
+
+def _cleanup_channels_capture_resources_on_exit() -> None:
+    """Best-effort cleanup for exits that bypass FastAPI lifespan shutdown."""
+    global _capture_cleanup_running
+
+    if _capture_cleanup_running:
+        return
+
+    _capture_cleanup_running = True
+    try:
+        from src.api import channels as channels_api
+
+        # 检查是否有正在运行的事件循环，避免与 uvicorn 冲突
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+
+        if loop and not loop.is_closed():
+            # 已有事件循环运行中，不能调用 asyncio.run()
+            # 尝试在现有循环中调度清理任务
+            try:
+                loop.create_task(channels_api.shutdown_capture_resources())
+            except RuntimeError:
+                pass
+        else:
+            # 没有运行中的事件循环，安全创建新循环
+            asyncio.run(channels_api.shutdown_capture_resources())
+    except Exception:
+        logger.exception("Failed to cleanup channels capture resources during process exit")
+    finally:
+        _capture_cleanup_running = False
+
+
+def _register_capture_cleanup_on_exit() -> None:
+    global _capture_cleanup_registered
+    if _capture_cleanup_registered:
+        return
+    if os.environ.get("PYTEST_CURRENT_TEST") or "pytest" in sys.modules:
+        return
+
+    atexit.register(_cleanup_channels_capture_resources_on_exit)
+    _capture_cleanup_registered = True
+
+
+_register_capture_cleanup_on_exit()
+
+
+async def cleanup_stale_tasks() -> None:
+    """Mark unfinished tasks as failed after an unclean shutdown."""
+    try:
+        from sqlalchemy import select
+        from src.models.database import AsyncSessionLocal
+        from src.models.download import DownloadTask
+        from src.models.subtitle import BurnSubtitleTask, SubtitleTask
+
+        task_specs = [
+            (SubtitleTask, ["pending", "processing"], "error"),
+            (BurnSubtitleTask, ["pending", "burning"], "error"),
+            (DownloadTask, ["pending", "downloading"], "error_message"),
+        ]
+        total_cleaned = 0
+
+        for model, statuses, error_field in task_specs:
+            async with AsyncSessionLocal() as session:
+                result = await session.execute(select(model).where(model.status.in_(statuses)))
+                tasks = result.scalars().all()
+                if not tasks:
+                    continue
+
+                for task in tasks:
+                    task.status = "failed"
+                    setattr(task, error_field, "Application exited unexpectedly; task cancelled")
+                    task.completed_at = datetime.utcnow()
+
+                await session.commit()
+                total_cleaned += len(tasks)
+
+        if total_cleaned:
+            logger.info("Cleaned up %s stale tasks", total_cleaned)
+    except Exception:
+        logger.exception("Failed to clean up stale tasks")
+
+
+async def stop_all_active_tasks() -> None:
+    """Mark active tasks as failed during a graceful shutdown."""
+    try:
+        from sqlalchemy import select
+        from src.models.database import AsyncSessionLocal
+        from src.models.download import DownloadTask
+        from src.models.subtitle import BurnSubtitleTask, SubtitleTask
+
+        task_specs = [
+            (SubtitleTask, ["pending", "processing"], "error"),
+            (BurnSubtitleTask, ["pending", "burning"], "error"),
+            (DownloadTask, ["pending", "downloading"], "error_message"),
+        ]
+
+        async with AsyncSessionLocal() as session:
+            for model, statuses, error_field in task_specs:
+                result = await session.execute(select(model).where(model.status.in_(statuses)))
+                tasks = result.scalars().all()
+                for task in tasks:
+                    task.status = "failed"
+                    setattr(task, error_field, "Application shutdown; task stopped")
+                    task.completed_at = datetime.utcnow()
+            await session.commit()
+    except Exception:
+        logger.exception("Failed to stop active tasks during shutdown")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """应用生命周期管理"""
+    """Application startup and shutdown lifecycle."""
     startup_start_time = time.time()
     logger.info("Backend startup initiated")
 
-    # 启动时执行 - 只做最必要的同步初始化
-    from src.models import Base, init_database
+    from src.models import init_database
 
-    # 数据库初始化放到后台,不阻塞端口监听
-    # 这样前端可以更快连接,健康检查立即可用
     db_init_task = asyncio.create_task(init_database())
-    logger.info("Database initialization started in background")
 
-    # 等待数据库初始化完成后再清理旧任务
-    async def cleanup_after_db_init():
-        await db_init_task
-        await cleanup_stale_tasks()
-    
+    async def cleanup_after_db_init() -> None:
+        try:
+            await db_init_task
+            await cleanup_stale_tasks()
+        except Exception:
+            logger.exception("Background database initialization failed")
+
     asyncio.create_task(cleanup_after_db_init())
 
-    # 初始化工具（后台任务，不阻塞启动）
-    from src.core.tool_manager import initialize_tools
-    asyncio.create_task(initialize_tools())
+    try:
+        from src.core.tool_manager import initialize_tools
 
-    # 初始化QR登录Provider（同步，快速）
+        asyncio.create_task(initialize_tools())
+    except Exception:
+        logger.exception("Failed to initialize tools")
+
     try:
         from src.core.qr_login import register_default_providers
-        register_default_providers()
-        logger.info("QR login providers registered")
-    except Exception as e:
-        logger.warning(f"Failed to register QR login providers: {e}")
 
-    # 预热AI状态缓存（后台任务，不阻塞启动）
-    def preload_ai_cache():
-        from src.api.system import _preload_ai_status_cache
-        _preload_ai_status_cache()
+        register_default_providers()
+    except Exception:
+        logger.exception("Failed to register QR login providers")
+
+    def preload_ai_cache() -> None:
+        try:
+            from src.api.system import _preload_ai_status_cache
+
+            _preload_ai_status_cache()
+        except Exception:
+            logger.exception("Failed to preload AI status cache")
 
     asyncio.create_task(asyncio.to_thread(preload_ai_cache))
 
-    # 启动数据库备份调度任务（后台任务，不阻塞启动）
-    from src.core.backup_manager import schedule_backup_task
-    backup_task = asyncio.create_task(
-        schedule_backup_task(
-            db_path=DATA_DIR / "database.db",
-            backup_dir=DATA_DIR / "backups",
-            interval_hours=24  # 每24小时备份一次
+    backup_task = None
+    try:
+        from src.core.backup_manager import schedule_backup_task
+
+        backup_task = asyncio.create_task(
+            schedule_backup_task(
+                db_path=DATA_DIR / "database.db",
+                backup_dir=DATA_DIR / "backups",
+                interval_hours=24,
+            )
         )
-    )
-    logger.info("Database backup scheduler started (interval: 24 hours)")
+    except Exception:
+        logger.exception("Failed to start backup scheduler")
 
     startup_duration = time.time() - startup_start_time
-    logger.info(f"✅ Backend startup completed in {startup_duration:.3f}s, ready to accept requests")
+    logger.info("Backend startup completed in %.3fs", startup_duration)
 
-    # 等待数据库初始化完成（在后台继续）
     try:
         await asyncio.wait_for(db_init_task, timeout=5.0)
         logger.info("Database initialized successfully")
     except asyncio.TimeoutError:
-        logger.warning("Database initialization still in progress (continuing in background)")
+        logger.warning("Database initialization still in progress")
+    except Exception:
+        logger.exception("Database initialization failed")
 
     yield
 
-    # 关闭时执行 - 停止所有进行中的任务
     await stop_all_active_tasks()
 
-    # 停止备份调度任务
-    if 'backup_task' in locals() and not backup_task.done():
+    try:
+        from src.api import channels as channels_api
+
+        await channels_api.shutdown_capture_resources()
+    except Exception:
+        logger.exception("Failed to cleanup channels capture resources during shutdown")
+
+    if backup_task is not None and not backup_task.done():
         backup_task.cancel()
         try:
             await backup_task
         except asyncio.CancelledError:
             pass
-        logger.info("Database backup scheduler stopped")
 
     logger.info("Application shutdown")
 
 
-async def cleanup_stale_tasks():
-    """清理旧的进行中任务（应用启动时）"""
-    try:
-        logger.info("Starting cleanup of stale tasks...")
-        from src.models.database import AsyncSessionLocal
-        from src.models.subtitle import SubtitleTask, BurnSubtitleTask
-        from src.models.download import DownloadTask
-        from sqlalchemy import select
-        from datetime import datetime
-        
-        total_cleaned = 0
-        
-        # 分别处理每种任务类型，每个使用独立的会话和事务
-        for model, statuses in [
-            (SubtitleTask, ['pending', 'processing']),
-            (BurnSubtitleTask, ['pending', 'burning']),
-            (DownloadTask, ['pending', 'downloading'])
-        ]:
-            try:
-                # 每个任务类型使用独立的会话，避免长时间持有锁
-                async with AsyncSessionLocal() as session:
-                    stmt = select(model).where(model.status.in_(statuses))
-                    result = await session.execute(stmt)
-                    tasks = result.scalars().all()
-                    
-                    if tasks:
-                        for task in tasks:
-                            task.status = 'failed'
-                            task.error = '应用意外关闭，任务已取消'
-                            task.completed_at = datetime.utcnow()
-                            logger.debug(f"Cleaned up stale {model.__name__} task: {task.id}")
-                        
-                        # 立即提交并关闭会话
-                        await session.commit()
-                        total_cleaned += len(tasks)
-                        logger.debug(f"Committed {len(tasks)} {model.__name__} tasks")
-                    
-            except Exception as e:
-                logger.error(f"Error cleaning {model.__name__}: {e}")
-        
-        if total_cleaned > 0:
-            logger.info(f"✅ Cleaned up {total_cleaned} stale tasks")
-        else:
-            logger.info("✅ No stale tasks to clean up")
-                
-    except Exception as e:
-        logger.error(f"❌ Failed to cleanup stale tasks: {e}", exc_info=True)
-
-
-async def stop_all_active_tasks():
-    """停止所有进行中的任务（应用关闭时）"""
-    try:
-        from src.models.database import AsyncSessionLocal
-        from src.models.subtitle import SubtitleTask, BurnSubtitleTask
-        from src.models.download import DownloadTask
-        from sqlalchemy import select
-        from datetime import datetime
-        
-        async with AsyncSessionLocal() as session:
-            # 停止所有进行中的任务
-            for model in [SubtitleTask, BurnSubtitleTask, DownloadTask]:
-                stmt = select(model).where(
-                    model.status.in_(['pending', 'processing', 'downloading', 'burning'])
-                )
-                result = await session.execute(stmt)
-                tasks = result.scalars().all()
-                
-                for task in tasks:
-                    task.status = 'failed'
-                    task.error = '应用正常关闭，任务已停止'
-                    task.completed_at = datetime.utcnow()
-                    logger.info(f"Stopped task on shutdown: {task.id}")
-            
-            await session.commit()
-            logger.info("✅ All active tasks stopped")
-            
-    except Exception as e:
-        logger.error(f"Failed to stop active tasks: {e}")
-
-# 创建 FastAPI 应用
 app = FastAPI(
     title="VidFlow API",
-    description="全能视频下载器 API",
+    description="VidFlow backend API",
     version="1.0.0",
-    lifespan=lifespan
+    lifespan=lifespan,
 )
 
-# 请求计时中间件 - 监控慢查询
+
 @app.middleware("http")
 async def add_process_time_header(request: Request, call_next):
     start_time = time.time()
     response = await call_next(request)
     process_time = time.time() - start_time
-    
-    # 记录慢请求（超过1秒），但排除本身就需要时间的网络检测接口
-    slow_request_whitelist = [
+
+    slow_request_whitelist = {
         "/api/v1/system/network/proxy-check",
         "/api/v1/system/tools/status",
         "/api/v1/system/tools/check-updates",
-    ]
+    }
     if process_time > 1.0 and request.url.path not in slow_request_whitelist:
-        logger.warning(f"⚠️ Slow request: {request.method} {request.url.path} took {process_time:.2f}s")
-    
+        logger.warning(
+            "Slow request: %s %s took %.2fs",
+            request.method,
+            request.url.path,
+            process_time,
+        )
+
     response.headers["X-Process-Time"] = str(process_time)
     return response
 
-# 配置 CORS - 开发环境允许所有来源
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[],
+    allow_origins=["https://channels.weixin.qq.com"],
     allow_origin_regex=r"^https?://(127\.0\.0\.1|localhost)(:\d+)?$",
     allow_credentials=True,
     allow_methods=["*"],
@@ -352,10 +333,33 @@ app.add_middleware(
     expose_headers=["*"],
 )
 
-# 导入路由
-from src.api import downloads, system, websocket, subtitle, logs, config, proxy, updates, qr_login, channels
 
-# 注册路由
+@app.middleware("http")
+async def allow_private_network_access(request: Request, call_next):
+    """Allow secure WeChat pages to talk to the loopback backend."""
+    response = await call_next(request)
+
+    request_private_network = request.headers.get("access-control-request-private-network")
+    request_origin = request.headers.get("origin")
+    if request_private_network == "true" or request_origin == "https://channels.weixin.qq.com":
+        response.headers["Access-Control-Allow-Private-Network"] = "true"
+
+    if request_private_network == "true":
+        vary_parts = [
+            part.strip()
+            for part in response.headers.get("Vary", "").split(",")
+            if part.strip()
+        ]
+        for extra in ["Origin", "Access-Control-Request-Private-Network"]:
+            if extra not in vary_parts:
+                vary_parts.append(extra)
+        response.headers["Vary"] = ", ".join(vary_parts)
+
+    return response
+
+
+from src.api import channels, config, downloads, logs, proxy, qr_login, subtitle, system, updates, websocket
+
 app.include_router(downloads.router)
 app.include_router(system.router)
 app.include_router(websocket.router)
@@ -367,138 +371,99 @@ app.include_router(updates.router)
 app.include_router(qr_login.router)
 app.include_router(channels.router)
 
+
 @app.get("/")
 async def root():
-    """根路径"""
     return {
         "message": "VidFlow API Server",
         "version": app.version,
-        "status": "running"
+        "status": "running",
     }
+
 
 @app.get("/health")
 async def health_check():
-    """健康检查"""
     return {
         "status": "healthy",
         "backend": "ready",
-        "timestamp": datetime.now().isoformat()
+        "timestamp": datetime.now().isoformat(),
     }
+
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    """全局异常处理"""
-    logger.error(f"Global exception: {exc}", exc_info=True)
+    logger.error("Global exception on %s %s: %s", request.method, request.url.path, exc, exc_info=True)
 
     is_dev = os.getenv("ENV", "production") == "development"
-
     return JSONResponse(
         status_code=500,
         content={
-            "detail": str(exc) if is_dev else "服务器内部错误",
-            "type": type(exc).__name__ if is_dev else "InternalServerError"
-        }
+            "detail": str(exc) if is_dev else "Server internal error",
+            "type": type(exc).__name__ if is_dev else "InternalServerError",
+        },
     )
 
-if __name__ == "__main__":
-    import uvicorn
+
+def _find_available_port(start_port: int = 10000, end_port: int = 65535, max_attempts: int = 100) -> int:
+    import random
     import socket
-    import json
-    import sys
-    
-    def _find_available_port(start_port: int = 10000, end_port: int = 65535, max_attempts: int = 100) -> int:
-        """
-        查找一个可用的端口。
-        使用 SO_REUSEADDR 选项并验证端口确实可用。
-        """
-        import random
-        
-        for _ in range(max_attempts):
-            # 在指定范围内随机选择端口
-            port = random.randint(start_port, end_port)
-            
-            try:
-                # 创建 socket 并尝试绑定
-                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+    for _ in range(max_attempts):
+        port = random.randint(start_port, end_port)
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
                 sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-                sock.bind(('127.0.0.1', port))
-                sock.close()
-                
-                # 再次验证端口可用（防止竞态条件）
-                test_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                test_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-                try:
-                    test_sock.bind(('127.0.0.1', port))
-                    test_sock.close()
-                    return port
-                except OSError:
-                    continue
-            except OSError:
-                continue
-        
-        # 如果随机选择失败，使用系统分配
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.bind(('127.0.0.1', 0))
-        port = sock.getsockname()[1]
-        sock.close()
-        return port
-    
-    print("=" * 60, flush=True)
-    print("🚀 VidFlow Backend Starting...", flush=True)
-    print("=" * 60, flush=True)
-    
-    # 获取实际的默认下载路径
+                sock.bind(("127.0.0.1", port))
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                sock.bind(("127.0.0.1", port))
+            return port
+        except OSError:
+            continue
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind(("127.0.0.1", 0))
+        return int(sock.getsockname()[1])
+
+
+if __name__ == "__main__":
     from src.core.config_manager import get_default_download_path
+
     default_download_path = get_default_download_path()
-    
-    logger.info("Starting VidFlow Backend Server...")
-    logger.info(f"Data directory: {DATA_DIR}")
-    logger.info(f"Default download path: {default_download_path}")
-    
-    print(f"📁 Data directory: {DATA_DIR}", flush=True)
-    print(f"📥 Default download path: {default_download_path}", flush=True)
-    
-    # 检查是否指定固定端口（用于浏览器开发模式）
-    fixed_port = os.environ.get('VIDFLOW_FIXED_PORT')
-    
+    fixed_port = os.environ.get("VIDFLOW_FIXED_PORT")
+
     if fixed_port:
-        # 浏览器模式：使用固定端口
         try:
             port = int(fixed_port)
-            logger.info(f"Using fixed port {port} for browser development mode")
         except ValueError:
-            logger.error(f"Invalid fixed port: {fixed_port}, using random port")
+            logger.warning("Invalid VIDFLOW_FIXED_PORT=%s, falling back to a random port", fixed_port)
             port = _find_available_port()
     else:
-        # Electron 模式：使用随机端口
         port = _find_available_port()
-        logger.info(f"Using random port {port} for Electron mode")
-    
-    # 立即写入端口信息文件，让前端可以尽快连接
-    # 不等待 uvicorn 完全启动，因为端口已经确定
+
+    startup_token = os.environ.get("VIDFLOW_STARTUP_TOKEN")
+    port_file_payload = {
+        "port": port,
+        "host": "127.0.0.1",
+        "pid": os.getpid(),
+    }
+    if startup_token:
+        port_file_payload["startup_token"] = startup_token
+
     port_file = DATA_DIR / "backend_port.json"
-    with open(port_file, 'w', encoding='utf-8') as f:
-        json.dump({"port": port, "host": "127.0.0.1"}, f)
+    port_file.write_text(json.dumps(port_file_payload), encoding="utf-8")
 
-    print("=" * 60, flush=True)
-    print(f"✅ Port file written: {port_file}", flush=True)
-    print(f"🌐 Server will start on port: {port}", flush=True)
-    print(f"📡 Backend URL: http://127.0.0.1:{port}", flush=True)
-    print("=" * 60, flush=True)
+    logger.info("Data directory: %s", DATA_DIR)
+    logger.info("Default download path: %s", default_download_path)
+    logger.info("Server will start on port: %s", port)
 
-    logger.info(f"Server will start on port: {port}")
-    logger.info(f"Port file: {port_file}")
-
-    # 确保所有输出都被刷新
     sys.stdout.flush()
     sys.stderr.flush()
 
-    print(f"🚀 Starting Uvicorn on http://127.0.0.1:{port} ...", flush=True)
-    
     uvicorn.run(
         app,
         host="127.0.0.1",
         port=port,
         log_level="warning",
-        access_log=False
+        access_log=False,
     )

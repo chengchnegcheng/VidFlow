@@ -7,11 +7,14 @@ QUIC协议管理器
 Validates: Requirements 4.1, 4.3, 4.4
 """
 
-import logging
 import asyncio
+import logging
 from typing import Optional, List, Set, Dict, Any, Callable
 from dataclasses import dataclass, field
 from datetime import datetime
+from threading import Event, Thread
+
+from .process_targets import QUIC_BLOCK_TARGET_PROCESSES, dedupe_process_names
 
 try:
     import psutil
@@ -53,15 +56,7 @@ class QUICManager:
     QUIC_PORT = 443
     
     # 默认目标进程
-    DEFAULT_TARGET_PROCESSES = [
-        "WeChat.exe",
-        "WeChatAppEx.exe",
-        "WeChatApp.exe",
-        "WeChatBrowser.exe",
-        "WeChatPlayer.exe",
-        "Weixin.exe",
-        "WXWork.exe",
-    ]
+    DEFAULT_TARGET_PROCESSES = list(QUIC_BLOCK_TARGET_PROCESSES)
     
     def __init__(
         self,
@@ -74,13 +69,15 @@ class QUICManager:
             target_processes: 目标进程列表，默认为微信相关进程
             on_packet_blocked: 包被阻止时的回调函数(src_port, dst_ip, dst_port)
         """
-        self.target_processes = target_processes or self.DEFAULT_TARGET_PROCESSES.copy()
+        self.target_processes = dedupe_process_names(
+            target_processes or self.DEFAULT_TARGET_PROCESSES
+        )
         self._on_packet_blocked = on_packet_blocked
         
         self._is_blocking = False
         self._block_handle = None
-        self._block_task: Optional[asyncio.Task] = None
-        self._stop_event = asyncio.Event()
+        self._block_thread: Optional[Thread] = None
+        self._stop_event = Event()
         
         # 统计信息
         self._stats = QUICBlockStats()
@@ -115,11 +112,11 @@ class QUICManager:
             return True
         
         try:
-            # 刷新进程缓存
-            self._refresh_process_cache()
-            
-            # 尝试加载WinDivert
-            if not self._init_windivert():
+            # 刷新进程缓存（同步 psutil 操作，卸载到线程池）
+            await asyncio.to_thread(self._refresh_process_cache)
+
+            # 尝试加载WinDivert（可能涉及 DLL 加载，卸载到线程池）
+            if not await asyncio.to_thread(self._init_windivert):
                 logger.error("Failed to initialize WinDivert for QUIC blocking")
                 return False
             
@@ -127,7 +124,8 @@ class QUICManager:
             self._stop_event.clear()
             
             # 启动阻止任务
-            self._block_task = asyncio.create_task(self._blocking_loop())
+            self._block_thread = Thread(target=self._blocking_loop, daemon=True)
+            self._block_thread.start()
             
             logger.info(f"QUIC blocking started for processes: {self.target_processes}")
             return True
@@ -149,21 +147,14 @@ class QUICManager:
         try:
             self._stop_event.set()
             self._is_blocking = False
-            
-            if self._block_task:
-                self._block_task.cancel()
-                try:
-                    await asyncio.wait_for(
-                        asyncio.shield(self._block_task),
-                        timeout=1.0
-                    )
-                except (asyncio.CancelledError, asyncio.TimeoutError):
-                    pass
-                except Exception:
-                    pass
-                self._block_task = None
-            
+
             self._cleanup_windivert()
+
+            # 等待阻止线程退出（在线程池中 join，避免阻塞事件循环）
+            block_thread = self._block_thread
+            if block_thread and block_thread.is_alive():
+                await asyncio.to_thread(block_thread.join, 2.0)
+            self._block_thread = None
             
             logger.info("QUIC blocking stopped")
             return True
@@ -379,14 +370,15 @@ class QUICManager:
             finally:
                 self._block_handle = None
     
-    async def _blocking_loop(self) -> None:
+    def _blocking_loop(self) -> None:
         """阻止循环"""
         try:
             if self._block_handle is None:
                 # 模拟模式：只定期刷新缓存
                 while not self._stop_event.is_set():
                     self._refresh_process_cache()
-                    await asyncio.sleep(self._cache_refresh_interval)
+                    if self._stop_event.wait(timeout=self._cache_refresh_interval):
+                        break
                 return
             
             # 实际WinDivert模式
@@ -407,16 +399,12 @@ class QUICManager:
                             # 重新注入包
                             self._block_handle.send(packet)
                     
-                    # 让出控制权
-                    await asyncio.sleep(0)
-                    
                 except Exception as e:
                     if not self._stop_event.is_set():
                         logger.error(f"Error in blocking loop: {e}")
-                    await asyncio.sleep(0.1)
+                    if self._stop_event.wait(timeout=0.1):
+                        break
                     
-        except asyncio.CancelledError:
-            pass
         except Exception as e:
             logger.error(f"Blocking loop error: {e}")
     

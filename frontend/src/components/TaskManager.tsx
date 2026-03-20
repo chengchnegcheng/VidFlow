@@ -88,11 +88,12 @@ export function TaskManager() {
     setFilteredTasks(filtered);
   }, [tasks, searchQuery, statusFilter, platformFilter, sortBy]);
 
-  // 删除任务
+  // 删除任务（同时删除本机文件）
   const handleDeleteTask = async (taskId: string) => {
     try {
-      await invoke('delete_download_task', { task_id: taskId });
-      toast.success('任务已删除');
+      const res: any = await invoke('delete_download_task', { task_id: taskId });
+      const fileDeleted = res?.file_deleted;
+      toast.success(fileDeleted ? '任务和文件已删除' : '任务已删除');
       refreshDownloads();
     } catch (error) {
       toast.error('删除失败', {

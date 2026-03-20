@@ -30,6 +30,7 @@ import { SnifferControl } from './SnifferControl';
 import { VideoList } from './VideoList';
 import { DownloadTaskList } from './DownloadTaskList';
 import { DriverInstallDialog } from './DriverInstallDialog';
+import { CertificateDialog } from './CertificateDialog';
 import { ProcessSelector } from './ProcessSelector';
 import { CaptureStatus } from './CaptureStatus';
 import { DiagnosticPanel } from './DiagnosticPanel';
@@ -37,6 +38,7 @@ import {
   ChannelsConfigUpdateRequest,
   CaptureMode,
   CaptureConfigUpdateRequest,
+  getCaptureModeText,
 } from '../../types/channels';
 import { invoke } from '../TauriIntegration';
 import { toast } from 'sonner';
@@ -61,16 +63,36 @@ export const ChannelsPanel: React.FC = () => {
     captureStatistics,
     captureState,
     captureStartedAt,
+    fetchCertInfo,
+    generateCert,
+    downloadCert,
+    installRootCert,
+    installWechatP12,
+    getCertInstructions,
+    proxyInfo,
+    quicStatus,
     fetchDriverStatus,
     installDriver,
     requestAdminRestart,
     updateCaptureConfig,
+    toggleQUICBlocking,
   } = useChannelsSniffer();
 
   const [driverDialogOpen, setDriverDialogOpen] = React.useState(false);
+  const [certDialogOpen, setCertDialogOpen] = React.useState(false);
   const [configDraft, setConfigDraft] = React.useState<ChannelsConfigUpdateRequest>({});
   const [captureConfigDraft, setCaptureConfigDraft] = React.useState<CaptureConfigUpdateRequest>({});
   const [downloadTasks, setDownloadTasks] = React.useState<any[]>([]);
+  // 默认使用透明捕获模式（WinDivert），因为 explicit 代理模式下
+  // WeChatAppEx.exe 的 HTTP/2 连接复用会导致后续视频请求绕过代理。
+  // 透明模式在 OS 层拦截所有目标进程流量，不受连接状态影响。
+  // 如果缺少管理员权限或 WinDivert，后端会返回错误提示用户切换模式。
+  const defaultCaptureMode: CaptureMode = 'transparent';
+  const effectiveCaptureMode: CaptureMode =
+    captureConfigDraft.capture_mode ||
+    captureConfig?.capture_mode ||
+    state.status?.capture_mode ||
+    defaultCaptureMode;
 
   /**
    * 获取下载任务列表
@@ -102,6 +124,7 @@ export const ChannelsPanel: React.FC = () => {
         proxy_port: state.config.proxy_port,
         download_dir: state.config.download_dir,
         auto_decrypt: state.config.auto_decrypt,
+        auto_clean_wechat_cache: state.config.auto_clean_wechat_cache,
         quality_preference: state.config.quality_preference,
         clear_on_exit: state.config.clear_on_exit,
       });
@@ -114,13 +137,14 @@ export const ChannelsPanel: React.FC = () => {
   React.useEffect(() => {
     if (captureConfig) {
       setCaptureConfigDraft({
-        capture_mode: 'transparent', // 固定为透明模式
+        capture_mode: captureConfig.capture_mode || defaultCaptureMode,
+        quic_blocking_enabled: captureConfig.quic_blocking_enabled,
         target_processes: captureConfig.target_processes,
         no_detection_timeout: captureConfig.no_detection_timeout,
         log_unrecognized_domains: captureConfig.log_unrecognized_domains,
       });
     }
-  }, [captureConfig]);
+  }, [captureConfig, defaultCaptureMode]);
 
   /**
    * 保存配置
@@ -131,7 +155,7 @@ export const ChannelsPanel: React.FC = () => {
       if (updateCaptureConfig) {
         await updateCaptureConfig({
           ...captureConfigDraft,
-          capture_mode: 'transparent', // 确保始终是透明模式
+          capture_mode: captureConfigDraft.capture_mode || effectiveCaptureMode,
         });
       }
     } catch (err) {
@@ -179,8 +203,8 @@ export const ChannelsPanel: React.FC = () => {
    */
   const handleDeleteTask = async (taskId: string) => {
     try {
-      await invoke('channels_delete_download_task', { task_id: taskId });
-      toast.success('任务已删除');
+      const res: any = await invoke('channels_delete_download_task', { task_id: taskId });
+      toast.success(res?.message || '任务已删除');
       fetchDownloadTasks();
     } catch (err: any) {
       toast.error('删除失败', { description: err.message });
@@ -212,11 +236,19 @@ export const ChannelsPanel: React.FC = () => {
     });
   };
 
+  const handleCaptureModeChange = (mode: string) => {
+    setCaptureConfigDraft((prev) => ({
+      ...prev,
+      capture_mode: mode as CaptureMode,
+    }));
+  };
+
   /**
-   * 启动嗅探器（优先使用代理模式以获取可下载的完整URL；透明模式通常只能得到占位符）
+   * 启动嗅探器
+   * 优先使用 WinDivert 本机透明捕获，条件不满足时回退到代理模式。
    */
-  const handleStartSniffer = async (port?: number, _mode?: CaptureMode) => {
-    return startSniffer(port, 'proxy');
+  const handleStartSniffer = async (port?: number, mode?: CaptureMode) => {
+    return startSniffer(port, mode || effectiveCaptureMode);
   };
 
   return (
@@ -233,7 +265,11 @@ export const ChannelsPanel: React.FC = () => {
           </p>
           {!isRunning && state.videos.length === 0 && (
             <div className="mt-2 text-sm text-muted-foreground">
-              💡 使用提示：需要以<span className="font-semibold text-foreground">管理员身份</span>运行应用，然后在微信中播放视频号视频
+              {effectiveCaptureMode === 'transparent' ? (
+                <>当前使用 <span className="font-semibold text-foreground">{getCaptureModeText(effectiveCaptureMode)}</span>。请以管理员身份运行并确认 WinDivert 已安装，然后在嗅探启动后重新打开微信视频号页面并完整播放目标视频一次。</>
+              ) : (
+                <>当前使用 <span className="font-semibold text-foreground">{getCaptureModeText(effectiveCaptureMode)}</span>。请先确认系统根证书和微信兼容 P12 已安装；如果只能抓到 `stodownload` 且一直缺少 `decodeKey`，请切换到透明捕获模式后重试。</>
+              )}
             </div>
           )}
         </div>
@@ -241,10 +277,20 @@ export const ChannelsPanel: React.FC = () => {
           <Button
             variant="outline"
             size="sm"
+            onClick={() => {
+              void fetchCertInfo();
+              setCertDialogOpen(true);
+            }}
+          >
+            HTTPS 证书
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
             onClick={() => setDriverDialogOpen(true)}
           >
             <Monitor className="h-4 w-4 mr-2" />
-            驱动管理
+            透明模式驱动
           </Button>
           <Button
             variant="ghost"
@@ -273,12 +319,32 @@ export const ChannelsPanel: React.FC = () => {
           {/* 嗅探器控制 */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-lg">透明嗅探器</CardTitle>
+              <CardTitle className="text-lg">视频号嗅探器</CardTitle>
               <CardDescription>
-                自动拦截 Windows PC 端微信流量以捕获视频链接
+                选择当前嗅探模式。微信 4.x 只能抓到原始视频地址或始终缺少 decodeKey 时，优先改用透明捕获。
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="sniffer-capture-mode">嗅探模式</Label>
+                <Select
+                  value={effectiveCaptureMode}
+                  onValueChange={handleCaptureModeChange}
+                  disabled={isRunning}
+                >
+                  <SelectTrigger id="sniffer-capture-mode" className="w-full max-w-sm">
+                    <SelectValue placeholder="选择嗅探模式" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="proxy_only">{getCaptureModeText('proxy_only')}</SelectItem>
+                    <SelectItem value="transparent">{getCaptureModeText('transparent')}</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  显式代理需要安装证书；透明捕获需要管理员权限和 WinDivert 驱动。
+                </p>
+              </div>
+
               <SnifferControl
                 status={state.status}
                 isLoading={state.isLoading}
@@ -286,7 +352,12 @@ export const ChannelsPanel: React.FC = () => {
                 onStart={handleStartSniffer}
                 onStop={stopSniffer}
                 driverStatus={driverStatus}
-                captureMode="transparent"
+                captureMode={effectiveCaptureMode}
+                proxyInfo={proxyInfo}
+                quicStatus={quicStatus}
+                onQUICToggle={async (enabled) => {
+                  await toggleQUICBlocking(enabled);
+                }}
                 onOpenDriverDialog={() => setDriverDialogOpen(true)}
                 onRequestAdmin={requestAdminRestart}
               />
@@ -318,6 +389,7 @@ export const ChannelsPanel: React.FC = () => {
                 onClearAll={clearVideos}
                 onAddVideo={addVideoManually}
                 qualityPreference={state.config?.quality_preference}
+                downloadDir={state.config?.download_dir}
               />
             </CardContent>
           </Card>
@@ -405,7 +477,25 @@ export const ChannelsPanel: React.FC = () => {
 
               <Separator />
 
-              {/* 自动解密 */}
+              {/* 启动前自动清微信缓存 */}
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label>启动前自动清微信缓存</Label>
+                  <p className="text-xs text-muted-foreground">
+                    启动视频号嗅探前自动清理微信视频号页面缓存，并刷新相关页面进程
+                  </p>
+                </div>
+                <Switch
+                  checked={configDraft.auto_clean_wechat_cache ?? true}
+                  onCheckedChange={(checked) => setConfigDraft({
+                    ...configDraft,
+                    auto_clean_wechat_cache: checked,
+                  })}
+                />
+              </div>
+
+              <Separator />
+
               <div className="flex items-center justify-between">
                 <div className="space-y-0.5">
                   <Label>自动解密</Label>
@@ -455,6 +545,28 @@ export const ChannelsPanel: React.FC = () => {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
+              <div className="space-y-2">
+                <Label htmlFor="settings-capture-mode">默认嗅探模式</Label>
+                <Select
+                  value={effectiveCaptureMode}
+                  onValueChange={handleCaptureModeChange}
+                  disabled={isRunning}
+                >
+                  <SelectTrigger id="settings-capture-mode" className="w-full max-w-sm">
+                    <SelectValue placeholder="选择默认嗅探模式" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="proxy_only">{getCaptureModeText('proxy_only')}</SelectItem>
+                    <SelectItem value="transparent">{getCaptureModeText('transparent')}</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  保存设置后，新的默认模式会写回捕获配置。
+                </p>
+              </div>
+
+              <Separator />
+
               {/* 目标进程 */}
               <div className="space-y-2">
                 <Label>目标进程</Label>
@@ -529,6 +641,16 @@ export const ChannelsPanel: React.FC = () => {
         onInstall={installDriver}
         onRefresh={fetchDriverStatus}
         onRequestAdmin={requestAdminRestart}
+      />
+      <CertificateDialog
+        isOpen={certDialogOpen}
+        onClose={() => setCertDialogOpen(false)}
+        certInfo={state.certInfo}
+        onGenerate={generateCert}
+        onDownload={downloadCert}
+        onInstallRoot={installRootCert}
+        onInstallWechatP12={installWechatP12}
+        onGetInstructions={getCertInstructions}
       />
     </div>
   );
