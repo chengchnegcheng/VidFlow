@@ -34,7 +34,7 @@ for marker, description in markers.items():
         pos = data.find(marker, pos)
         if pos == -1:
             break
-        
+
         # 检查前4字节是否是合理的 box 大小
         if pos >= 4:
             try:
@@ -48,7 +48,7 @@ for marker, description in markers.items():
             except:
                 pass
         pos += 1
-    
+
     if count == 0:
         print(f'{marker.decode():6s} - 未找到')
 
@@ -57,23 +57,23 @@ if found_positions:
     print('\n' + '=' * 60)
     print('尝试重建 MP4 文件')
     print('=' * 60)
-    
+
     # 按位置排序
     found_positions.sort()
-    
+
     # 找到最早的 box
     first_box_pos, first_marker, first_size = found_positions[0]
     print(f'\n最早的 Box: {first_marker.decode()} 在位置 0x{first_box_pos:X}')
-    
+
     # 从这个位置开始提取
     extracted_data = data[first_box_pos:]
     output_file = input_file.with_name('视频号_rebuilt.mp4')
     output_file.write_bytes(extracted_data)
-    
+
     print(f'\n✓ 已保存重建的文件到: {output_file}')
     print(f'  文件大小: {len(extracted_data)} 字节 ({len(extracted_data)/1024/1024:.2f} MB)')
     print(f'  文件头: {" ".join(f"{b:02X}" for b in extracted_data[:32])}')
-    
+
     # 检查是否是有效的 MP4
     if extracted_data[4:8] == b'ftyp':
         print('\n✓✓✓ 成功！这是有效的 MP4 文件！')

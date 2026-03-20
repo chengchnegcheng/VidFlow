@@ -9,10 +9,10 @@ from src.core.downloaders.iqiyi_downloader import IqiyiDownloader
 async def test():
     downloader = IqiyiDownloader()
     url = 'https://www.iqiyi.com/v_1d74ab0t9ug.html'
-    
+
     print('Testing iQiyi downloader...')
     print(f'URL: {url}')
-    
+
     try:
         info = await downloader.get_video_info(url)
         print(f'Title: {info.get("title", "N/A")}')

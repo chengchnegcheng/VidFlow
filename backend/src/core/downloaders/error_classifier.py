@@ -119,48 +119,48 @@ KNOWN_EXTRACTOR_ISSUES = {
 def get_platform_extractor_issue(error_msg: str, platform: str) -> str:
     """
     检查是否是已知的平台提取器问题
-    
+
     Args:
         error_msg: 错误消息
         platform: 平台名称
-        
+
     Returns:
         友好的错误提示，如果不是已知问题则返回空字符串
     """
     if not error_msg or not platform:
         return ""
-    
+
     error_lower = error_msg.lower()
     issue_info = KNOWN_EXTRACTOR_ISSUES.get(platform.lower())
-    
+
     if issue_info:
         keywords = issue_info.get('error_keywords', [])
         if all(kw.lower() in error_lower for kw in keywords):
             return issue_info.get('message', '')
-    
+
     return ""
 
 
 def is_auth_required_error(error_msg: str, platform: str = 'generic') -> bool:
     """
     判断错误是否为认证相关错误（需要登录/会员）
-    
+
     Args:
         error_msg: 错误消息字符串
         platform: 平台名称（youtube, bilibili, douyin 等）
-        
+
     Returns:
         是否为认证错误
     """
     if not error_msg:
         return False
-    
+
     error_lower = error_msg.lower()
-    
+
     # 首先检查是否为不可重试错误（优先级更高）
     if is_non_retryable_error(error_msg):
         return False
-    
+
     # 检查 HTTP 状态码（403 需要结合上下文判断）
     for code in AUTH_HTTP_CODES:
         if code in error_msg:
@@ -175,54 +175,54 @@ def is_auth_required_error(error_msg: str, platform: str = 'generic') -> bool:
             elif code == '401':
                 logger.debug(f"Detected auth error: HTTP {code}")
                 return True
-    
+
     # 获取平台特定的关键词
     platform_keywords = AUTH_ERROR_KEYWORDS.get(platform.lower(), [])
     generic_keywords = AUTH_ERROR_KEYWORDS.get('generic', [])
-    
+
     # 合并关键词列表
     all_keywords = platform_keywords + generic_keywords
-    
+
     # 检查是否包含认证错误关键词
     for keyword in all_keywords:
         if keyword.lower() in error_lower:
             logger.debug(f"Detected auth error: keyword '{keyword}' found in error message")
             return True
-    
+
     return False
 
 
 def is_non_retryable_error(error_msg: str) -> bool:
     """
     判断错误是否为不可重试错误（即使回退也不会成功）
-    
+
     Args:
         error_msg: 错误消息字符串
-        
+
     Returns:
         是否为不可重试错误
     """
     if not error_msg:
         return False
-    
+
     error_lower = error_msg.lower()
-    
+
     for keyword in NON_RETRYABLE_ERROR_KEYWORDS:
         if keyword.lower() in error_lower:
             logger.debug(f"Detected non-retryable error: keyword '{keyword}' found")
             return True
-    
+
     return False
 
 
 def classify_error(error_msg: str, platform: str = 'generic') -> str:
     """
     对错误进行分类
-    
+
     Args:
         error_msg: 错误消息字符串
         platform: 平台名称
-        
+
     Returns:
         错误类型: 'auth_required', 'non_retryable', 'unknown'
     """

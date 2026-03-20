@@ -38,7 +38,7 @@ export function useVideoThumbnail(
 
         // 生成本地缩略图
         const localThumbnail = await window.electron.generateVideoThumbnail(filePath);
-        
+
         if (mounted) {
           if (localThumbnail) {
             setThumbnail(localThumbnail);

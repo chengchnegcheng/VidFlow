@@ -9,11 +9,11 @@ import { Input } from './ui/input';
 import { Badge } from './ui/badge';
 import { Progress } from './ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
-import { 
-  Film, 
-  FileVideo, 
-  FileText, 
-  Sparkles, 
+import {
+  Film,
+  FileVideo,
+  FileText,
+  Sparkles,
   FolderOpen,
   CheckCircle,
   Clock,
@@ -129,7 +129,7 @@ export default function BurnSubtitle() {
       setVideoPath('');
       setSubtitlePath('');
       setOutputPath('');
-      
+
       // 刷新任务列表
       await refreshBurns();
     } catch (error) {
@@ -371,7 +371,7 @@ export default function BurnSubtitle() {
                       <CardContent className="p-4">
                         <div className="flex gap-4">
                           <FileVideo className="size-10 text-primary flex-shrink-0 mt-1" />
-                          
+
                           <div className="flex-1 min-w-0">
                             <div className="flex items-start justify-between gap-4 mb-2">
                               <div className="flex-1 min-w-0">
@@ -416,8 +416,8 @@ export default function BurnSubtitle() {
 
                             <div className="flex gap-2 flex-wrap">
                               {task.status === 'completed' && (
-                                <Button 
-                                  size="sm" 
+                                <Button
+                                  size="sm"
                                   variant="outline"
                                   onClick={() => handleOpenOutputFolder(task.output_path)}
                                 >
@@ -436,8 +436,8 @@ export default function BurnSubtitle() {
                                 </Button>
                               )}
                               {task.status === 'failed' && (
-                                <Button 
-                                  size="sm" 
+                                <Button
+                                  size="sm"
                                   variant="outline"
                                   onClick={() => handleRetryBurnTask(task)}
                                 >

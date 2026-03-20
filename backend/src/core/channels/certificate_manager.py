@@ -22,69 +22,69 @@ from .models import CertInfo, CertGenerateResult, ErrorCode, get_error_message
 
 class CertificateManager:
     """CA 证书管理器
-    
+
     负责生成、验证和导出 HTTPS 代理所需的 CA 证书。
     """
-    
+
     # 证书有效期（天）
     CERT_VALIDITY_DAYS = 365 * 3  # 3 年
-    
+
     # 证书文件名
     CA_CERT_FILENAME = "mitmproxy-ca-cert.pem"
     CA_KEY_FILENAME = "mitmproxy-ca.pem"
-    
+
     def __init__(self, cert_dir: Path):
         """初始化证书管理器
-        
+
         Args:
             cert_dir: 证书存储目录
         """
         self.cert_dir = Path(cert_dir)
         self.ca_cert_path = self.cert_dir / self.CA_CERT_FILENAME
         self.ca_key_path = self.cert_dir / self.CA_KEY_FILENAME
-    
+
     def _ensure_cert_dir(self) -> None:
         """确保证书目录存在"""
         self.cert_dir.mkdir(parents=True, exist_ok=True)
-    
+
     def is_cert_valid(self) -> bool:
         """检查证书是否存在且有效
-        
+
         Returns:
             如果证书存在且未过期返回 True
         """
         if not self.ca_cert_path.exists():
             return False
-        
+
         try:
             cert_info = self.get_cert_info()
             if not cert_info.exists or not cert_info.valid:
                 return False
-            
+
             # 检查是否过期
             if cert_info.expires_at and cert_info.expires_at < datetime.now():
                 return False
-            
+
             return True
         except Exception:
             return False
-    
+
     def generate_ca_cert(self) -> CertGenerateResult:
         """生成新的 CA 证书
-        
+
         Returns:
             CertGenerateResult: 包含生成结果
         """
         try:
             self._ensure_cert_dir()
-            
+
             # 生成 RSA 私钥
             private_key = rsa.generate_private_key(
                 public_exponent=65537,
                 key_size=2048,
                 backend=default_backend()
             )
-            
+
             # 构建证书主题
             subject = issuer = x509.Name([
                 x509.NameAttribute(NameOID.COUNTRY_NAME, "CN"),
@@ -93,7 +93,7 @@ class CertificateManager:
                 x509.NameAttribute(NameOID.ORGANIZATION_NAME, "VidFlow"),
                 x509.NameAttribute(NameOID.COMMON_NAME, "VidFlow Proxy CA"),
             ])
-            
+
             # 构建证书
             now = datetime.now(timezone.utc)
             cert = (
@@ -124,7 +124,7 @@ class CertificateManager:
                 )
                 .sign(private_key, hashes.SHA256(), default_backend())
             )
-            
+
             # 保存私钥
             with open(self.ca_key_path, "wb") as f:
                 f.write(private_key.private_bytes(
@@ -132,16 +132,16 @@ class CertificateManager:
                     format=serialization.PrivateFormat.TraditionalOpenSSL,
                     encryption_algorithm=serialization.NoEncryption()
                 ))
-            
+
             # 保存证书
             with open(self.ca_cert_path, "wb") as f:
                 f.write(cert.public_bytes(serialization.Encoding.PEM))
-            
+
             return CertGenerateResult(
                 success=True,
                 cert_path=str(self.ca_cert_path)
             )
-            
+
         except PermissionError:
             return CertGenerateResult(
                 success=False,
@@ -152,19 +152,19 @@ class CertificateManager:
                 success=False,
                 error_message=f"证书生成失败: {str(e)}"
             )
-    
+
     def export_cert(self, export_path: Path) -> bool:
         """导出 CA 证书供用户安装
-        
+
         Args:
             export_path: 导出目标路径
-            
+
         Returns:
             导出成功返回 True
         """
         if not self.ca_cert_path.exists():
             return False
-        
+
         try:
             export_path = Path(export_path)
             export_path.parent.mkdir(parents=True, exist_ok=True)
@@ -172,10 +172,10 @@ class CertificateManager:
             return True
         except Exception:
             return False
-    
+
     def get_cert_info(self) -> CertInfo:
         """获取证书信息
-        
+
         Returns:
             CertInfo: 证书信息对象
         """
@@ -184,29 +184,29 @@ class CertificateManager:
                 exists=False,
                 valid=False
             )
-        
+
         try:
             with open(self.ca_cert_path, "rb") as f:
                 cert_data = f.read()
-            
+
             cert = x509.load_pem_x509_certificate(cert_data, default_backend())
-            
+
             # 计算指纹
             fingerprint = hashlib.sha256(
                 cert.public_bytes(serialization.Encoding.DER)
             ).hexdigest().upper()
-            
+
             # 格式化指纹（每两个字符加冒号）
             fingerprint_formatted = ":".join(
                 fingerprint[i:i+2] for i in range(0, len(fingerprint), 2)
             )
-            
+
             # 检查有效期
             now = datetime.now(timezone.utc)
             not_valid_before = cert.not_valid_before_utc
             not_valid_after = cert.not_valid_after_utc
             is_valid = not_valid_before <= now <= not_valid_after
-            
+
             return CertInfo(
                 exists=True,
                 valid=is_valid,
@@ -214,32 +214,32 @@ class CertificateManager:
                 fingerprint=fingerprint_formatted,
                 path=str(self.ca_cert_path)
             )
-            
+
         except Exception:
             return CertInfo(
                 exists=True,
                 valid=False,
                 path=str(self.ca_cert_path)
             )
-    
+
     def get_cert_content(self) -> Optional[bytes]:
         """获取证书内容
-        
+
         Returns:
             证书内容字节，如果不存在返回 None
         """
         if not self.ca_cert_path.exists():
             return None
-        
+
         try:
             with open(self.ca_cert_path, "rb") as f:
                 return f.read()
         except Exception:
             return None
-    
+
     def delete_cert(self) -> bool:
         """删除证书文件
-        
+
         Returns:
             删除成功返回 True
         """
@@ -251,10 +251,10 @@ class CertificateManager:
             return True
         except Exception:
             return False
-    
+
     def get_install_instructions(self) -> str:
         """获取证书安装说明
-        
+
         Returns:
             安装说明文本
         """

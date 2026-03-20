@@ -10,43 +10,43 @@ from .database import Base
 class DownloadTask(Base):
     """下载任务模型"""
     __tablename__ = "download_tasks"
-    
+
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     task_id = Column(String(36), unique=True, index=True, nullable=False)
-    
+
     # 视频信息
     url = Column(String(500), nullable=False)
     title = Column(String(255), nullable=True)
     platform = Column(String(50), nullable=True)
     thumbnail = Column(String(500), nullable=True)
     duration = Column(Integer, nullable=True)  # 秒
-    
+
     # 下载配置
     quality = Column(String(50), default="best")
     format_id = Column(String(50), nullable=True)
     output_path = Column(String(500), nullable=True)
-    
+
     # 状态信息
     status = Column(String(50), default="pending")  # pending, downloading, completed, failed, cancelled
     progress = Column(Float, default=0.0)  # 0-100
-    
+
     # 下载信息
     downloaded_bytes = Column(Integer, default=0)
     total_bytes = Column(Integer, default=0)
     speed = Column(Float, default=0.0)  # bytes/s
     eta = Column(Integer, default=0)  # seconds
-    
+
     # 结果信息
     filename = Column(String(500), nullable=True)
     filesize = Column(Integer, nullable=True)
     error_message = Column(Text, nullable=True)
-    
+
     # 时间戳
     created_at = Column(DateTime, default=func.now(), nullable=False)
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now(), nullable=False)
     started_at = Column(DateTime, nullable=True)
     completed_at = Column(DateTime, nullable=True)
-    
+
     def to_dict(self):
         """转换为字典"""
         # 构建完整的文件路径

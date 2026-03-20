@@ -70,15 +70,15 @@ export function LogViewer() {
     try {
       setLoading(true);
       const params: any = { limit: 200 };
-      
+
       if (levelFilter !== 'ALL') {
         params.level = levelFilter;
       }
-      
+
       if (searchQuery.trim()) {
         params.search = searchQuery.trim();
       }
-      
+
       const result = await invoke('get_logs', params);
       setLogs(result || []);
     } catch (error) {
@@ -103,13 +103,13 @@ export function LogViewer() {
   useEffect(() => {
     fetchLogs();
     fetchStats();
-    
+
     if (autoRefresh) {
       const interval = setInterval(() => {
         fetchLogs();
         fetchStats();
       }, 3000); // 每3秒刷新
-      
+
       return () => clearInterval(interval);
     }
   }, [fetchLogs, fetchStats, autoRefresh]);

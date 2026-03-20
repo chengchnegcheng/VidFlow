@@ -42,17 +42,17 @@ async def get_all_config():
 async def get_config_value(key_path: str):
     """
     获取指定配置值
-    
+
     Args:
         key_path: 配置路径，如 download.default_quality
     """
     try:
         config_manager = get_config_manager()
         value = config_manager.get(key_path)
-        
+
         if value is None:
             raise HTTPException(status_code=404, detail=f"Config key not found: {key_path}")
-        
+
         return {
             "status": "success",
             "key": key_path,
@@ -71,7 +71,7 @@ async def set_config_value(request: ConfigValueRequest):
     try:
         config_manager = get_config_manager()
         config_manager.set(request.key, request.value)
-        
+
         return {
             "status": "success",
             "message": f"Config '{request.key}' updated successfully"
@@ -87,7 +87,7 @@ async def update_config(request: ConfigUpdateRequest):
     try:
         config_manager = get_config_manager()
         config_manager.update(request.updates)
-        
+
         return {
             "status": "success",
             "message": "Configuration updated successfully",
@@ -104,7 +104,7 @@ async def reset_config():
     try:
         config_manager = get_config_manager()
         config_manager.reset()
-        
+
         return {
             "status": "success",
             "message": "Configuration reset to default",

@@ -11,15 +11,15 @@ const AboutDialog: React.FC<AboutDialogProps> = ({ isOpen, onClose, version }) =
   if (!isOpen) return null;
 
   return (
-    <div 
+    <div
       className="fixed inset-0 z-50 flex items-center justify-center"
       onClick={onClose}
     >
       {/* 背景遮罩 */}
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
-      
+
       {/* 对话框 */}
-      <div 
+      <div
         className="relative bg-background border border-border rounded-xl shadow-2xl w-[360px] overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
@@ -33,7 +33,7 @@ const AboutDialog: React.FC<AboutDialogProps> = ({ isOpen, onClose, version }) =
             <X className="w-4 h-4 text-muted-foreground" />
           </button>
         </div>
-        
+
         {/* 内容区域 */}
         <div className="p-6 flex flex-col items-center text-center">
           {/* Logo - 使用与标题栏一致的图标 */}
@@ -56,20 +56,20 @@ const AboutDialog: React.FC<AboutDialogProps> = ({ isOpen, onClose, version }) =
               </g>
             </svg>
           </div>
-          
+
           {/* 应用名称 */}
           <h2 className="text-xl font-bold text-foreground mb-1">VidFlow</h2>
-          
+
           {/* 版本号 */}
           <p className="text-sm text-muted-foreground mb-4">版本 {version}</p>
-          
+
           {/* 描述 */}
           <p className="text-sm text-muted-foreground mb-2">全能视频下载器</p>
           <p className="text-xs text-muted-foreground/70">
             支持 YouTube、Bilibili、抖音等平台
           </p>
         </div>
-        
+
         {/* 底部 */}
         <div className="px-6 py-4 border-t border-border bg-muted/30">
           <p className="text-xs text-center text-muted-foreground">

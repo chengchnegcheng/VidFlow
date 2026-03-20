@@ -1,4 +1,4 @@
-﻿@echo off
+@echo off
 chcp 65001 >nul
 setlocal enabledelayedexpansion
 
@@ -40,7 +40,7 @@ echo [4] 生成更新日志模板
 echo [0] 退出
 echo.
 
-set /p choice=请输入选项 [0-4]: 
+set /p choice=请输入选项 [0-4]:
 
 if "%choice%"=="1" goto custom_version
 if "%choice%"=="2" goto quick_upgrade
@@ -58,7 +58,7 @@ echo ========================================
 echo.
 echo 当前版本: %CURRENT_VERSION%
 echo.
-set /p NEW_VERSION=请输入新版本号 (例如 1.1.0): 
+set /p NEW_VERSION=请输入新版本号 (例如 1.1.0):
 
 if not defined NEW_VERSION (
     echo ❌ 版本号不能为空
@@ -82,7 +82,7 @@ echo [2] 次版本升级 ^(新功能^)
 echo [3] 修订版升级 ^(修复bug^)
 echo [0] 返回
 echo.
-set /p upgrade_type=请选择 [0-3]: 
+set /p upgrade_type=请选择 [0-3]:
 
 if "%upgrade_type%"=="0" goto menu
 
@@ -118,7 +118,7 @@ echo   - frontend\src\App.tsx
 echo.
 echo 注意: electron-builder 会自动从 package.json 读取版本号
 echo.
-set /p confirm=确认修改？^(Y/N^): 
+set /p confirm=确认修改？^(Y/N^):
 
 if /i not "%confirm%"=="Y" (
     echo ❌ 已取消

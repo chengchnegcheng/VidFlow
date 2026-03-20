@@ -76,21 +76,21 @@ def detected_video_strategy(draw):
 @st.composite
 def multi_mode_capture_config_strategy(draw):
     """生成随机 MultiModeCaptureConfig
-    
+
     用于 Property 13: Configuration Persistence Round-Trip 测试
     """
     # 生成有效的 Clash API 地址
     host = draw(st.sampled_from(["127.0.0.1", "localhost", "192.168.1.1"]))
     port = draw(st.integers(min_value=1024, max_value=65535))
     clash_api_address = f"{host}:{port}"
-    
+
     # 生成有效的恢复设置
     backoff_base = draw(st.floats(min_value=0.1, max_value=10.0))
     backoff_max = draw(st.floats(min_value=backoff_base, max_value=60.0))
-    
+
     return MultiModeCaptureConfig(
         preferred_mode=draw(st.sampled_from([
-            CaptureMode.HYBRID, CaptureMode.WINDIVERT, 
+            CaptureMode.HYBRID, CaptureMode.WINDIVERT,
             CaptureMode.CLASH_API, CaptureMode.SYSTEM_PROXY
         ])),
         auto_fallback=draw(st.booleans()),
@@ -137,11 +137,11 @@ def proxy_info_strategy(draw):
 class TestConfigurationPersistence:
     """
     Property 9: Configuration Persistence Round-Trip
-    
+
     For any valid ChannelsConfig, saving the configuration and then loading it
     should produce an equivalent configuration object. All fields (proxy_port,
     download_dir, auto_decrypt, quality_preference) should be preserved.
-    
+
     **Feature: weixin-channels-download, Property 9: Configuration Persistence Round-Trip**
     **Validates: Requirements 7.1, 7.2, 7.3, 7.4, 7.5**
     """
@@ -152,10 +152,10 @@ class TestConfigurationPersistence:
         """配置对象 -> 字典 -> 配置对象 应该保持等价"""
         # Serialize to dict
         config_dict = config.to_dict()
-        
+
         # Deserialize back
         restored = ChannelsConfig.from_dict(config_dict)
-        
+
         # Verify all fields are preserved
         assert restored.proxy_port == config.proxy_port
         assert restored.download_dir == config.download_dir
@@ -169,14 +169,14 @@ class TestConfigurationPersistence:
         """配置对象 -> JSON -> 配置对象 应该保持等价"""
         # Serialize to JSON
         json_str = config.to_json()
-        
+
         # Verify it's valid JSON
         parsed = json.loads(json_str)
         assert isinstance(parsed, dict)
-        
+
         # Deserialize back
         restored = ChannelsConfig.from_json(json_str)
-        
+
         # Verify all fields are preserved
         assert restored.proxy_port == config.proxy_port
         assert restored.download_dir == config.download_dir
@@ -197,7 +197,7 @@ class TestConfigurationPersistence:
         """测试从部分字典创建配置（使用默认值）"""
         partial_dict = {"proxy_port": 9999}
         config = ChannelsConfig.from_dict(partial_dict)
-        
+
         assert config.proxy_port == 9999
         assert config.download_dir == ""  # default
         assert config.auto_decrypt is True  # default
@@ -211,11 +211,11 @@ class TestConfigurationPersistence:
 class TestDetectedVideosPersistence:
     """
     Property 11: Detected Videos Persistence Round-Trip
-    
+
     For any list of detected videos, persisting the list and then loading it
     should produce an equivalent list with all video metadata preserved
     (url, title, duration, detected_at, etc.).
-    
+
     **Feature: weixin-channels-download, Property 11: Detected Videos Persistence Round-Trip**
     **Validates: Requirements 6.5**
     """
@@ -226,10 +226,10 @@ class TestDetectedVideosPersistence:
         """视频对象 -> 字典 -> 视频对象 应该保持等价"""
         # Serialize to dict
         video_dict = video.to_dict()
-        
+
         # Deserialize back
         restored = DetectedVideo.from_dict(video_dict)
-        
+
         # Verify all fields are preserved
         assert restored.id == video.id
         assert restored.url == video.url
@@ -250,14 +250,14 @@ class TestDetectedVideosPersistence:
         # Serialize list to JSON
         video_dicts = [v.to_dict() for v in videos]
         json_str = json.dumps(video_dicts, ensure_ascii=False)
-        
+
         # Deserialize back
         parsed = json.loads(json_str)
         restored_videos = [DetectedVideo.from_dict(d) for d in parsed]
-        
+
         # Verify list length
         assert len(restored_videos) == len(videos)
-        
+
         # Verify each video
         for original, restored in zip(videos, restored_videos):
             assert restored.id == original.id
@@ -280,9 +280,9 @@ class TestDetectedVideosPersistence:
             encryption_type=EncryptionType.XOR,
             decryption_key="abc123",
         )
-        
+
         d = video.to_dict()
-        
+
         assert "id" in d
         assert "url" in d
         assert "title" in d
@@ -311,9 +311,9 @@ class TestSnifferStatus:
             videos_detected=5,
             started_at=datetime(2024, 1, 1, 12, 0, 0),
         )
-        
+
         d = status.to_dict()
-        
+
         assert d["state"] == "running"
         assert d["proxy_address"] == "127.0.0.1:8888"
         assert d["proxy_port"] == 8888
@@ -326,9 +326,9 @@ class TestSnifferStatus:
             state=SnifferState.ERROR,
             error_message="端口已被占用",
         )
-        
+
         d = status.to_dict()
-        
+
         assert d["state"] == "error"
         assert d["error_message"] == "端口已被占用"
 
@@ -377,10 +377,10 @@ class TestEncryptionType:
 class TestMultiModeCaptureConfigPersistence:
     """
     Property 13: Configuration Persistence Round-Trip
-    
+
     For any valid MultiModeCaptureConfig, saving it to disk and loading it back
     should produce an equivalent configuration object with all fields preserved.
-    
+
     **Feature: weixin-channels-deep-research, Property 13: Configuration Persistence Round-Trip**
     **Validates: Requirements 10.1, 10.2**
     """
@@ -391,10 +391,10 @@ class TestMultiModeCaptureConfigPersistence:
         """配置对象 -> 字典 -> 配置对象 应该保持等价"""
         # Serialize to dict
         config_dict = config.to_dict()
-        
+
         # Deserialize back
         restored = MultiModeCaptureConfig.from_dict(config_dict)
-        
+
         # Verify all fields are preserved
         assert restored.preferred_mode == config.preferred_mode
         assert restored.auto_fallback == config.auto_fallback
@@ -419,14 +419,14 @@ class TestMultiModeCaptureConfigPersistence:
         """配置对象 -> JSON -> 配置对象 应该保持等价"""
         # Serialize to JSON
         json_str = config.to_json()
-        
+
         # Verify it's valid JSON
         parsed = json.loads(json_str)
         assert isinstance(parsed, dict)
-        
+
         # Deserialize back
         restored = MultiModeCaptureConfig.from_json(json_str)
-        
+
         # Verify all fields are preserved
         assert restored.preferred_mode == config.preferred_mode
         assert restored.auto_fallback == config.auto_fallback
@@ -445,14 +445,14 @@ class TestMultiModeCaptureConfigPersistence:
         # Create a temporary file
         with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
             temp_path = f.name
-        
+
         try:
             # Save to file
             config.save(temp_path)
-            
+
             # Load from file
             restored = MultiModeCaptureConfig.load(temp_path)
-            
+
             # Verify all fields are preserved
             assert restored.preferred_mode == config.preferred_mode
             assert restored.auto_fallback == config.auto_fallback
@@ -493,7 +493,7 @@ class TestMultiModeCaptureConfigPersistence:
         """测试从部分字典创建配置（使用默认值）"""
         partial_dict = {"preferred_mode": "clash_api", "quic_blocking_enabled": True}
         config = MultiModeCaptureConfig.from_dict(partial_dict)
-        
+
         assert config.preferred_mode == CaptureMode.CLASH_API
         assert config.quic_blocking_enabled is True
         assert config.auto_fallback is True  # default
@@ -503,7 +503,7 @@ class TestMultiModeCaptureConfigPersistence:
         """测试加载不存在的文件返回默认配置"""
         config = MultiModeCaptureConfig.load("/nonexistent/path/config.json")
         default = MultiModeCaptureConfig.get_defaults()
-        
+
         assert config.preferred_mode == default.preferred_mode
         assert config.auto_fallback == default.auto_fallback
 
@@ -521,10 +521,10 @@ class TestProxyInfoPersistence:
         """ProxyInfo 对象 -> 字典 -> 对象 应该保持等价"""
         # Serialize to dict
         info_dict = proxy_info.to_dict()
-        
+
         # Deserialize back
         restored = ProxyInfo.from_dict(info_dict)
-        
+
         # Verify all fields are preserved
         assert restored.proxy_type == proxy_info.proxy_type
         assert restored.proxy_mode == proxy_info.proxy_mode
@@ -541,14 +541,14 @@ class TestProxyInfoPersistence:
         """ProxyInfo 对象 -> JSON -> 对象 应该保持等价"""
         # Serialize to JSON
         json_str = proxy_info.to_json()
-        
+
         # Verify it's valid JSON
         parsed = json.loads(json_str)
         assert isinstance(parsed, dict)
-        
+
         # Deserialize back
         restored = ProxyInfo.from_json(json_str)
-        
+
         # Verify key fields are preserved
         assert restored.proxy_type == proxy_info.proxy_type
         assert restored.proxy_mode == proxy_info.proxy_mode
@@ -617,10 +617,10 @@ class TestExtendedErrorMessages:
         """测试获取扩展错误消息"""
         msg = get_extended_error_message(ExtendedErrorCode.PROXY_TUN_MODE)
         assert "TUN" in msg
-        
+
         msg = get_extended_error_message(ExtendedErrorCode.WECHAT_NOT_RUNNING)
         assert "微信" in msg
-        
+
         msg = get_extended_error_message(ExtendedErrorCode.RECOVERY_FAILED)
         assert "恢复" in msg
 

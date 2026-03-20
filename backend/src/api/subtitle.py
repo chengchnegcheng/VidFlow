@@ -92,12 +92,12 @@ def _validate_subtitle_path(path: Path) -> Path:
 async def _get_video_duration(ffmpeg_path: str, video_path: str) -> float:
     """使用 ffprobe 获取视频时长"""
     import json as json_module
-    
+
     # 尝试使用 ffprobe（与 ffmpeg 同目录）
     ffprobe_path = Path(ffmpeg_path).parent / ("ffprobe.exe" if sys.platform == "win32" else "ffprobe")
-    
+
     logger.debug(f"[Duration] ffprobe path: {ffprobe_path}, exists: {ffprobe_path.exists()}")
-    
+
     if not ffprobe_path.exists():
         # 如果 ffprobe 不存在，使用 ffmpeg 获取时长
         cmd = [
@@ -106,7 +106,7 @@ async def _get_video_duration(ffmpeg_path: str, video_path: str) -> float:
             '-f', 'null', '-'
         ]
         logger.debug(f"[Duration] Using ffmpeg fallback: {' '.join(cmd)}")
-        
+
         try:
             process = await asyncio.create_subprocess_exec(
                 *cmd,
@@ -114,7 +114,7 @@ async def _get_video_duration(ffmpeg_path: str, video_path: str) -> float:
                 stderr=asyncio.subprocess.PIPE
             )
             _, stderr = await asyncio.wait_for(process.communicate(), timeout=60)
-            
+
             # 从 ffmpeg 输出中解析时长 (格式: Duration: 00:05:30.12)
             stderr_text = stderr.decode('utf-8', errors='ignore')
             duration_match = re.search(r'Duration:\s*(\d+):(\d+):(\d+\.?\d*)', stderr_text)
@@ -126,7 +126,7 @@ async def _get_video_duration(ffmpeg_path: str, video_path: str) -> float:
         except Exception as e:
             logger.warning(f"[Duration] ffmpeg fallback failed: {e}")
         return 0
-    
+
     # 使用 ffprobe
     cmd = [
         str(ffprobe_path),
@@ -136,7 +136,7 @@ async def _get_video_duration(ffmpeg_path: str, video_path: str) -> float:
         str(video_path)
     ]
     logger.debug(f"[Duration] Using ffprobe: {' '.join(cmd)}")
-    
+
     try:
         process = await asyncio.create_subprocess_exec(
             *cmd,
@@ -144,13 +144,13 @@ async def _get_video_duration(ffmpeg_path: str, video_path: str) -> float:
             stderr=asyncio.subprocess.PIPE
         )
         stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=30)
-        
+
         logger.debug(f"[Duration] ffprobe returncode: {process.returncode}")
-        
+
         if process.returncode == 0 and stdout:
             output = stdout.decode('utf-8', errors='ignore').strip()
             logger.debug(f"[Duration] ffprobe output: {output[:200]}...")
-            
+
             if output.startswith('{'):
                 # JSON 格式（ffprobe）
                 data = json_module.loads(output)
@@ -167,23 +167,23 @@ async def _get_video_duration(ffmpeg_path: str, video_path: str) -> float:
             logger.warning(f"[Duration] ffprobe failed: {stderr_text[:200]}")
     except Exception as e:
         logger.warning(f"[Duration] Failed to get video duration: {e}")
-    
+
     return 0
 
 
 async def _detect_gpu_encoder(ffmpeg_path: str) -> Optional[str]:
     """
     检测可用的 GPU 编码器
-    
+
     返回:
         - 'h264_nvenc': NVIDIA GPU (Windows/Linux)
         - 'h264_videotoolbox': Apple Silicon/Intel Mac
         - None: 使用 CPU 编码
     """
     import platform
-    
+
     system = platform.system()
-    
+
     # macOS: 使用 VideoToolbox
     if system == "Darwin":
         # 检查 VideoToolbox 是否可用
@@ -195,14 +195,14 @@ async def _detect_gpu_encoder(ffmpeg_path: str) -> Optional[str]:
                 stderr=asyncio.subprocess.PIPE
             )
             stdout, _ = await asyncio.wait_for(process.communicate(), timeout=10)
-            
+
             if b'h264_videotoolbox' in stdout:
                 logger.info("[GPU] VideoToolbox encoder available (macOS)")
                 return 'h264_videotoolbox'
         except Exception as e:
             logger.debug(f"VideoToolbox check failed: {e}")
         return None
-    
+
     # Windows/Linux: 检查 NVIDIA NVENC
     if system in ("Windows", "Linux"):
         try:
@@ -214,11 +214,11 @@ async def _detect_gpu_encoder(ffmpeg_path: str) -> Optional[str]:
                 stderr=asyncio.subprocess.PIPE
             )
             stdout, _ = await asyncio.wait_for(process.communicate(), timeout=10)
-            
+
             if b'h264_nvenc' not in stdout:
                 logger.debug("[GPU] h264_nvenc not available in FFmpeg")
                 return None
-            
+
             # 测试 NVENC 是否真的能用（有些系统有驱动但没有 GPU）
             process = await asyncio.create_subprocess_exec(
                 str(ffmpeg_path),
@@ -228,7 +228,7 @@ async def _detect_gpu_encoder(ffmpeg_path: str) -> Optional[str]:
                 stderr=asyncio.subprocess.PIPE
             )
             _, stderr = await asyncio.wait_for(process.communicate(), timeout=15)
-            
+
             if process.returncode == 0:
                 logger.info("[GPU] NVIDIA NVENC encoder available")
                 return 'h264_nvenc'
@@ -238,7 +238,7 @@ async def _detect_gpu_encoder(ffmpeg_path: str) -> Optional[str]:
                     logger.debug(f"[GPU] NVENC not available: {stderr_text[:200]}")
         except Exception as e:
             logger.debug(f"NVENC check failed: {e}")
-    
+
     return None
 
 
@@ -311,7 +311,7 @@ async def process_subtitle_task(task_id: str, request: SubtitleGenerateRequest):
     from src.core.subtitle_processor import get_subtitle_processor
     ws_manager = get_ws_manager()
     acquired = False
-    
+
     # 调试日志：打印请求参数
     logger.info(f"[DEBUG] process_subtitle_task called with:")
     logger.info(f"[DEBUG]   task_id: {task_id}")
@@ -320,7 +320,7 @@ async def process_subtitle_task(task_id: str, request: SubtitleGenerateRequest):
     logger.info(f"[DEBUG]   target_languages: {request.target_languages}")
     logger.info(f"[DEBUG]   model: {request.model}")
     logger.info(f"[DEBUG]   formats: {request.formats}")
-    
+
     try:
         await _subtitle_semaphore.acquire()
         acquired = True
@@ -335,11 +335,11 @@ async def process_subtitle_task(task_id: str, request: SubtitleGenerateRequest):
                 return
             if getattr(task, "cancelled", False) or task.status == "cancelled":
                 return
-            
+
             task.status = "processing"
             task.started_at = datetime.utcnow()
             await db.commit()
-            
+
         await ws_manager.send_subtitle_progress(
             task_id,
             {"progress": 0, "message": "开始处理...", "status": "processing"}
@@ -370,12 +370,12 @@ async def process_subtitle_task(task_id: str, request: SubtitleGenerateRequest):
                 raise
             except Exception as e:
                 logger.debug(f"Subtitle progress push failed: {e}")
-        
+
         # 步骤2: 处理视频（不持有数据库连接）
         processor = get_subtitle_processor()
         video_path = Path(request.video_path)
         output_dir = video_path.parent / "subtitles"
-        
+
         result_data = await processor.process_video(
             video_path=request.video_path,
             output_dir=str(output_dir),
@@ -385,7 +385,7 @@ async def process_subtitle_task(task_id: str, request: SubtitleGenerateRequest):
             formats=request.formats,
             progress_callback=update_progress
         )
-        
+
         # 步骤3: 更新任务为完成（短事务）
         async with AsyncSessionLocal() as db:
             result = await db.execute(
@@ -397,7 +397,7 @@ async def process_subtitle_task(task_id: str, request: SubtitleGenerateRequest):
                 return
             if getattr(task, "cancelled", False) or task.status == "cancelled":
                 return
-            
+
             task.status = "completed"
             task.progress = 100.0
             task.output_files = result_data["output_files"]
@@ -406,7 +406,7 @@ async def process_subtitle_task(task_id: str, request: SubtitleGenerateRequest):
             task.duration = result_data["duration"]
             task.completed_at = datetime.utcnow()
             await db.commit()
-            
+
             # 通知完成
             await ws_manager.broadcast({
                 "type": "subtitle_task_complete",
@@ -416,9 +416,9 @@ async def process_subtitle_task(task_id: str, request: SubtitleGenerateRequest):
                     "output_files": result_data["output_files"]
                 }
             })
-            
+
             logger.info(f"Subtitle task completed: {task_id}")
-    
+
     except asyncio.CancelledError:
         logger.info(f"Subtitle task cancelled: {task_id}")
         send_updates = True
@@ -455,7 +455,7 @@ async def process_subtitle_task(task_id: str, request: SubtitleGenerateRequest):
         logger.error(f"Subtitle task failed: {e}", exc_info=True)
 
         serialized_error = _serialize_subtitle_error(e)
-        
+
         # 更新任务为失败（短事务）
         try:
             async with AsyncSessionLocal() as db:
@@ -468,7 +468,7 @@ async def process_subtitle_task(task_id: str, request: SubtitleGenerateRequest):
                     task.error = serialized_error
                     task.completed_at = datetime.utcnow()
                     await db.commit()
-                    
+
                     # 通知失败
                     await ws_manager.broadcast({
                         "type": "subtitle_task_complete",
@@ -536,7 +536,7 @@ async def generate_subtitle(
                     "hint": "请到 设置→工具配置 安装 AI 工具",
                 },
             )
-        
+
         # 创建任务模型
         task_id = str(uuid.uuid4())
         db_task = SubtitleTaskModel(
@@ -555,12 +555,12 @@ async def generate_subtitle(
             segments_count=0,
             duration=0.0
         )
-        
+
         # 保存到数据库
         db.add(db_task)
         await db.commit()
         await db.refresh(db_task)
-        
+
         # 使用 asyncio.create_task 在后台处理（不阻塞事件循环）
         t = asyncio.create_task(process_subtitle_task(task_id, request))
         _running_subtitle_tasks[task_id] = t
@@ -570,11 +570,11 @@ async def generate_subtitle(
             _handle_task_exception(done)
 
         t.add_done_callback(_on_done)
-        
+
         logger.info(f"Created subtitle task: {task_id}")
-        
+
         return SubtitleTask(**db_task.to_dict())
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -726,7 +726,7 @@ async def pause_subtitle_task(task_id: str, db: AsyncSession = Depends(get_sessi
         task_id,
         {"progress": task.progress or 0, "message": "已暂停", "status": "paused"}
     )
-    
+
     return {"success": True, "message": "任务已暂停"}
 
 
@@ -758,7 +758,7 @@ async def resume_subtitle_task(task_id: str, db: AsyncSession = Depends(get_sess
 
     # 获取保存的任务信息
     saved_info = _paused_subtitle_tasks.pop(task_id, None)
-    
+
     # 重置任务状态
     task.status = "pending"
     task.progress = 0.0
@@ -794,7 +794,7 @@ async def resume_subtitle_task(task_id: str, db: AsyncSession = Depends(get_sess
         task_id,
         {"progress": 0, "message": "任务已恢复，重新开始处理...", "status": "pending"}
     )
-    
+
     return {"success": True, "message": "任务已恢复，将从头开始处理"}
 
 @router.delete("/tasks/{task_id}")
@@ -813,7 +813,7 @@ async def delete_subtitle_task(task_id: str, db: AsyncSession = Depends(get_sess
                 "hint": "请刷新任务列表",
             },
         )
-    
+
     await db.delete(task)
     await db.commit()
     return {"success": True, "message": "任务已删除"}
@@ -827,31 +827,31 @@ class BurnSubtitleRequest(BaseModel):
 async def burn_subtitle_to_video(request: BurnSubtitleRequest):
     """将字幕烧录到视频中（简单版，适合短视频）"""
     from pathlib import Path
-    
+
     try:
         video_file = Path(request.video_path)
         subtitle_file = Path(request.subtitle_path)
         subtitle_file = _validate_subtitle_path(subtitle_file)
-        
+
         if not video_file.exists():
             raise HTTPException(status_code=400, detail="视频文件不存在")
-        
+
         # 默认输出路径
         output_path = request.output_path
         if not output_path:
             output_path = str(video_file.parent / f"{video_file.stem}_subtitled{video_file.suffix}")
-        
+
         # 获取 FFmpeg 路径
         from src.core.tool_manager import get_tool_manager
         tool_manager = get_tool_manager()
         ffmpeg_path = tool_manager.get_ffmpeg_path()
-        
+
         if not ffmpeg_path:
             raise HTTPException(status_code=500, detail="FFmpeg 未安装")
-        
+
         # 构建 FFmpeg 命令（使用 filter_complex 更安全）
         subtitle_path_escaped = str(subtitle_file).replace('\\', '\\\\').replace(':', '\\:')
-        
+
         cmd = [
             str(ffmpeg_path),
             '-i', str(video_file),
@@ -862,31 +862,31 @@ async def burn_subtitle_to_video(request: BurnSubtitleRequest):
             '-y',
             str(output_path)
         ]
-        
+
         # 使用异步 subprocess 执行烧录，避免阻塞事件循环
         logger.info(f"Burning subtitle: {' '.join(cmd)}")
-        
+
         process = await asyncio.create_subprocess_exec(
             *cmd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE
         )
-        
+
         stdout, stderr = await process.communicate()
-        
+
         if process.returncode != 0:
             error_msg = stderr.decode('utf-8', errors='ignore')
             logger.error(f"FFmpeg error: {error_msg}")
             raise HTTPException(status_code=500, detail=f"字幕烧录失败: {error_msg}")
-        
+
         logger.info(f"Subtitle burned successfully: {output_path}")
-        
+
         return {
             "success": True,
             "output_path": output_path,
             "message": "字幕烧录完成"
         }
-        
+
     except Exception as e:
         logger.error(f"Failed to burn subtitle: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -1009,7 +1009,7 @@ async def process_burn_subtitle_task(task_id: str, request: CreateBurnSubtitleTa
                 # 获取视频时长用于进度计算
                 duration = await _get_video_duration(ffmpeg_path, request.video_path)
                 logger.info(f"[Burn] Video duration: {duration}s (type: {type(duration).__name__})")
-                
+
                 # 如果获取时长失败，使用估算值（假设 5 分钟）
                 if not duration or duration <= 0:
                     duration = 300.0  # 默认 5 分钟
@@ -1021,13 +1021,13 @@ async def process_burn_subtitle_task(task_id: str, request: CreateBurnSubtitleTa
 
                 # 校验字幕路径
                 subtitle_path = _validate_subtitle_path(Path(request.subtitle_path))
-                
+
                 # 关键修复：使用相对路径 + cwd 避免 Windows 路径转义地狱
                 # FFmpeg 的 subtitles 滤镜对 Windows 绝对路径（如 D:\path）处理非常麻烦
                 # 最稳健的方法是：cd 到字幕目录，然后只传文件名
                 subtitle_dir = subtitle_path.parent
                 subtitle_filename = subtitle_path.name
-                
+
                 # 对文件名进行基本的 FFmpeg 转义（防止文件名含单引号等）
                 # filter 语法中: ' 需要转义为 '\''
                 # : 需要转义为 \:
@@ -1038,10 +1038,10 @@ async def process_burn_subtitle_task(task_id: str, request: CreateBurnSubtitleTa
                 # GPU 加速主要体现在编码阶段，可以提升 2-3 倍速度
                 cmd = [str(ffmpeg_path)]
                 cmd.extend(['-i', str(request.video_path)])
-                
+
                 # 视频滤镜（字幕烧录）- 始终在 CPU 上处理
                 cmd.extend(['-vf', f"subtitles='{subtitle_filename_escaped}'"])
-                
+
                 # 视频编码器
                 if gpu_encoder:
                     cmd.extend(['-c:v', gpu_encoder])
@@ -1053,10 +1053,10 @@ async def process_burn_subtitle_task(task_id: str, request: CreateBurnSubtitleTa
                 else:
                     # CPU 编码
                     cmd.extend(['-c:v', 'libx264', '-preset', 'medium', '-crf', '23'])
-                
+
                 # 音频直接复制
                 cmd.extend(['-c:a', 'copy', '-y', str(task.output_path)])
-                
+
                 # 添加 -progress 参数让 FFmpeg 以行格式输出进度到 stdout
                 cmd.extend(['-progress', 'pipe:1', '-stats_period', '1'])
 
@@ -1083,12 +1083,12 @@ async def process_burn_subtitle_task(task_id: str, request: CreateBurnSubtitleTa
                         # out_time_us 是微秒
                         current_time = int(match.group(1)) / 1_000_000
                         progress = round(min(current_time / duration * 100, 99.0), 1)
-                        
+
                         # 每 10% 记录一次日志
                         if progress - last_progress_log >= 10:
                             logger.info(f"[Burn] Progress: {progress}% (time={current_time:.1f}s / {duration:.1f}s)")
                             last_progress_log = progress
-                        
+
                         task.progress = progress
                         await db.commit()
                         await ws_manager.send_burn_progress(task_id, {
@@ -1223,12 +1223,12 @@ async def create_burn_subtitle_task(
             raise HTTPException(status_code=400, detail="视频文件不存在")
         if not subtitle_path.exists():
             raise HTTPException(status_code=400, detail="字幕文件不存在")
-        
+
         # 默认输出路径
         output_path = request.output_path
         if not output_path:
             output_path = str(video_path.parent / f"{video_path.stem}_subtitled{video_path.suffix}")
-        
+
         # 创建任务模型
         task_id = str(uuid.uuid4())
         db_task = BurnSubtitleTaskModel(
@@ -1240,12 +1240,12 @@ async def create_burn_subtitle_task(
             status="pending",
             progress=0.0
         )
-        
+
         # 保存到数据库
         db.add(db_task)
         await db.commit()
         await db.refresh(db_task)
-        
+
         # 使用 asyncio.create_task 在后台处理（不阻塞事件循环）
         t = asyncio.create_task(process_burn_subtitle_task(task_id, request))
         _running_burn_subtitle_tasks[task_id] = t
@@ -1255,11 +1255,11 @@ async def create_burn_subtitle_task(
             _handle_task_exception(done)
 
         t.add_done_callback(_on_done)
-        
+
         logger.info(f"Created burn subtitle task: {task_id}")
-        
+
         return db_task.to_dict()
-        
+
     except Exception as e:
         logger.error(f"Failed to create burn subtitle task: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -1376,7 +1376,7 @@ async def pause_burn_subtitle_task(task_id: str, db: AsyncSession = Depends(get_
         task_id,
         {"progress": task.progress or 0, "status": "paused"}
     )
-    
+
     return {"success": True, "message": "任务已暂停"}
 
 
@@ -1408,7 +1408,7 @@ async def resume_burn_subtitle_task(task_id: str, db: AsyncSession = Depends(get
 
     # 获取保存的任务信息
     _paused_burn_tasks.pop(task_id, None)
-    
+
     # 重置任务状态
     task.status = "pending"
     task.progress = 0.0
@@ -1441,7 +1441,7 @@ async def resume_burn_subtitle_task(task_id: str, db: AsyncSession = Depends(get
         task_id,
         {"progress": 0, "status": "pending"}
     )
-    
+
     return {"success": True, "message": "任务已恢复，将从头开始处理"}
 
 
@@ -1454,7 +1454,7 @@ async def delete_burn_subtitle_task(task_id: str, db: AsyncSession = Depends(get
     task = result.scalar_one_or_none()
     if not task:
         raise HTTPException(status_code=404, detail="任务不存在")
-    
+
     await db.delete(task)
     await db.commit()
     return {"success": True, "message": "任务已删除"}

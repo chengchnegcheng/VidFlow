@@ -288,7 +288,7 @@ export function TaskManager() {
   // 打开文件夹
   const handleOpenFolder = async (task: any) => {
     const path = task?.file_path || task?.filename;
-    
+
     if (!path) {
       console.log('Task data:', task); // 调试信息
       toast.error('文件路径不存在', {
@@ -296,7 +296,7 @@ export function TaskManager() {
       });
       return;
     }
-    
+
     try {
       // 检查是否在 Electron 环境
       if (window.electron && window.electron.isElectron) {
@@ -801,8 +801,8 @@ export function TaskManager() {
                             </Button>
                           )}
                           {task.status === 'failed' && (
-                            <Button 
-                              size="sm" 
+                            <Button
+                              size="sm"
                               variant="outline"
                               onClick={() => handleRetryTask(task)}
                             >

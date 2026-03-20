@@ -20,7 +20,7 @@ echo   5. AI subtitle feature ^(faster-whisper, auto-install^)
 echo.
 echo Estimated time: 5-8 minutes
 echo.
-echo Note: 
+echo Note:
 echo - faster-whisper requires Python 3.8 to 3.11 (NOT 3.12+)
 echo - FFmpeg and yt-dlp will be auto-downloaded on first use
 echo - Or place them manually in: backend\tools\bin\
@@ -73,7 +73,7 @@ if errorlevel 1 (
     for /f "tokens=*" %%i in ('python --version') do set PYTHON_VERSION=%%i
     echo [OK] %PYTHON_VERSION% ^(Using default Python^)
     echo [WARN] Recommend installing Python 3.11 for better compatibility
-    
+
     REM Check if Python 3.12+ is being used
     echo %PYTHON_VERSION% | findstr /C:"Python 3.1[2-9]" >nul 2>&1
     if not errorlevel 1 (
@@ -96,7 +96,7 @@ if errorlevel 1 (
         timeout /t 5 >nul
         color 0A
     )
-    
+
     set PYTHON_CMD=python
 ) else (
     for /f "tokens=*" %%i in ('py -3.11 --version') do set PYTHON_VERSION=%%i
@@ -124,7 +124,7 @@ if exist "node_modules" (
     echo [INFO] Installing Electron and build tools...
     echo.
     call npm install
-    
+
     if errorlevel 1 (
         color 0C
         echo.
@@ -134,7 +134,7 @@ if exist "node_modules" (
         pause
         exit /b 1
     )
-    
+
     echo.
     echo [OK] Electron installed
 )
@@ -198,7 +198,7 @@ if exist "venv" (
     echo [INFO] Creating Python virtual environment with %PYTHON_CMD%...
     echo.
     %PYTHON_CMD% -m venv venv
-    
+
     if errorlevel 1 (
         color 0C
         echo.
@@ -209,7 +209,7 @@ if exist "venv" (
         pause
         exit /b 1
     )
-    
+
     echo [OK] Virtual environment created with %PYTHON_VERSION%
 )
 

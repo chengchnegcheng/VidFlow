@@ -55,10 +55,10 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     try {
       setLoading(true);
       const response = await invoke('get_config');
-      
+
       if (response && response.status === 'success') {
         const backendConfig = response.config;
-        
+
         // 将后端配置转换为前端格式
         const frontendSettings: Settings = {
           downloadPath: backendConfig.download?.default_path || '',
@@ -73,7 +73,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
           autoUpdate: backendConfig.advanced?.auto_update !== false,
           saveHistory: backendConfig.advanced?.save_history !== false,
         };
-        
+
         setSettings(frontendSettings);
         console.log('✅ 设置已从后端加载:', frontendSettings);
       }
@@ -247,10 +247,10 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const resetSettings = async () => {
     try {
       await invoke('reset_config');
-      
+
       // 重新加载配置
       await loadSettingsFromBackend();
-      
+
       console.log('✅ 设置已重置');
     } catch (error) {
       console.error('❌ 重置设置失败:', error);

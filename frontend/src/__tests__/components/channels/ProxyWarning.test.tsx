@@ -191,8 +191,8 @@ describe('ProxyWarning Component', () => {
       };
 
       render(
-        <ProxyWarning 
-          proxyInfo={proxyInfo} 
+        <ProxyWarning
+          proxyInfo={proxyInfo}
           onSwitchMode={mockOnSwitchMode}
         />
       );
@@ -218,8 +218,8 @@ describe('ProxyWarning Component', () => {
       };
 
       render(
-        <ProxyWarning 
-          proxyInfo={proxyInfo} 
+        <ProxyWarning
+          proxyInfo={proxyInfo}
           onOpenSettings={mockOnOpenSettings}
         />
       );

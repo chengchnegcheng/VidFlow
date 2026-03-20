@@ -102,7 +102,7 @@ async def get_logs(
 ):
     """
     获取日志列表
-    
+
     Args:
         limit: 返回的日志条数
         level: 日志级别筛选 (INFO, WARNING, ERROR, DEBUG)
@@ -120,34 +120,34 @@ async def get_logs(
         async with aiofiles.open(LOG_FILE, 'r', encoding='utf-8', errors='ignore') as f:
             content = await f.read()
             all_lines = content.splitlines(keepends=True)
-        
+
         # 倒序读取（最新的在前）
         for i, line in enumerate(reversed(all_lines)):
             if not line.strip():
                 continue
-            
+
             log_entry = parse_log_line(line, len(all_lines) - i - 1)
             if not log_entry:
                 continue
-            
+
             # 级别过滤
             if level and log_entry.level != level:
                 continue
-            
+
             # 关键词搜索（搜索消息和logger名称）
             if search_lower:
                 if search_lower not in log_entry.message.lower() and search_lower not in log_entry.logger.lower():
                     continue
-            
+
             logs.append(log_entry)
-            
+
             # 达到所需数量就停止
             if len(logs) >= (offset + limit):
                 break
-        
+
         # 应用偏移和限制
         return logs[offset:offset + limit]
-    
+
     except Exception as e:
         logger.error(f"Error reading logs: {e}")
         raise HTTPException(status_code=500, detail=f"读取日志失败: {str(e)}")
@@ -156,7 +156,7 @@ async def get_logs(
 async def get_log_stats():
     """获取日志统计信息（带缓存优化）"""
     global _stats_cache, _stats_cache_mtime
-    
+
     try:
         if not LOG_FILE.exists():
             return LogStats(
@@ -168,22 +168,22 @@ async def get_log_stats():
                 file_size=0,
                 last_modified=""
             )
-        
+
         # 获取文件修改时间
         file_stat = os.stat(LOG_FILE)
         current_mtime = file_stat.st_mtime
-        
+
         # 如果文件未变化且有缓存，直接返回缓存
         if _stats_cache is not None and _stats_cache_mtime == current_mtime:
             return _stats_cache
-        
+
         # 统计日志 - 使用异步文件读取避免阻塞
         error_count = 0
         warning_count = 0
         info_count = 0
         debug_count = 0
         total_lines = 0
-        
+
         async with aiofiles.open(LOG_FILE, 'r', encoding='utf-8', errors='ignore') as f:
             async for line in f:
                 total_lines += 1
@@ -195,7 +195,7 @@ async def get_log_stats():
                     info_count += 1
                 elif ' - DEBUG - ' in line:
                     debug_count += 1
-        
+
         # 创建统计结果
         result = LogStats(
             total_lines=total_lines,
@@ -206,13 +206,13 @@ async def get_log_stats():
             file_size=file_stat.st_size,
             last_modified=str(current_mtime)
         )
-        
+
         # 更新缓存
         _stats_cache = result
         _stats_cache_mtime = current_mtime
-        
+
         return result
-    
+
     except Exception as e:
         logger.error(f"Error getting log stats: {e}")
         raise HTTPException(status_code=500, detail=f"获取统计失败: {str(e)}")
@@ -221,20 +221,20 @@ async def get_log_stats():
 async def clear_logs():
     """清空日志文件"""
     global _stats_cache, _stats_cache_mtime
-    
+
     try:
         if LOG_FILE.exists():
             # 异步清空文件
             async with aiofiles.open(LOG_FILE, 'w', encoding='utf-8', errors='ignore') as f:
                 await f.write("")
-            
+
             # 清空统计缓存
             _stats_cache = None
             _stats_cache_mtime = None
-            
+
             return {"success": True, "message": "日志已清空"}
         return {"success": True, "message": "日志文件不存在"}
-    
+
     except Exception as e:
         logger.error(f"Error clearing logs: {e}")
         raise HTTPException(status_code=500, detail=f"清空日志失败: {str(e)}")
@@ -245,13 +245,13 @@ async def download_logs():
     try:
         if not LOG_FILE.exists():
             raise HTTPException(status_code=404, detail="日志文件不存在")
-        
+
         return FileResponse(
             path=LOG_FILE,
             filename=f"vidflow_logs_{Path(LOG_FILE).stem}.log",
             media_type="text/plain"
         )
-    
+
     except Exception as e:
         logger.error(f"Error downloading logs: {e}")
         raise HTTPException(status_code=500, detail=f"下载日志失败: {str(e)}")
@@ -279,10 +279,10 @@ async def tail_logs(lines: int = 50):
         async with aiofiles.open(LOG_FILE, 'r', encoding='utf-8', errors='ignore') as f:
             content = await f.read()
             all_lines = content.splitlines(keepends=True)
-        
+
         # 获取最后N行
         recent_lines = all_lines[-lines:] if len(all_lines) > lines else all_lines
-        
+
         logs = []
         for i, line in enumerate(recent_lines):
             if not line.strip():
@@ -290,9 +290,9 @@ async def tail_logs(lines: int = 50):
             log_entry = parse_log_line(line, len(all_lines) - len(recent_lines) + i)
             if log_entry:
                 logs.append(log_entry)
-        
+
         return logs
-    
+
     except Exception as e:
         logger.error(f"Error tailing logs: {e}")
         raise HTTPException(status_code=500, detail=f"获取日志失败: {str(e)}")

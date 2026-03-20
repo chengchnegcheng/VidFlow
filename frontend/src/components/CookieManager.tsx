@@ -152,7 +152,7 @@ export const CookieManager: React.FC<CookieManagerProps> = ({ onCookieUpdate, ta
     cookieLines: 0
   });
   const [saving, setSaving] = useState(false);
-  
+
   // 自动获取Cookie相关状态
   const [autoGetMode, setAutoGetMode] = useState(false);
   const [browserRunning, setBrowserRunning] = useState(false);
@@ -237,7 +237,7 @@ export const CookieManager: React.FC<CookieManagerProps> = ({ onCookieUpdate, ta
         platform: selectedPlatform,
         content: cookieContent
       });
-      
+
       if (response?.status === 'success') {
         showMessage('success', response.message || 'Cookie已保存');
         // 重新加载状态
@@ -262,7 +262,7 @@ export const CookieManager: React.FC<CookieManagerProps> = ({ onCookieUpdate, ta
 
     try {
       const response = await invoke('delete_cookie', { platform });
-      
+
       if (response?.status === 'success') {
         showMessage('success', response.message || 'Cookie已删除');
         // 重新加载状态
@@ -513,7 +513,7 @@ export const CookieManager: React.FC<CookieManagerProps> = ({ onCookieUpdate, ta
           ...prev,
           [targetPlatformData.category]: true
         }));
-        
+
         // 延迟滚动，等待分类展开动画完成
         setTimeout(() => {
           const element = document.getElementById(`cookie-platform-${targetPlatform}`);
@@ -905,13 +905,13 @@ export const CookieManager: React.FC<CookieManagerProps> = ({ onCookieUpdate, ta
                   <li>应用将自动提取并保存Cookie</li>
                 </ol>
               </div>
-              
+
               <Alert className="bg-yellow-50 border-yellow-200">
                 <AlertDescription className="text-xs text-yellow-900">
                   💡 <strong>提示：</strong>不要关闭浏览器窗口，VidFlow会在完成后自动关闭它。
                 </AlertDescription>
               </Alert>
-              
+
               <div className="flex gap-3">
                 <Button
                   onClick={finishAutoGetCookie}

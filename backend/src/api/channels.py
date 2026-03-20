@@ -2795,11 +2795,11 @@ async def diagnose_system():
     try:
         is_admin = _detect_admin_status()
         wechat_processes = _collect_wechat_processes()
-        
+
         # 检查嗅探器状态
         sniffer = get_sniffer()
         sniffer_status = sniffer.get_status()
-        
+
         # 检查端口占用
         port_available = True
         try:
@@ -2808,7 +2808,7 @@ async def diagnose_system():
                 s.bind(("127.0.0.1", 8888))
         except OSError:
             port_available = False
-        
+
         return {
             "is_admin": is_admin,
             "wechat_running": len(wechat_processes) > 0,
@@ -2817,8 +2817,8 @@ async def diagnose_system():
             "videos_detected": sniffer_status.videos_detected,
             "port_8888_available": port_available,
             "recommendations": _generate_recommendations(
-                is_admin, 
-                len(wechat_processes) > 0, 
+                is_admin,
+                len(wechat_processes) > 0,
                 sniffer_status.state.value,
                 sniffer_status.videos_detected
             )
@@ -2831,21 +2831,21 @@ async def diagnose_system():
 def _generate_recommendations(is_admin: bool, wechat_running: bool, sniffer_state: str, videos_detected: int) -> list:
     """生成诊断建议"""
     recommendations = []
-    
+
     if not is_admin:
         recommendations.append({
             "level": "error",
             "message": "应用未以管理员权限运行",
             "action": "请右键点击应用图标，选择\"以管理员身份运行\""
         })
-    
+
     if not wechat_running:
         recommendations.append({
             "level": "warning",
             "message": "未检测到微信进程",
             "action": "请先启动 Windows PC 端微信"
         })
-    
+
     if sniffer_state == "stopped":
         recommendations.append({
             "level": "info",
@@ -2858,12 +2858,12 @@ def _generate_recommendations(is_admin: bool, wechat_running: bool, sniffer_stat
             "message": "嗅探器已启动但未检测到视频",
             "action": "请在微信视频号中播放视频，系统会自动捕获视频链接"
         })
-    
+
     if sniffer_state == "running" and videos_detected > 0:
         recommendations.append({
             "level": "success",
             "message": f"系统运行正常，已检测到 {videos_detected} 个视频",
             "action": "可以开始下载视频了"
         })
-    
+
     return recommendations

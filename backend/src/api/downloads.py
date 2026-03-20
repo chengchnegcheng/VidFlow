@@ -44,7 +44,7 @@ def _handle_task_exception(task: asyncio.Task):
 # 请求模型
 class VideoInfoRequest(BaseModel):
     url: str
-    
+
     @field_validator('url')
     @classmethod
     def validate_url(cls, v):
@@ -59,7 +59,7 @@ class DownloadRequest(BaseModel):
     quality: str = "best"
     output_path: Optional[str] = None
     format_id: Optional[str] = None
-    
+
     @field_validator('url')
     @classmethod
     def validate_url(cls, v):
@@ -77,10 +77,10 @@ async def get_video_info(request: VideoInfoRequest):
     """
     try:
         logger.info(f"Getting video info for: {request.url}")
-        
+
         # 使用真实的下载器获取信息
         info = await downloader.get_video_info(request.url)
-        
+
         return {
             "status": "success",
             "data": info
@@ -104,7 +104,7 @@ async def get_video_info(request: VideoInfoRequest):
         if 'Fresh cookies' in error_msg or 'fresh cookies' in error_msg.lower():
             platform_name = "该平台"
             is_douyin = 'douyin.com' in request.url.lower() or 'v.douyin.com' in request.url.lower()
-            
+
             if is_douyin:
                 platform_name = "抖音"
                 # 抖音的 "Fresh cookies" 错误通常是反爬机制导致的，不一定是 Cookie 过期
@@ -176,13 +176,13 @@ async def start_download(
     """
     try:
         logger.info(f"Starting download: {request.url}")
-        
+
         # 先获取视频信息
         video_info = await downloader.get_video_info(request.url)
-        
+
         # 创建任务ID
         task_id = str(uuid.uuid4())
-        
+
         # 设置默认输出路径
         output_path = request.output_path
         if not output_path:
@@ -193,7 +193,7 @@ async def start_download(
             output_path = os.path.join(home_dir, "Downloads", "VidFlow")
             # 确保目录存在
             Path(output_path).mkdir(parents=True, exist_ok=True)
-        
+
         # 创建数据库任务记录
         task = DownloadTask(
             task_id=task_id,
@@ -207,22 +207,22 @@ async def start_download(
             output_path=output_path,
             status='pending'
         )
-        
+
         db.add(task)
         await db.commit()
         await db.refresh(task)
-        
+
         # 添加到下载队列
         await download_queue.add_task(task_id)
-        
+
         # 启动队列处理器（如果有空闲槽位）
         import asyncio
         t = asyncio.create_task(_process_queue())
         t.add_done_callback(_handle_task_exception)
-        
+
         # 获取队列状态
         queue_status = await download_queue.get_status()
-        
+
         return {
             "status": "success",
             "task_id": task_id,
@@ -301,7 +301,7 @@ async def _execute_download(task_id: str, request: DownloadRequest):
                 try:
                     import time
                     current_time = time.time()
-                    
+
                     # 检查任务是否被取消（每秒检查一次）
                     if current_time - last_cancel_check[0] >= cancel_check_interval:
                         last_cancel_check[0] = current_time
@@ -310,7 +310,7 @@ async def _execute_download(task_id: str, request: DownloadRequest):
                             logger.info(f"Task {task_id} cancellation detected in progress callback")
                             # 抛出取消异常，这会被 yt-dlp 捕获并停止下载
                             raise asyncio.CancelledError(f"Task {task_id} was cancelled by user")
-                    
+
                     if progress_data.get('status') != 'downloading':
                         return
 
@@ -409,7 +409,7 @@ async def _execute_download(task_id: str, request: DownloadRequest):
         except asyncio.CancelledError:
             # 检查是暂停还是取消
             is_paused = await download_queue.is_task_paused(task_id)
-            
+
             if is_paused:
                 logger.info(f"Download paused: {task_id}")
                 # 暂停时不更新状态，因为 pause_task API 已经更新了
@@ -433,7 +433,7 @@ async def _execute_download(task_id: str, request: DownloadRequest):
 
         except Exception as e:
             error_msg = str(e)
-            
+
             # 检查是否是用户取消的下载
             if 'cancelled by user' in error_msg.lower() or 'download cancelled' in error_msg.lower():
                 logger.info(f"Download cancelled by user: {task_id}")
@@ -478,25 +478,25 @@ async def cancel_task(task_id: str):
     """
     try:
         success = await download_queue.cancel_task(task_id)
-        
+
         # 即使队列中没有（可能已完成），也要更新数据库状态
         async with AsyncSessionLocal() as db:
             result = await db.execute(
                 select(DownloadTask).where(DownloadTask.task_id == task_id)
             )
             task = result.scalar_one_or_none()
-            
+
             if task and task.status in ['pending', 'downloading', 'paused']:
                 task.status = 'cancelled'
                 task.error_message = '用户取消下载'
                 await db.commit()
-        
+
         if success:
             return {"status": "success", "message": "Task cancelled"}
         else:
             # 如果队列中没有，可能已经完成或失败
             return {"status": "warning", "message": "Task not active or already cancelled"}
-            
+
     except Exception as e:
         logger.error(f"Error cancelling task: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -514,13 +514,13 @@ async def pause_task(task_id: str):
                 select(DownloadTask).where(DownloadTask.task_id == task_id)
             )
             task = result.scalar_one_or_none()
-            
+
             if not task:
                 raise HTTPException(status_code=404, detail="Task not found")
-            
+
             if task.status not in ['pending', 'downloading']:
                 raise HTTPException(status_code=400, detail=f"Cannot pause task with status: {task.status}")
-            
+
             # 保存任务信息用于恢复
             task_info = {
                 'url': task.url,
@@ -531,15 +531,15 @@ async def pause_task(task_id: str):
                 'downloaded_bytes': task.downloaded_bytes,
                 'total_bytes': task.total_bytes,
             }
-            
+
             # 暂停任务
             success = await download_queue.pause_task(task_id, task_info)
-            
+
             if success:
                 # 更新数据库状态
                 task.status = 'paused'
                 await db.commit()
-                
+
                 # 通过 WebSocket 通知前端
                 try:
                     from src.core.websocket_manager import get_ws_manager
@@ -551,11 +551,11 @@ async def pause_task(task_id: str):
                     })
                 except Exception as ws_err:
                     logger.debug(f"WS notification failed: {ws_err}")
-                
+
                 return {"status": "success", "message": "Task paused"}
             else:
                 return {"status": "warning", "message": "Task could not be paused"}
-            
+
     except HTTPException:
         raise
     except Exception as e:
@@ -574,28 +574,28 @@ async def resume_task(task_id: str):
                 select(DownloadTask).where(DownloadTask.task_id == task_id)
             )
             task = result.scalar_one_or_none()
-            
+
             if not task:
                 raise HTTPException(status_code=404, detail="Task not found")
-            
+
             if task.status != 'paused':
                 raise HTTPException(status_code=400, detail=f"Cannot resume task with status: {task.status}")
-            
+
             # 从队列中恢复任务
             await download_queue.resume_task(task_id)
-            
+
             # 更新状态为 pending，等待重新下载
             task.status = 'pending'
             await db.commit()
-            
+
             # 重新添加到队列
             await download_queue.add_task(task_id)
-            
+
             # 启动队列处理器
             import asyncio
             t = asyncio.create_task(_process_queue())
             t.add_done_callback(_handle_task_exception)
-            
+
             # 通过 WebSocket 通知前端
             try:
                 from src.core.websocket_manager import get_ws_manager
@@ -607,9 +607,9 @@ async def resume_task(task_id: str):
                 })
             except Exception as ws_err:
                 logger.debug(f"WS notification failed: {ws_err}")
-            
+
             return {"status": "success", "message": "Task resumed"}
-            
+
     except HTTPException:
         raise
     except Exception as e:
@@ -628,17 +628,17 @@ async def get_tasks(
     """
     try:
         query = select(DownloadTask).order_by(desc(DownloadTask.created_at))
-        
+
         # 筛选状态
         if status:
             query = query.where(DownloadTask.status == status)
-        
+
         # 分页
         query = query.limit(limit).offset(offset)
-        
+
         result = await db.execute(query)
         tasks = result.scalars().all()
-        
+
         return {
             "status": "success",
             "tasks": [task.to_dict() for task in tasks],
@@ -661,10 +661,10 @@ async def get_task_status(
             select(DownloadTask).where(DownloadTask.task_id == task_id)
         )
         task = result.scalar_one_or_none()
-        
+
         if not task:
             raise HTTPException(status_code=404, detail="Task not found")
-        
+
         return {
             "status": "success",
             "task": task.to_dict()
@@ -683,7 +683,7 @@ async def delete_task(
 ):
     """
     删除任务
-    
+
     Args:
         task_id: 任务ID
         delete_file: 是否同时删除本地文件，默认为 False
@@ -693,24 +693,24 @@ async def delete_task(
             select(DownloadTask).where(DownloadTask.task_id == task_id)
         )
         task = result.scalar_one_or_none()
-        
+
         if not task:
             raise HTTPException(status_code=404, detail="Task not found")
-        
+
         file_deleted = False
         file_path = None
-        
+
         # 如果需要删除本地文件
         if delete_file and task.filename:
             import os
             from pathlib import Path
-            
+
             # 构建完整的文件路径
             if os.path.isabs(task.filename):
                 file_path = task.filename
             elif task.output_path:
                 file_path = os.path.join(task.output_path, task.filename)
-            
+
             if file_path and os.path.exists(file_path):
                 try:
                     os.remove(file_path)
@@ -718,10 +718,10 @@ async def delete_task(
                     logger.info(f"Deleted file: {file_path}")
                 except Exception as e:
                     logger.warning(f"Failed to delete file {file_path}: {e}")
-        
+
         await db.delete(task)
         await db.commit()
-        
+
         return {
             "status": "success",
             "message": "Task deleted",
@@ -753,23 +753,23 @@ async def get_queue_status():
 async def update_queue_config(max_concurrent: int):
     """
     更新下载队列配置
-    
+
     Args:
         max_concurrent: 最大并发下载数 (1-10)
     """
     try:
         if max_concurrent < 1 or max_concurrent > 10:
             raise HTTPException(status_code=400, detail="max_concurrent must be between 1 and 10")
-        
+
         # 更新队列配置
         await download_queue.update_max_concurrent(max_concurrent)
-        
+
         # 同时更新配置文件
         config = get_config_manager()
         config.set('download.max_concurrent', max_concurrent)
-        
+
         logger.info(f"Queue max_concurrent updated to {max_concurrent}")
-        
+
         return {
             "status": "success",
             "message": "Queue configuration updated",

@@ -18,17 +18,17 @@ logger = logging.getLogger(__name__)
 
 class BilibiliDownloader(BaseDownloader):
     """Bilibili 专用下载器"""
-    
+
     def __init__(self, output_dir: str = None):
         super().__init__(output_dir)
         self.platform_name = "bilibili"
-    
+
     @staticmethod
     def supports_url(url: str) -> bool:
         """检查是否支持该URL"""
         url_lower = url.lower()
         return 'bilibili.com' in url_lower or 'b23.tv' in url_lower
-    
+
     def _get_bilibili_cookie_path(self) -> Optional[Path]:
         """
         获取 Bilibili Cookie 文件路径
@@ -39,40 +39,40 @@ class BilibiliDownloader(BaseDownloader):
         # 使用统一的 Cookie 目录获取函数（支持打包环境）
         from .cookie_manager import get_cookie_base_dir
         from src.core.cookie_storage import read_cookie_file, is_encrypted_cookie_file_text
-        
+
         cookie_dir = get_cookie_base_dir()
         cookie_file = cookie_dir / "bilibili_cookies.txt"
 
         logger.info(f"[Bilibili] Looking for cookie file at: {cookie_file}")
-        
+
         if cookie_file.exists():
             # 检查文件大小和内容
             file_size = cookie_file.stat().st_size
             logger.info(f"[Bilibili] Found cookie file, size: {file_size} bytes")
-            
+
             # 检查是否包含关键 Cookie（需要先解密）
             try:
                 raw_content = cookie_file.read_text(encoding='utf-8', errors='ignore')
-                
+
                 # 如果是加密的，尝试解密后检查
                 if is_encrypted_cookie_file_text(raw_content):
                     logger.info("[Bilibili] Cookie file is encrypted, will be decrypted when used")
                     # 加密文件无法直接检查内容，返回路径让后续解密处理
                     return cookie_file
-                
+
                 # 未加密的文件，直接检查内容
                 has_sessdata = 'SESSDATA' in raw_content
                 has_bili_jct = 'bili_jct' in raw_content
                 has_dedeuserid = 'DedeUserID' in raw_content
                 logger.info(f"[Bilibili] Cookie check - SESSDATA: {has_sessdata}, bili_jct: {has_bili_jct}, DedeUserID: {has_dedeuserid}")
-                
+
                 if not (has_sessdata and has_bili_jct and has_dedeuserid):
                     logger.warning("[Bilibili] Cookie file may be incomplete! Missing required fields for HD video access.")
             except Exception as e:
                 logger.warning(f"[Bilibili] Failed to check cookie content: {e}")
-            
+
             return cookie_file
-        
+
         logger.info("[Bilibili] Cookie file not found")
         return None
 
@@ -113,7 +113,7 @@ class BilibiliDownloader(BaseDownloader):
                     logger.info(f"Using Bilibili cookies from: {cookie_path}")
 
                 info = await loop.run_in_executor(None, _extract_info)
-            
+
             # 提取B站特有信息
             video_info = {
                 'title': info.get('title', 'Unknown'),
@@ -134,13 +134,13 @@ class BilibiliDownloader(BaseDownloader):
                 'tags': info.get('tags', []),
                 'bvid': info.get('bvid', ''),  # B站特有：BV号
             }
-            
+
             # 缓存结果
             self._cache_info(url, video_info)
-            
+
             logger.info(f"Successfully extracted Bilibili info: {video_info['title']}")
             return video_info
-            
+
         except RuntimeError as e:
             # Cookie 解密失败的特殊处理
             error_msg = str(e)
@@ -159,7 +159,7 @@ class BilibiliDownloader(BaseDownloader):
         except Exception as e:
             logger.error(f"Error extracting Bilibili video info: {e}")
             raise Exception(f"Failed to get Bilibili video info: {str(e)}")
-    
+
     async def download_video(
         self,
         url: str,
@@ -172,7 +172,7 @@ class BilibiliDownloader(BaseDownloader):
         """下载B站视频"""
         try:
             output_path = output_path or str(self.output_dir)
-            
+
             # B站优化的下载选项
             ydl_opts = {
                 'format': self._get_bilibili_format(quality, format_id),
@@ -205,12 +205,12 @@ class BilibiliDownloader(BaseDownloader):
 
             # 添加 Cookie 支持（用于下载大会员内容、登录专享等）
             cookie_path = self._get_bilibili_cookie_path()
-            
+
             # 添加进度钩子
             if progress_callback:
                 # 获取当前事件循环供 progress_hook 使用
                 loop = asyncio.get_event_loop()
-                
+
                 # 用于跟踪多分片下载的累积进度
                 progress_state = {
                     'total_downloaded': 0,
@@ -219,7 +219,7 @@ class BilibiliDownloader(BaseDownloader):
                     'fragment_index': 0,
                     'fragment_count': 0,
                 }
-                
+
                 def progress_hook(d):
                     if d['status'] == 'downloading':
                         try:
@@ -227,11 +227,11 @@ class BilibiliDownloader(BaseDownloader):
                             total = d.get('total_bytes') or d.get('total_bytes_estimate', 0)
                             speed = d.get('speed', 0)
                             eta = d.get('eta', 0)
-                            
+
                             # 获取分片信息
                             fragment_index = d.get('fragment_index', 0)
                             fragment_count = d.get('fragment_count', 0)
-                            
+
                             # 计算进度
                             if fragment_count > 0:
                                 fragment_progress = (downloaded / total) if total > 0 else 0
@@ -248,13 +248,13 @@ class BilibiliDownloader(BaseDownloader):
                                 progress_state['estimated_total'] = total
                             else:
                                 progress = progress_state['last_progress']
-                            
+
                             progress = max(progress, progress_state['last_progress'])
                             progress_state['last_progress'] = progress
-                            
+
                             display_total = progress_state['estimated_total'] if progress_state['estimated_total'] > 0 else total
                             display_downloaded = int(display_total * progress / 100) if display_total > 0 else downloaded
-                            
+
                             # 使用 run_coroutine_threadsafe 从非事件循环线程调度协程
                             asyncio.run_coroutine_threadsafe(
                                 progress_callback({
@@ -270,7 +270,7 @@ class BilibiliDownloader(BaseDownloader):
                             )
                         except Exception as e:
                             logger.error(f"Progress callback error: {e}")
-                    
+
                     elif d['status'] == 'finished':
                         asyncio.run_coroutine_threadsafe(
                             progress_callback({
@@ -280,12 +280,12 @@ class BilibiliDownloader(BaseDownloader):
                             }),
                             loop
                         )
-                
+
                 ydl_opts['progress_hooks'].append(progress_hook)
-            
+
             # 执行下载
             loop = asyncio.get_event_loop()
-            
+
             def _download():
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     info = ydl.extract_info(url, download=True)
@@ -295,7 +295,7 @@ class BilibiliDownloader(BaseDownloader):
                         'duration': info.get('duration', 0),
                         'filesize': info.get('filesize', 0),
                     }
-            
+
             with cookiefile_for_ytdlp(cookie_path) as ytdlp_cookie_path:
                 if ytdlp_cookie_path:
                     ydl_opts['cookiefile'] = str(ytdlp_cookie_path)
@@ -306,11 +306,11 @@ class BilibiliDownloader(BaseDownloader):
 
                 # 记录使用的格式选择器
                 logger.info(f"[Bilibili] Format selector: {ydl_opts.get('format')}")
-                
+
                 result = await loop.run_in_executor(None, _download)
-            
+
             logger.info(f"Successfully downloaded Bilibili video: {result['title']}")
-            
+
             return {
                 'status': 'success',
                 'title': result['title'],
@@ -320,7 +320,7 @@ class BilibiliDownloader(BaseDownloader):
                 'platform': 'bilibili',
                 'download_time': datetime.now().isoformat()
             }
-            
+
         except RuntimeError as e:
             # Cookie 解密失败的特殊处理
             error_msg = str(e)
@@ -345,17 +345,17 @@ class BilibiliDownloader(BaseDownloader):
                     'error': str(e)
                 })
             raise Exception(f"Failed to download Bilibili video: {str(e)}")
-    
+
     def _get_bilibili_format(self, quality: str, format_id: Optional[str] = None) -> str:
         """获取B站专用的格式选择器
-        
+
         优先选择 H.264 (avc1) 编码，确保在手机和微信等应用中兼容播放
         """
         if format_id:
             fid = str(format_id).strip().lower()
             if fid not in ('mp4', 'mkv', 'webm', 'mp3'):
                 return format_id
-        
+
         # B站画质对应关系
         # 120: 4K超清, 116: 1080P60, 80: 1080P, 64: 720P, 32: 480P, 16: 360P
         # 优先 H.264 编码确保手机兼容性

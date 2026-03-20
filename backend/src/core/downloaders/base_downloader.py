@@ -46,7 +46,7 @@ def _sanitize_filename(filename: str, max_length: int = 200) -> str:
 
 class BaseDownloader(ABC):
     """下载器基类，定义统一接口"""
-    
+
     def __init__(self, output_dir: str = None, enable_cache: bool = True):
         # 如果没有指定输出目录，使用系统默认下载路径
         if output_dir is None:
@@ -57,15 +57,15 @@ class BaseDownloader(ABC):
         self.platform_name = "generic"
         self.enable_cache = enable_cache
         self._cache = None  # 延迟加载缓存
-    
+
     @abstractmethod
     async def get_video_info(self, url: str) -> Dict[str, Any]:
         """
         获取视频信息（不下载）
-        
+
         Args:
             url: 视频链接
-            
+
         Returns:
             视频信息字典，包含：
             - title: 标题
@@ -76,7 +76,7 @@ class BaseDownloader(ABC):
             - formats: 可用格式列表
         """
         pass
-    
+
     @abstractmethod
     async def download_video(
         self,
@@ -89,7 +89,7 @@ class BaseDownloader(ABC):
     ) -> Dict[str, Any]:
         """
         下载视频
-        
+
         Args:
             url: 视频链接
             quality: 质量选择
@@ -97,28 +97,28 @@ class BaseDownloader(ABC):
             format_id: 指定格式ID
             progress_callback: 进度回调函数
             task_id: 任务ID
-            
+
         Returns:
             下载结果信息
         """
         pass
-    
+
     @staticmethod
     def supports_url(url: str) -> bool:
         """
         检查此下载器是否支持该URL
-        
+
         Args:
             url: 视频链接
-            
+
         Returns:
             是否支持
         """
         return False
-    
+
     def _get_format_selector(self, quality: str, format_id: Optional[str] = None) -> str:
         """获取格式选择器字符串
-        
+
         优先选择 H.264 (avc1) 编码，确保在手机和微信等应用中兼容播放
         """
         if format_id:
@@ -159,11 +159,11 @@ class BaseDownloader(ABC):
             'fragment_retries': 10,
             'skip_unavailable_fragments': False,
         }
-    
+
     def _extract_formats(self, info: Dict) -> list:
         """从视频信息中提取格式列表"""
         formats = []
-        
+
         if 'formats' in info:
             for fmt in info['formats']:
                 format_info = {
@@ -178,9 +178,9 @@ class BaseDownloader(ABC):
                     'fps': fmt.get('fps', 0),
                 }
                 formats.append(format_info)
-        
+
         return formats
-    
+
     def _get_cache(self):
         """获取缓存实例（延迟加载）"""
         if self._cache is None and self.enable_cache:
@@ -191,34 +191,34 @@ class BaseDownloader(ABC):
                 logger.warning(f"Failed to initialize cache: {e}")
                 self.enable_cache = False
         return self._cache
-    
+
     def _get_cached_info(self, url: str) -> Optional[Dict[str, Any]]:
         """从缓存获取视频信息"""
         if not self.enable_cache:
             return None
-        
+
         cache = self._get_cache()
         if cache:
             return cache.get(url)
         return None
-    
+
     def _cache_info(self, url: str, info: Dict[str, Any]):
         """缓存视频信息"""
         if not self.enable_cache:
             return
-        
+
         cache = self._get_cache()
         if cache:
             cache.set(url, info)
-    
+
     def _sanitize_filename(self, filename: str, max_length: int = 200) -> str:
         """
         清理文件名，移除非法字符
-        
+
         Args:
             filename: 原始文件名
             max_length: 最大长度
-            
+
         Returns:
             清理后的文件名
         """

@@ -15,16 +15,16 @@ router = APIRouter(tags=["websocket"])
 
 class ConnectionManager:
     """WebSocket 连接管理器"""
-    
+
     def __init__(self):
         self.active_connections: Set[WebSocket] = set()
-    
+
     async def connect(self, websocket: WebSocket):
         """接受新连接"""
         await websocket.accept()
         self.active_connections.add(websocket)
         logger.info(f"WebSocket connected. Total connections: {len(self.active_connections)}")
-    
+
     async def disconnect(self, websocket: WebSocket):
         """断开连接并关闭连接"""
         if websocket in self.active_connections:
@@ -34,14 +34,14 @@ class ConnectionManager:
         except Exception as e:
             logger.warning(f"Failed to close websocket: {e}")
         logger.info(f"WebSocket disconnected. Total connections: {len(self.active_connections)}")
-    
+
     async def send_personal_message(self, message: dict, websocket: WebSocket):
         """发送个人消息"""
         try:
             await websocket.send_json(message)
         except Exception as e:
             logger.error(f"Failed to send personal message: {e}")
-    
+
     async def broadcast(self, message: dict):
         """广播消息到所有连接"""
         disconnected = set()
@@ -51,11 +51,11 @@ class ConnectionManager:
             except Exception as e:
                 logger.error(f"Failed to broadcast message: {e}")
                 disconnected.add(connection)
-        
+
         # 移除断开的连接
         for connection in disconnected:
             await self.disconnect(connection)
-    
+
     async def broadcast_task_update(self, task_data: dict):
         """广播任务更新"""
         message = {
@@ -64,7 +64,7 @@ class ConnectionManager:
             "timestamp": datetime.now().isoformat()
         }
         await self.broadcast(message)
-    
+
     async def broadcast_task_progress(self, task_id: str, progress: float, speed: str = ""):
         """广播任务进度"""
         message = {
@@ -77,7 +77,7 @@ class ConnectionManager:
             "timestamp": datetime.now().isoformat()
         }
         await self.broadcast(message)
-    
+
     async def broadcast_task_complete(self, task_id: str, success: bool, message_text: str = ""):
         """广播任务完成"""
         message = {
@@ -90,7 +90,7 @@ class ConnectionManager:
             "timestamp": datetime.now().isoformat()
         }
         await self.broadcast(message)
-    
+
     async def broadcast_system_status(self, status_data: dict):
         """广播系统状态"""
         message = {
@@ -121,7 +121,7 @@ class WebSocketMessage(BaseModel):
 async def websocket_endpoint(websocket: WebSocket):
     """WebSocket 主端点"""
     await manager.connect(websocket)
-    
+
     try:
         # 发送欢迎消息
         await manager.send_personal_message({
@@ -129,7 +129,7 @@ async def websocket_endpoint(websocket: WebSocket):
             "message": "Connected to VidFlow WebSocket",
             "timestamp": datetime.now().isoformat()
         }, websocket)
-        
+
         # 保持连接并处理消息
         while True:
             data = await websocket.receive_text()
@@ -140,18 +140,18 @@ async def websocket_endpoint(websocket: WebSocket):
                     "timestamp": datetime.now().isoformat()
                 }, websocket)
                 continue
-            
+
             try:
                 parsed = WebSocketMessage.parse_raw(data)
                 message_type = parsed.type
-                
+
                 # 处理不同类型的消息
                 if message_type == "ping":
                     await manager.send_personal_message({
                         "type": "pong",
                         "timestamp": datetime.now().isoformat()
                     }, websocket)
-                
+
                 elif message_type == "subscribe":
                     # 订阅特定事件
                     events = parsed.data.get("events", [])
@@ -160,7 +160,7 @@ async def websocket_endpoint(websocket: WebSocket):
                         "events": events,
                         "timestamp": datetime.now().isoformat()
                     }, websocket)
-                
+
                 else:
                     # 未知消息类型
                     await manager.send_personal_message({
@@ -168,7 +168,7 @@ async def websocket_endpoint(websocket: WebSocket):
                         "message": f"Unknown message type: {message_type}",
                         "timestamp": datetime.now().isoformat()
                     }, websocket)
-            
+
             except json.JSONDecodeError:
                 await manager.send_personal_message({
                     "type": "error",
@@ -182,11 +182,11 @@ async def websocket_endpoint(websocket: WebSocket):
                     "message": "Invalid message format",
                     "timestamp": datetime.now().isoformat()
                 }, websocket)
-    
+
     except WebSocketDisconnect:
         await manager.disconnect(websocket)
         logger.info("Client disconnected normally")
-    
+
     except Exception as e:
         logger.error(f"WebSocket error: {e}", exc_info=True)
         await manager.disconnect(websocket)

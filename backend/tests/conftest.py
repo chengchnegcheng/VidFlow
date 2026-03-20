@@ -28,19 +28,19 @@ async def db_session() -> AsyncGenerator[AsyncSession, None]:
         "sqlite+aiosqlite:///:memory:",
         echo=False
     )
-    
+
     # 创建表
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-    
+
     # 创建会话
     async_session = sessionmaker(
         engine, class_=AsyncSession, expire_on_commit=False
     )
-    
+
     async with async_session() as session:
         yield session
-    
+
     # 清理
     await engine.dispose()
 
@@ -63,7 +63,7 @@ def mock_video_info():
             },
             {
                 "format_id": "22",
-                "ext": "mp4", 
+                "ext": "mp4",
                 "quality": "720p",
                 "filesize": 52428800
             }

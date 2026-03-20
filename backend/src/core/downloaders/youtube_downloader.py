@@ -64,7 +64,7 @@ class YoutubeDownloader(BaseDownloader):
     def __init__(self, output_dir: str = None):
         super().__init__(output_dir)
         self.platform_name = "youtube"
-    
+
     def _get_format_selector(self, quality: str, format_id: Optional[str] = None) -> str:
         """获取格式选择器字符串（YouTube 专用）"""
         if format_id:
@@ -77,17 +77,17 @@ class YoutubeDownloader(BaseDownloader):
             q = f"{q}p"
 
         return self.FORMAT_SELECTORS.get(q, self.FORMAT_SELECTORS['best'])
-    
+
     @staticmethod
     def supports_url(url: str) -> bool:
         """检查是否支持该URL"""
         url_lower = url.lower()
         return 'youtube.com' in url_lower or 'youtu.be' in url_lower
-    
+
     def _get_youtube_cookie_path(self) -> Optional[Path]:
         """
         获取 YouTube Cookie 文件路径
-        
+
         Returns:
             Cookie 文件路径，如果不存在则返回 None
         """
@@ -95,13 +95,13 @@ class YoutubeDownloader(BaseDownloader):
         from .cookie_manager import get_cookie_base_dir
         cookie_dir = get_cookie_base_dir()
         cookie_file = cookie_dir / "youtube_cookies.txt"
-        
+
         if cookie_file.exists():
             logger.debug(f"Found YouTube cookie file: {cookie_file}")
             return cookie_file
-        
+
         return None
-    
+
     async def get_video_info(self, url: str) -> Dict[str, Any]:
         """获取YouTube视频信息"""
         try:
@@ -110,14 +110,14 @@ class YoutubeDownloader(BaseDownloader):
             if cached_info:
                 logger.debug(f"Using cached info for: {url}")
                 return cached_info
-            
+
             # 获取代理配置
             proxy_opts = get_ydl_proxy_opts()
             if proxy_opts.get('proxy'):
                 logger.info(f"[YouTube] Using proxy: {proxy_opts['proxy']}")
             else:
                 logger.info("[YouTube] No proxy configured")
-            
+
             ydl_opts = {
                 'quiet': True,
                 'no_warnings': True,
@@ -135,10 +135,10 @@ class YoutubeDownloader(BaseDownloader):
                 # 代理配置
                 **proxy_opts,
             }
-            
+
             # 添加 Cookie 支持（仅在用户已配置时使用）
             cookie_path = self._get_youtube_cookie_path()
-            
+
             # 如果没有配置 Cookie 文件，尝试从浏览器直接读取
             use_browser_cookies = False
             if not cookie_path:
@@ -213,7 +213,7 @@ class YoutubeDownloader(BaseDownloader):
 
             if info is None and last_error is not None:
                 raise last_error
-            
+
             # 提取YouTube特有信息
             video_info = {
                 'title': info.get('title', 'Unknown'),
@@ -234,13 +234,13 @@ class YoutubeDownloader(BaseDownloader):
                 'categories': info.get('categories', []),
                 'tags': info.get('tags', []),
             }
-            
+
             # 缓存结果
             self._cache_info(url, video_info)
-            
+
             logger.info(f"Successfully extracted YouTube info: {video_info['title']}")
             return video_info
-            
+
         except Exception as e:
             error_msg = str(e)
             logger.error(f"Error extracting YouTube video info: {error_msg}")
@@ -304,7 +304,7 @@ class YoutubeDownloader(BaseDownloader):
                 friendly_error = error_msg
 
             raise Exception(f"获取视频信息失败: {friendly_error}")
-    
+
     async def download_video(
         self,
         url: str,
@@ -325,7 +325,7 @@ class YoutubeDownloader(BaseDownloader):
 
             format_quality = 'audio' if output_format == 'mp3' else quality
             merge_format = output_format if output_format in ('mp4', 'mkv', 'webm') else 'mp4'
-            
+
             # YouTube 优化的下载选项
             ydl_opts = {
                 'format': self._get_format_selector(format_quality, format_id),
@@ -385,10 +385,10 @@ class YoutubeDownloader(BaseDownloader):
                     'preferredcodec': 'mp3',
                     'preferredquality': '0',
                 }]
-            
+
             # 添加 Cookie 支持（仅在用户已配置时使用）
             cookie_path = self._get_youtube_cookie_path()
-            
+
             # 如果没有配置 Cookie 文件，尝试从浏览器直接读取
             use_browser_cookies = False
             if not cookie_path:
@@ -396,7 +396,7 @@ class YoutubeDownloader(BaseDownloader):
                 if sys.platform == 'darwin':
                     use_browser_cookies = 'safari'
                     logger.info("[YouTube] No cookie file, will try Safari cookies for download")
-            
+
             # 取消检查标志（用于在 progress_hook 中检查）
             cancel_checker = None
             if task_id:
@@ -405,12 +405,12 @@ class YoutubeDownloader(BaseDownloader):
                     cancel_checker = get_download_queue()
                 except Exception:
                     pass
-            
+
             # 添加进度钩子
             if progress_callback:
                 # 获取当前事件循环供 progress_hook 使用
                 loop = asyncio.get_event_loop()
-                
+
                 # 用于跟踪多分片下载的累积进度
                 progress_state = {
                     'total_downloaded': 0,  # 累积已下载字节
@@ -419,39 +419,39 @@ class YoutubeDownloader(BaseDownloader):
                     'fragment_index': 0,    # 当前分片索引
                     'fragment_count': 0,    # 总分片数
                 }
-                
+
                 def progress_hook(d):
                     # 检查任务是否被取消
                     if cancel_checker and task_id and cancel_checker.is_task_cancelled_sync(task_id):
                         logger.info(f"Task {task_id} cancelled, raising exception to stop download")
                         raise Exception(f"Download cancelled by user")
-                    
+
                     if d['status'] == 'downloading':
                         try:
                             downloaded = d.get('downloaded_bytes', 0)
                             total = d.get('total_bytes') or d.get('total_bytes_estimate', 0)
                             speed = d.get('speed', 0)
                             eta = d.get('eta', 0)
-                            
+
                             # 获取分片信息（用于 HLS/DASH 流）
                             fragment_index = d.get('fragment_index', 0)
                             fragment_count = d.get('fragment_count', 0)
-                            
+
                             # 计算进度
                             if fragment_count > 0:
                                 # 多分片下载：基于分片索引计算进度
                                 fragment_progress = (downloaded / total) if total > 0 else 0
                                 progress = ((fragment_index + fragment_progress) / fragment_count) * 100
-                                
+
                                 # 更新状态
                                 progress_state['fragment_index'] = fragment_index
                                 progress_state['fragment_count'] = fragment_count
-                                
+
                                 # 估算总大小
                                 if fragment_index > 0:
                                     avg_fragment_size = (progress_state['total_downloaded'] + downloaded) / (fragment_index + fragment_progress)
                                     progress_state['estimated_total'] = int(avg_fragment_size * fragment_count)
-                                
+
                                 if fragment_progress >= 0.99:
                                     progress_state['total_downloaded'] += total
                             elif total > 0:
@@ -459,14 +459,14 @@ class YoutubeDownloader(BaseDownloader):
                                 progress_state['estimated_total'] = total
                             else:
                                 progress = progress_state['last_progress']
-                            
+
                             # 防止进度回退
                             progress = max(progress, progress_state['last_progress'])
                             progress_state['last_progress'] = progress
-                            
+
                             display_total = progress_state['estimated_total'] if progress_state['estimated_total'] > 0 else total
                             display_downloaded = int(display_total * progress / 100) if display_total > 0 else downloaded
-                            
+
                             # 使用 run_coroutine_threadsafe 从非事件循环线程调度协程
                             asyncio.run_coroutine_threadsafe(
                                 progress_callback({
@@ -484,7 +484,7 @@ class YoutubeDownloader(BaseDownloader):
                             if "cancelled" in str(e).lower():
                                 raise  # 重新抛出取消异常
                             logger.error(f"Progress callback error: {e}")
-                    
+
                     elif d['status'] == 'finished':
                         asyncio.run_coroutine_threadsafe(
                             progress_callback({
@@ -494,12 +494,12 @@ class YoutubeDownloader(BaseDownloader):
                             }),
                             loop
                         )
-                
+
                 ydl_opts['progress_hooks'].append(progress_hook)
-            
+
             # 执行下载
             loop = asyncio.get_event_loop()
-            
+
             # 优先使用的客户端列表（按稳定性排序）
             player_client_attempts = [
                 ['android_sdkless'],        # 最稳定，支持大部分格式
@@ -550,7 +550,7 @@ class YoutubeDownloader(BaseDownloader):
                     except Exception as e:
                         last_error = e
                         err_lower = str(e).lower()
-                        
+
                         # 可重试的错误（切换客户端可能解决）
                         retryable_keywords = [
                             'please sign in',
@@ -562,19 +562,19 @@ class YoutubeDownloader(BaseDownloader):
                             'confirm your age',
                             'failed to extract any player response',
                         ]
-                        
+
                         if any(keyword in err_lower for keyword in retryable_keywords):
                             logger.warning(f"[YouTube] Download failed with client {player_clients}, trying next...")
                             continue
-                        
+
                         # 不可重试的错误，直接抛出
                         raise
 
             if result is None and last_error is not None:
                 raise last_error
-            
+
             logger.info(f"Successfully downloaded YouTube video: {result['title']}")
-            
+
             return {
                 'status': 'success',
                 'title': result['title'],
@@ -584,7 +584,7 @@ class YoutubeDownloader(BaseDownloader):
                 'platform': 'youtube',
                 'download_time': datetime.now().isoformat()
             }
-            
+
         except Exception as e:
             error_msg = str(e)
             logger.error(f"Error downloading YouTube video: {error_msg}")

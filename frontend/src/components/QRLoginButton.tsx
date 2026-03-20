@@ -56,7 +56,7 @@ export const QRLoginButton: React.FC<QRLoginButtonProps> = ({
     const loadPlatforms = async () => {
       const platforms = await getSupportedPlatforms();
       setSupportedPlatforms(platforms);
-      
+
       // 检查当前平台是否支持扫码登录
       const platform = platforms.find(p => p.platform_id === platformId);
       setIsSupported(!!platform);

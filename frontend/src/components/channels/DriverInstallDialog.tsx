@@ -101,7 +101,7 @@ export const DriverInstallDialog: React.FC<DriverInstallDialogProps> = ({
   const handleInstall = async () => {
     setInstalling(true);
     setInstallError(null);
-    
+
     try {
       const result = await onInstall();
       if (!result.success) {
@@ -230,7 +230,7 @@ export const DriverInstallDialog: React.FC<DriverInstallDialogProps> = ({
             <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
             刷新状态
           </Button>
-          
+
           {!isAdmin && (
             <Button
               variant="outline"
@@ -241,7 +241,7 @@ export const DriverInstallDialog: React.FC<DriverInstallDialogProps> = ({
               以管理员身份重启
             </Button>
           )}
-          
+
           {!isInstalled && (
             <Button
               onClick={handleInstall}
@@ -260,7 +260,7 @@ export const DriverInstallDialog: React.FC<DriverInstallDialogProps> = ({
               )}
             </Button>
           )}
-          
+
           {isInstalled && (
             <Button onClick={onClose}>
               完成

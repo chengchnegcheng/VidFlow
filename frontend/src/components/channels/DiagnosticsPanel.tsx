@@ -161,21 +161,21 @@ const ProxyInfoDisplay: React.FC<{ proxyInfo: ProxyInfo | null }> = ({ proxyInfo
           <div className="font-medium">{getProxyModeText(proxyInfo.proxy_mode)}</div>
         </div>
       </div>
-      
+
       {proxyInfo.process_name && (
         <div>
           <div className="text-xs text-muted-foreground">进程名</div>
           <div className="font-mono text-sm">{proxyInfo.process_name}</div>
         </div>
       )}
-      
+
       {proxyInfo.api_address && (
         <div>
           <div className="text-xs text-muted-foreground">API地址</div>
           <div className="font-mono text-sm">{proxyInfo.api_address}</div>
         </div>
       )}
-      
+
       <div className="flex gap-2">
         {proxyInfo.is_tun_enabled && (
           <Badge variant="secondary">TUN已启用</Badge>
@@ -193,7 +193,7 @@ const ProxyInfoDisplay: React.FC<{ proxyInfo: ProxyInfo | null }> = ({ proxyInfo
  */
 const StatisticsDisplay: React.FC<{ statistics: Record<string, boolean | number | string | null> }> = ({ statistics }) => {
   const entries = Object.entries(statistics).filter(([_, v]) => v !== null);
-  
+
   if (entries.length === 0) {
     return (
       <div className="text-center text-muted-foreground py-4">

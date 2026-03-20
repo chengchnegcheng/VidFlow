@@ -66,12 +66,12 @@ def check_wechat_process():
 async def main():
     port = await find_backend_port()
     base_url = f"http://127.0.0.1:{port}"
-    
+
     print("=" * 60)
     print("完整诊断")
     print("=" * 60)
     print(f"后端地址: {base_url}\n")
-    
+
     # 1. 检查后端连接
     print("1. 检查后端连接...")
     try:
@@ -81,7 +81,7 @@ async def main():
     except Exception as e:
         print(f"❌ 后端连接失败: {e}")
         return
-    
+
     # 2. 检查 QUIC 屏蔽
     print("\n2. 检查 QUIC 屏蔽...")
     async with httpx.AsyncClient(timeout=5) as client:
@@ -91,19 +91,19 @@ async def main():
             print(f"✅ QUIC 已屏蔽（规则: {quic_status['rule_name']}）")
         else:
             print("❌ QUIC 未屏蔽")
-    
+
     # 3. 检查防火墙规则
     check_firewall_rules()
-    
+
     # 4. 检查微信进程
     check_wechat_process()
-    
+
     # 5. 检查嗅探器状态
     print("\n5. 检查嗅探器状态...")
     async with httpx.AsyncClient(timeout=5) as client:
         resp = await client.get(f"{base_url}/api/channels/sniffer/status")
         status = resp.json()
-        
+
         if status['state'] == 'running':
             print("✅ 嗅探器正在运行")
             print(f"   代理地址: {status.get('proxy_address', 'N/A')}")
@@ -111,13 +111,13 @@ async def main():
             print(f"   检测到的视频: {status['videos_detected']}")
         else:
             print(f"❌ 嗅探器未运行（状态: {status['state']}）")
-    
+
     # 6. 检查检测到的视频
     print("\n6. 检查检测到的视频...")
     async with httpx.AsyncClient(timeout=5) as client:
         resp = await client.get(f"{base_url}/api/channels/videos")
         videos = resp.json()
-        
+
         if videos:
             print(f"✅ 检测到 {len(videos)} 个视频")
             for i, video in enumerate(videos, 1):
@@ -129,12 +129,12 @@ async def main():
                     print(f"   - 解密密钥: {video['decryption_key'][:50]}...")
         else:
             print("❌ 未检测到视频")
-    
+
     # 7. 总结和建议
     print("\n" + "=" * 60)
     print("诊断总结")
     print("=" * 60)
-    
+
     if status['state'] != 'running':
         print("\n❌ 嗅探器未运行")
         print("\n建议:")

@@ -29,7 +29,7 @@ for box_type in boxes:
         pos = data.find(box_type, pos)
         if pos == -1:
             break
-        
+
         # 检查是否是有效的 box（前4字节是大小）
         if pos >= 4:
             try:
@@ -50,7 +50,7 @@ if not found_boxes:
     print('未找到任何 MP4 Box！')
 else:
     print(f'\n找到 {len(found_boxes)} 个 Box')
-    
+
     # 检查是否有 moov
     moov_boxes = [b for b in found_boxes if b['type'] == 'moov']
     if moov_boxes:
@@ -61,7 +61,7 @@ else:
         print('\n✗ 未找到 moov box！这就是为什么播放器无法播放')
         print('  moov box 包含视频的元数据（时长、编码、轨道等）')
         print('  没有 moov box，播放器无法知道如何解析 mdat 中的数据')
-        
+
         # 检查是否有 moof（fragmented MP4）
         moof_boxes = [b for b in found_boxes if b['type'] == 'moof']
         if moof_boxes:

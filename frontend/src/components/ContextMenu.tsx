@@ -25,17 +25,17 @@ function ContextMenuContent({ x, y, isEditable, hasSelection, onClose }: Context
     // 确保菜单不超出屏幕
     const menuWidth = 160;
     const menuHeight = isEditable ? 280 : 100;
-    
+
     let newX = x;
     let newY = y;
-    
+
     if (x + menuWidth > window.innerWidth) {
       newX = window.innerWidth - menuWidth - 10;
     }
     if (y + menuHeight > window.innerHeight) {
       newY = window.innerHeight - menuHeight - 10;
     }
-    
+
     setPosition({ x: newX, y: newY });
   }, [x, y, isEditable]);
 
@@ -119,8 +119,8 @@ function ContextMenuContent({ x, y, isEditable, hasSelection, onClose }: Context
           <button
             key={index}
             className={`flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors
-              ${item.disabled 
-                ? 'text-muted-foreground cursor-not-allowed opacity-50' 
+              ${item.disabled
+                ? 'text-muted-foreground cursor-not-allowed opacity-50'
                 : 'hover:bg-accent hover:text-accent-foreground cursor-default'
               }`}
             onClick={() => !item.disabled && handleAction(item.action)}
@@ -146,13 +146,13 @@ export function ContextMenuProvider({ children }: { children: React.ReactNode })
   useEffect(() => {
     const handleContextMenu = (e: MouseEvent) => {
       e.preventDefault();
-      
+
       const target = e.target as HTMLElement;
-      const isEditable = 
+      const isEditable =
         target.tagName === 'INPUT' ||
         target.tagName === 'TEXTAREA' ||
         target.isContentEditable;
-      
+
       const selection = window.getSelection();
       const hasSelection = selection ? selection.toString().length > 0 : false;
 

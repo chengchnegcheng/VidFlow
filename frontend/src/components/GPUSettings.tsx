@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
 import { invoke } from './TauriIntegration';
-import { 
-  Zap, 
-  Download, 
-  CheckCircle, 
-  AlertCircle, 
+import {
+  Zap,
+  Download,
+  CheckCircle,
+  AlertCircle,
   Loader2,
   Copy,
   Info
@@ -63,7 +63,7 @@ export default function GPUSettings() {
     try {
       setInstalling(true);
       await invoke('install_gpu_package');
-      
+
       alert(
         '✅ GPU加速包安装已开始！\n\n' +
         '安装需要 5-10 分钟，请勿关闭软件。\n' +

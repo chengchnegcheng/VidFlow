@@ -71,7 +71,7 @@ export function SystemMonitor() {
 
   useEffect(() => {
     fetchSystemInfo();
-    
+
     if (autoRefresh) {
       const interval = setInterval(fetchSystemInfo, 3000);
       return () => clearInterval(interval);
@@ -319,9 +319,9 @@ export function SystemMonitor() {
               <p className="font-medium">0.104.0</p>
             </div>
           </div>
-          
+
           <Separator />
-          
+
           <div className="flex gap-2">
             <Button variant="outline" size="sm" onClick={() => window.open(`${getApiBaseUrl()}/docs`, '_blank')}>
               <Server className="size-4 mr-2" />
@@ -357,7 +357,7 @@ export function SystemMonitor() {
               </div>
               <Badge variant="outline">2.4 MB</Badge>
             </div>
-            
+
             <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
               <div>
                 <p className="font-medium">临时文件</p>
@@ -365,7 +365,7 @@ export function SystemMonitor() {
               </div>
               <Badge variant="outline">156 MB</Badge>
             </div>
-            
+
             <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
               <div>
                 <p className="font-medium">日志文件</p>
@@ -402,7 +402,7 @@ export function SystemMonitor() {
               </div>
             </div>
           )}
-          
+
           {systemInfo.memory_usage > 80 && (
             <div className="flex items-start gap-2 p-3 bg-orange-50 dark:bg-orange-950/20 border border-orange-200 dark:border-orange-800 rounded-lg">
               <AlertCircle className="size-4 mt-0.5 text-orange-600 flex-shrink-0" />
@@ -412,7 +412,7 @@ export function SystemMonitor() {
               </div>
             </div>
           )}
-          
+
           {systemInfo.disk_usage > 80 && (
             <div className="flex items-start gap-2 p-3 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 rounded-lg">
               <AlertCircle className="size-4 mt-0.5 text-red-600 flex-shrink-0" />

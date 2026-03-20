@@ -21,17 +21,17 @@ def _cleanup_conflicting_packages():
     """
     处理 AI 包目录中与打包环境可能冲突的包（numpy 等）
     错误: ImportError: cannot load module more than once per process
-    
+
     这个问题发生在 PyInstaller 打包的应用中：
     1. 主应用已经内置了 numpy（作为依赖）
     2. AI 包目录中又安装了另一个版本的 numpy
     3. 当 faster-whisper/torch 尝试导入 numpy 时，C 扩展模块冲突
-    
+
     新策略：预先导入内置的 numpy，这样后续导入会复用已加载的模块
     """
     if not getattr(sys, 'frozen', False):
         return  # 只在打包环境中执行
-    
+
     # 预先导入内置的 numpy
     try:
         import numpy
@@ -45,20 +45,20 @@ _cleanup_conflicting_packages()
 
 class SubtitleProcessor:
     """字幕处理器"""
-    
+
     def __init__(self):
         self.model = None
         self.model_name = "base"
         self.device = "cpu"
-        
+
     async def _ensure_model_downloaded(
-        self, 
-        model_name: str, 
+        self,
+        model_name: str,
         progress_callback: Optional[Callable] = None
     ) -> Optional[str]:
         """
         确保模型已下载，返回本地模型路径
-        
+
         支持多镜像源自动切换和真实下载进度显示
         """
         # 模型名称到 Hugging Face repo 的映射
@@ -78,12 +78,12 @@ class SubtitleProcessor:
             "distil-large-v2": "Systran/faster-distil-whisper-large-v2",
             "distil-large-v3": "Systran/faster-distil-whisper-large-v3",
         }
-        
+
         repo_id = model_repo_map.get(model_name)
         if not repo_id:
             logger.info(f"Model {model_name} not in repo map, assuming local path")
             return None
-        
+
         # 模型大小（MB）
         model_sizes_mb = {
             "tiny": 75, "tiny.en": 75,
@@ -94,16 +94,16 @@ class SubtitleProcessor:
             "distil-large-v2": 1500, "distil-large-v3": 1500,
         }
         estimated_size_mb = model_sizes_mb.get(model_name, 500)
-        
+
         try:
             import huggingface_hub
             from huggingface_hub import snapshot_download, try_to_load_from_cache
-            
+
             cache_dir = huggingface_hub.constants.HF_HUB_CACHE
-            
+
             if progress_callback:
                 await progress_callback(21.0, f"检查模型 {model_name} (~{estimated_size_mb}MB)...")
-            
+
             # 首先检查模型是否已经在本地缓存中
             try:
                 # 检查关键文件是否存在
@@ -113,7 +113,7 @@ class SubtitleProcessor:
                     logger.info(f"Model {model_name} found in cache")
                     if progress_callback:
                         await progress_callback(28.0, f"模型 {model_name} 已在本地缓存")
-                    
+
                     # 使用 local_files_only 快速获取路径
                     local_dir = await asyncio.to_thread(
                         snapshot_download,
@@ -126,13 +126,13 @@ class SubtitleProcessor:
                     return local_dir
             except Exception as e:
                 logger.debug(f"Cache check failed, will download: {e}")
-            
+
             # 镜像源列表
             mirror_endpoints = [
                 ("https://hf-mirror.com", "国内镜像"),
                 ("https://huggingface.co", "官方源"),
             ]
-            
+
             # 尝试启用 hf_transfer 加速
             try:
                 import hf_transfer
@@ -140,20 +140,20 @@ class SubtitleProcessor:
                 logger.info("hf_transfer enabled")
             except ImportError:
                 os.environ["HF_HUB_ENABLE_HF_TRANSFER"] = "0"
-            
+
             # 下载状态
             download_state = {
                 'current_mirror': '',
                 'error': None,
                 'local_dir': None,
             }
-            
+
             async def try_download_from_mirror(endpoint: str, name: str) -> Optional[str]:
                 """尝试从指定镜像下载"""
                 os.environ["HF_ENDPOINT"] = endpoint
                 logger.info(f"Trying mirror: {name} ({endpoint})")
                 download_state['current_mirror'] = name
-                
+
                 try:
                     local_dir = await asyncio.to_thread(
                         snapshot_download,
@@ -167,13 +167,13 @@ class SubtitleProcessor:
                     logger.warning(f"Download from {name} failed: {e}")
                     download_state['error'] = str(e)
                     return None
-            
+
             # 启动下载任务（尝试多个镜像），添加 15 分钟超时
             async def download_with_fallback():
                 for endpoint, name in mirror_endpoints:
                     if progress_callback:
                         await progress_callback(22.0, f"尝试 {name}...")
-                    
+
                     try:
                         # 单个镜像最多尝试 10 分钟
                         result = await asyncio.wait_for(
@@ -186,24 +186,24 @@ class SubtitleProcessor:
                     except asyncio.TimeoutError:
                         logger.warning(f"Download from {name} timed out after 10 minutes")
                         download_state['error'] = f"{name} 下载超时"
-                    
+
                     # 等待一下再尝试下一个
                     await asyncio.sleep(1)
-                
+
                 raise RuntimeError(f"所有镜像源下载失败: {download_state['error']}")
-            
+
             # 启动下载
             download_task = asyncio.create_task(download_with_fallback())
-            
+
             # 进度更新循环
             start_time = asyncio.get_event_loop().time()
             last_size = 0
             last_time = start_time
             stall_count = 0  # 下载停滞计数
-            
+
             while not download_task.done():
                 await asyncio.sleep(1.0)
-                
+
                 if progress_callback:
                     current_time = asyncio.get_event_loop().time()
                     elapsed = current_time - start_time
@@ -213,9 +213,9 @@ class SubtitleProcessor:
                         time_str = f"{elapsed_min}分{elapsed_sec}秒"
                     else:
                         time_str = f"{elapsed_sec}秒"
-                    
+
                     mirror_name = download_state['current_mirror'] or "准备中"
-                    
+
                     # 检查缓存目录大小来估算进度
                     try:
                         cache_path = Path(cache_dir)
@@ -228,7 +228,7 @@ class SubtitleProcessor:
                             else:
                                 total_size = 0
                             downloaded_mb = total_size / (1024 * 1024)
-                            
+
                             # 计算实时速度（基于最近一次更新）
                             time_diff = current_time - last_time
                             size_diff = total_size - last_size
@@ -238,7 +238,7 @@ class SubtitleProcessor:
                                 current_speed = 0
                             last_size = total_size
                             last_time = current_time
-                            
+
                             # 格式化速度
                             if current_speed > 1:
                                 speed_str = f"{current_speed:.1f} MB/s"
@@ -246,7 +246,7 @@ class SubtitleProcessor:
                                 speed_str = f"{current_speed * 1024:.0f} KB/s"
                             else:
                                 speed_str = "..."
-                            
+
                             # 检查是否下载接近完成（超过95%或超过预估大小）
                             if downloaded_mb >= estimated_size_mb * 0.95:
                                 # 下载基本完成，正在校验/处理
@@ -256,7 +256,7 @@ class SubtitleProcessor:
                                 # 正常下载中
                                 progress_pct = min(downloaded_mb / estimated_size_mb, 0.99)
                                 progress_value = 21.0 + progress_pct * 7.0
-                                
+
                                 # 预计剩余时间
                                 if current_speed > 0.01:
                                     remaining_mb = max(0, estimated_size_mb - downloaded_mb)
@@ -267,9 +267,9 @@ class SubtitleProcessor:
                                         eta_str = f"{int(eta_sec)}秒"
                                 else:
                                     eta_str = "计算中"
-                                
+
                                 msg = f"[{mirror_name}] {downloaded_mb:.1f}/{estimated_size_mb}MB | {speed_str} | 剩余 {eta_str}"
-                            
+
                             await progress_callback(progress_value, msg)
                         else:
                             # 缓存目录还不存在
@@ -277,16 +277,16 @@ class SubtitleProcessor:
                     except Exception as e:
                         # 无法读取缓存大小，显示简单进度
                         await progress_callback(23.0, f"[{mirror_name}] 下载中... 已用 {time_str}")
-            
+
             # 获取结果
             local_dir = await download_task
-            
+
             if progress_callback:
                 await progress_callback(29.0, f"模型 {model_name} 下载完成")
-            
+
             logger.info(f"Model {model_name} ready at: {local_dir}")
             return local_dir
-            
+
         except ImportError:
             logger.warning("huggingface_hub not available")
             return None
@@ -295,13 +295,13 @@ class SubtitleProcessor:
             return None
 
     async def initialize_model(
-        self, 
-        model_name: str = "base", 
+        self,
+        model_name: str = "base",
         device: str = "auto",
         progress_callback: Optional[Callable] = None
     ):
         """初始化 Whisper 模型
-        
+
         Args:
             model_name: 模型名称 (tiny, base, small, medium, large, large-v2, large-v3)
             device: 设备类型 (auto, cpu, cuda)
@@ -315,7 +315,7 @@ class SubtitleProcessor:
                     # 临时将 AI 包目录从 sys.path 开头移到后面
                     from src.core.tool_manager import AI_PACKAGES_DIR
                     ai_pkg_str = str(AI_PACKAGES_DIR)
-                    
+
                     # 先导入内置 numpy（在调整 sys.path 之前它应该已经可用）
                     # 如果内置 numpy 不在 sys.path 中，我们需要找到它
                     if ai_pkg_str in sys.path:
@@ -332,7 +332,7 @@ class SubtitleProcessor:
                                 sys.path.append(ai_pkg_str)
                 except Exception as e:
                     logger.warning(f"[Model Init] Failed to adjust sys.path for numpy: {e}")
-            
+
             # Windows 平台修复：让 ctranslate2 能找到 PyTorch 的 CUDA 库
             if sys.platform == 'win32':
                 try:
@@ -359,11 +359,11 @@ class SubtitleProcessor:
                     sys.path.append(ai_pkg_str)
                 logger.info(f"[Model Init] sys.path contains AI_PACKAGES_DIR: {ai_pkg_str in sys.path}")
                 logger.info(f"[Model Init] AI_PACKAGES_DIR exists: {Path(ai_pkg_str).exists()}")
-                
+
                 # Windows 平台：添加 av.libs 和 ctranslate2 DLL 到搜索路径
                 if sys.platform == 'win32':
                     ai_pkg_path = Path(ai_pkg_str)
-                    
+
                     # 添加 av.libs 目录（PyAV 的 FFmpeg DLL）
                     av_libs_path = ai_pkg_path / "av.libs"
                     if av_libs_path.exists():
@@ -371,7 +371,7 @@ class SubtitleProcessor:
                             os.add_dll_directory(str(av_libs_path))
                         os.environ['PATH'] = str(av_libs_path) + os.pathsep + os.environ.get('PATH', '')
                         logger.info(f"[Model Init] Added av.libs to DLL search path: {av_libs_path}")
-                    
+
                     # 添加 ctranslate2 目录（ctranslate2 的 CUDA DLL）
                     ct2_path = ai_pkg_path / "ctranslate2"
                     if ct2_path.exists():
@@ -379,7 +379,7 @@ class SubtitleProcessor:
                             os.add_dll_directory(str(ct2_path))
                         os.environ['PATH'] = str(ct2_path) + os.pathsep + os.environ.get('PATH', '')
                         logger.info(f"[Model Init] Added ctranslate2 to DLL search path: {ct2_path}")
-                    
+
                     # 添加 numpy.libs 目录
                     numpy_libs_path = ai_pkg_path / "numpy.libs"
                     if numpy_libs_path.exists():
@@ -398,7 +398,7 @@ class SubtitleProcessor:
             if device == "auto":
                 device = "cpu"
                 logger.info(f"[Device Detection] Starting auto-detection, frozen={getattr(sys, 'frozen', False)}")
-                
+
                 # 开发环境：直接导入 torch 检测（更简单可靠）
                 if not getattr(sys, 'frozen', False):
                     try:
@@ -406,7 +406,7 @@ class SubtitleProcessor:
                         cuda_available = torch.cuda.is_available()
                         cuda_version = getattr(torch.version, 'cuda', None)
                         logger.info(f"[Device Detection] Direct torch check: cuda_available={cuda_available}, cuda_version={cuda_version}")
-                        
+
                         if cuda_available:
                             device = "cuda"
                             logger.info(f"[Device Detection] ✓ Using CUDA (GPU mode)")
@@ -533,9 +533,9 @@ print(json.dumps({{
                         logger.warning(f"[Device Detection] Auto-detect failed: {e}")
                         logger.warning(f"[Device Detection] Falling back to CPU")
                         device = "cpu"
-            
+
             logger.info(f"Loading Whisper model: {model_name} on {device}")
-            
+
             # 预下载模型（带进度反馈）
             # 对于非 base 模型，首次使用需要从 Hugging Face 下载
             if model_name != "base":
@@ -549,10 +549,10 @@ print(json.dumps({{
                     model_name_or_path = model_name
             else:
                 model_name_or_path = model_name
-            
+
             if progress_callback:
                 await progress_callback(29.0, "正在初始化模型...")
-            
+
             # 尝试加载模型，如果 CUDA 失败则自动回退到 CPU
             try:
                 # 在线程池中加载模型（避免阻塞）
@@ -562,23 +562,23 @@ print(json.dumps({{
                     device=device,
                     compute_type="float16" if device == "cuda" else "int8"
                 )
-                
+
                 self.model_name = model_name
                 self.device = device
-                
+
                 logger.info(f"✓ Model loaded successfully on {device}")
                 return True
-                
+
             except Exception as e:
                 # 如果 CUDA 模式失败，尝试 CPU 模式
                 if device == "cuda" and ("cublas" in str(e).lower() or "cuda" in str(e).lower()):
                     logger.warning(f"⚠ CUDA initialization failed: {e}")
                     logger.info("→ ctranslate2 was built for a different CUDA version than your system")
                     logger.info("→ Retrying with CPU mode...")
-                    
+
                     if progress_callback:
                         await progress_callback(29.0, "CUDA 初始化失败，切换到 CPU 模式...")
-                    
+
                     # 重试 CPU 模式
                     self.model = await asyncio.to_thread(
                         faster_whisper.WhisperModel,
@@ -586,16 +586,16 @@ print(json.dumps({{
                         device="cpu",
                         compute_type="int8"
                     )
-                    
+
                     self.model_name = model_name
                     self.device = "cpu"
-                    
+
                     logger.info(f"✓ Model loaded successfully on CPU (fallback mode)")
                     return True
                 else:
                     # 其他错误，直接抛出
                     raise
-            
+
         except ImportError as e:
             logger.error(f"faster-whisper import failed: {e}")
             logger.error(f"sys.path: {sys.path}")
@@ -614,25 +614,25 @@ print(json.dumps({{
         except Exception as e:
             logger.error(f"Failed to load model: {e}")
             raise
-    
+
     async def extract_audio(self, video_path: str, audio_path: str) -> bool:
         """从视频中提取音频"""
         try:
             from src.core.tool_manager import get_tool_manager
-            
+
             tool_mgr = get_tool_manager()
             ffmpeg_path = tool_mgr.get_ffmpeg_path()
-            
+
             if not ffmpeg_path:
                 raise RuntimeError("FFmpeg 未安装")
-            
+
             # 确保路径使用正确的编码
             # Windows 需要处理中文路径
             if sys.platform == 'win32':
                 # 在 Windows 上，确保路径是 str 类型（Python 3 会自动处理 Unicode）
                 video_path = str(video_path)
                 audio_path = str(audio_path)
-            
+
             # FFmpeg 命令：提取音频为 WAV
             cmd = [
                 str(ffmpeg_path),
@@ -644,9 +644,9 @@ print(json.dumps({{
                 '-y',  # 覆盖输出
                 audio_path
             ]
-            
+
             logger.info(f"Extracting audio: {video_path} -> {audio_path}")
-            
+
             # 执行 FFmpeg
             # 不指定编码，让它返回 bytes，然后根据平台解码
             process = await asyncio.create_subprocess_exec(
@@ -676,7 +676,7 @@ print(json.dumps({{
                 except Exception as kill_err:
                     logger.error(f"Error killing FFmpeg process: {kill_err}")
                 raise RuntimeError("FFmpeg 处理超时 (300s)")
-            
+
             if process.returncode == 0:
                 logger.info("Audio extracted successfully")
                 return True
@@ -693,14 +693,14 @@ print(json.dumps({{
                         error_msg = stderr.decode('utf-8', errors='ignore')
                 except Exception:
                     error_msg = str(stderr)
-                
+
                 logger.error(f"FFmpeg error: {error_msg}")
                 return False
-                
+
         except Exception as e:
             logger.error(f"Failed to extract audio: {e}")
             raise
-    
+
     async def transcribe(
         self,
         audio_path: str,
@@ -711,13 +711,13 @@ print(json.dumps({{
         try:
             if not self.model:
                 await self.initialize_model()
-            
+
             # 安全记录路径（避免编码问题）
             try:
                 logger.info(f"Transcribing: {audio_path}")
             except Exception:
                 logger.info(f"Transcribing audio file...")
-            
+
             # 转录参数 - 优化以提高识别质量
             transcribe_options = {
                 "language": language if language and language != "auto" else None,
@@ -738,36 +738,36 @@ print(json.dumps({{
                     "speech_pad_ms": 400,       # 语音段落前后填充（毫秒）
                 },
             }
-            
+
             # 使用队列在线程和异步之间传递进度
             import queue
             progress_queue: queue.Queue = queue.Queue()
-            
+
             # 在线程池中执行转录并收集所有结果
             def do_transcribe():
                 logger.info(f"[Transcribe] Starting transcription with options: {transcribe_options}")
                 logger.info(f"[Transcribe] Device: {self.device}, Model: {self.model_name}")
-                
+
                 segments_gen, info = self.model.transcribe(
                     audio_path,
                     **transcribe_options
                 )
-                
+
                 duration = getattr(info, 'duration', 0) or 0
                 logger.info(f"[Transcribe] Got generator, audio duration: {duration}s")
                 logger.info(f"[Transcribe] Detected language: {getattr(info, 'language', 'unknown')}")
-                
+
                 # 在同一线程中消费生成器，收集所有结果
                 segments_list = []
                 last_progress_time = 0
-                
+
                 for i, seg in enumerate(segments_gen):
                     segments_list.append(seg)
-                    
+
                     # 每 10 段或每 30 秒音频打印一次日志
                     if (i + 1) % 10 == 0:
                         logger.info(f"[Transcribe] Processed {i + 1} segments, last: {seg.end:.1f}s")
-                    
+
                     # 更频繁地发送进度更新：每段都发送（队列会自动合并）
                     if duration > 0:
                         # 每处理 20 秒音频或每 5 段发送一次进度
@@ -780,23 +780,23 @@ print(json.dumps({{
                             total_min = int(duration // 60)
                             total_sec = int(duration % 60)
                             progress_queue.put((
-                                progress, 
+                                progress,
                                 f"语音识别中… {current_min}:{current_sec:02d}"
                             ))
-                
+
                 logger.info(f"[Transcribe] Finished collecting {len(segments_list)} segments")
                 # 发送完成信号
                 progress_queue.put(None)
                 return segments_list, info
-            
+
             logger.info(f"[Transcribe] Starting transcription thread...")
-            
+
             # 启动转录任务
             import concurrent.futures
             loop = asyncio.get_event_loop()
             executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
             transcribe_future = loop.run_in_executor(executor, do_transcribe)
-            
+
             # 同时处理进度更新
             last_update_time = asyncio.get_event_loop().time()
             transcription_done = False
@@ -814,18 +814,18 @@ print(json.dumps({{
                         latest_progress = progress_data
                 except queue.Empty:
                     pass
-                
+
                 # 发送最新的进度更新
                 if latest_progress is not None and progress_callback:
                     progress, message = latest_progress
                     await progress_callback(progress, message)
                     last_update_time = asyncio.get_event_loop().time()
-                
+
                 if got_done_signal:
                     # 收到完成信号
                     transcription_done = True
                     break
-                
+
                 # 检查转录是否完成
                 if transcribe_future.done():
                     # 处理队列中剩余的进度更新
@@ -840,34 +840,34 @@ print(json.dumps({{
                         except queue.Empty:
                             break
                     break
-                
+
                 # 短暂等待，避免忙等（每 200ms 检查一次）
                 await asyncio.sleep(0.2)
-            
+
             # 获取结果
             segments_list, info = await transcribe_future
             executor.shutdown(wait=False)
-            
+
             logger.info(f"[Transcribe] Thread completed")
             logger.info(f"Raw transcription: {len(segments_list)} segments")
-            
+
             # 收集结果
             results = []
             duration = getattr(info, "duration", None) if info else None
             last_text = ""  # 用于去重
-            
+
             for i, segment in enumerate(segments_list):
                 text = segment.text.strip()
-                
+
                 # 跳过空文本
                 if not text:
                     continue
-                
+
                 # 跳过与上一段完全相同的文本（去重）
                 if text == last_text:
                     logger.debug(f"Skipping duplicate segment: {text[:50]}...")
                     continue
-                
+
                 result = {
                     "start": segment.start,
                     "end": segment.end,
@@ -875,67 +875,67 @@ print(json.dumps({{
                 }
                 results.append(result)
                 last_text = text
-            
+
             if progress_callback:
                 await progress_callback(78.0, f"识别完成，共 {len(results)} 段")
-            
+
             logger.info(f"Transcription completed: {len(results)} segments (filtered from {len(segments_list)})")
-            
+
             # 返回语言信息
             detected_language = info.language if hasattr(info, 'language') else 'unknown'
-            
+
             return {
                 "segments": results,
                 "language": detected_language,
                 "duration": info.duration if hasattr(info, 'duration') else 0
             }
-            
+
         except Exception as e:
             logger.error(f"Transcription failed: {e}")
             raise
-    
+
     def format_srt(self, segments: List[Dict]) -> str:
         """格式化为 SRT 字幕"""
         srt_content = []
-        
+
         for i, segment in enumerate(segments, 1):
             # 时间格式：00:00:00,000
             start_time = self._format_timestamp(segment['start'])
             end_time = self._format_timestamp(segment['end'])
-            
+
             srt_content.append(f"{i}")
             srt_content.append(f"{start_time} --> {end_time}")
             srt_content.append(segment['text'])
             srt_content.append("")  # 空行
-        
+
         return "\n".join(srt_content)
-    
+
     def format_vtt(self, segments: List[Dict]) -> str:
         """格式化为 WebVTT 字幕"""
         vtt_content = ["WEBVTT", ""]
-        
+
         for segment in segments:
             start_time = self._format_timestamp(segment['start'], vtt=True)
             end_time = self._format_timestamp(segment['end'], vtt=True)
-            
+
             vtt_content.append(f"{start_time} --> {end_time}")
             vtt_content.append(segment['text'])
             vtt_content.append("")
-        
+
         return "\n".join(vtt_content)
-    
+
     def _format_timestamp(self, seconds: float, vtt: bool = False) -> str:
         """格式化时间戳"""
         hours = int(seconds // 3600)
         minutes = int((seconds % 3600) // 60)
         secs = int(seconds % 60)
         millis = int((seconds % 1) * 1000)
-        
+
         if vtt:
             return f"{hours:02d}:{minutes:02d}:{secs:02d}.{millis:03d}"
         else:
             return f"{hours:02d}:{minutes:02d}:{secs:02d},{millis:03d}"
-    
+
     async def translate_subtitle(
         self,
         segments: List[Dict],
@@ -945,10 +945,10 @@ print(json.dumps({{
         # TODO: 集成翻译 API（Google Translate, DeepL, etc.）
         logger.warning("Translation not implemented yet")
         return segments
-    
+
     async def _translate_srt_file(self, srt_path: Path, target_lang: str, source_lang: str = "en") -> str:
         """翻译 SRT 文件内容（支持多引擎自动切换）
-        
+
         Args:
             srt_path: SRT 文件路径
             target_lang: 目标语言代码
@@ -956,7 +956,7 @@ print(json.dumps({{
         """
         try:
             from deep_translator import GoogleTranslator, MyMemoryTranslator
-            
+
             # GoogleTranslator 语言代码映射
             google_lang_map = {
                 'zh': 'zh-CN',
@@ -970,7 +970,7 @@ print(json.dumps({{
                 'de': 'de',
                 'ru': 'ru'
             }
-            
+
             # MyMemory 需要完整的语言代码
             mymemory_lang_map = {
                 'zh': 'zh-CN',
@@ -984,15 +984,15 @@ print(json.dumps({{
                 'de': 'de-DE',
                 'ru': 'ru-RU'
             }
-            
+
             target_google = google_lang_map.get(target_lang, target_lang)
             source_google = google_lang_map.get(source_lang, source_lang)
             target_mymemory = mymemory_lang_map.get(target_lang, target_lang)
             source_mymemory = mymemory_lang_map.get(source_lang, source_lang)
-            
+
             logger.info(f"Translating from {source_lang} to {target_lang}")
             logger.info(f"MyMemory codes: source={source_mymemory}, target={target_mymemory}")
-            
+
             # 尝试多个翻译引擎（自动回退）
             # GoogleTranslator 支持 source='auto'
             # MyMemory 不支持 auto，必须传递具体语言代码
@@ -1000,11 +1000,11 @@ print(json.dumps({{
                 (GoogleTranslator(source='auto', target=target_google), 'Google Translate'),
                 (MyMemoryTranslator(source=source_mymemory, target=target_mymemory), 'MyMemory')
             ]
-            
+
             # 测试哪个翻译引擎可用
             working_translator = None
             translator_name = None
-            
+
             for trans, name in translators:
                 try:
                     # 测试翻译（在线程池中执行）
@@ -1019,19 +1019,19 @@ print(json.dumps({{
                 except Exception as e:
                     logger.warning(f"{name} not available: {e}")
                     continue
-            
+
             if not working_translator:
                 raise Exception("所有翻译服务均不可用，请检查网络连接")
-            
+
             # 读取 SRT 文件
             content = srt_path.read_text(encoding='utf-8')
-            
+
             # 解析 SRT：匹配序号、时间戳和文本
             pattern = re.compile(
                 r'(\d+)\n(\d{2}:\d{2}:\d{2},\d{3} --> \d{2}:\d{2}:\d{2},\d{3})\n(.*?)(?=\n\n|\Z)',
                 re.DOTALL
             )
-            
+
             # 收集所有需要翻译的文本
             segments_to_translate = []
             for match in pattern.finditer(content):
@@ -1039,19 +1039,19 @@ print(json.dumps({{
                 timestamp = match.group(2)
                 text = match.group(3).strip()
                 segments_to_translate.append((index, timestamp, text))
-            
+
             logger.info(f"Found {len(segments_to_translate)} segments to translate")
-            
+
             if not segments_to_translate:
                 logger.warning("No segments found in SRT file")
                 return content
-            
+
             # 批量翻译函数（在线程池中执行）
             def translate_all_segments():
                 translated_blocks = []
                 success_count = 0
                 fail_count = 0
-                
+
                 for index, timestamp, text in segments_to_translate:
                     if text:
                         try:
@@ -1072,7 +1072,7 @@ print(json.dumps({{
                                         chunks = [line[i:i+4000] for i in range(0, len(line), 4000)]
                                         translated_chunks = [working_translator.translate(chunk) for chunk in chunks]
                                         translated_lines.append(''.join(translated_chunks))
-                            
+
                             translated_text = '\n'.join(translated_lines)
                             success_count += 1
                         except Exception as e:
@@ -1081,26 +1081,26 @@ print(json.dumps({{
                             fail_count += 1
                     else:
                         translated_text = text
-                    
+
                     # 重建 SRT 块
                     block = f"{index}\n{timestamp}\n{translated_text}\n"
                     translated_blocks.append(block)
-                
+
                 logger.info(f"Translation stats: {success_count} success, {fail_count} failed")
                 return '\n'.join(translated_blocks)
-            
+
             # 在线程池中执行翻译，避免阻塞事件循环
             result = await asyncio.to_thread(translate_all_segments)
             logger.info(f"Translation completed using {translator_name}")
             return result
-            
+
         except ImportError:
             logger.error("deep-translator not installed. Run: pip install deep-translator")
             raise Exception("翻译库未安装，请联系管理员")
         except Exception as e:
             logger.error(f"Translation failed: {e}")
             raise
-    
+
     async def process_video(
         self,
         video_path: str,
@@ -1116,13 +1116,13 @@ print(json.dumps({{
             video_path = Path(video_path)
             output_dir = Path(output_dir)
             output_dir.mkdir(parents=True, exist_ok=True)
-            
+
             # 默认参数
             if formats is None:
                 formats = ["srt"]
             if target_languages is None:
                 target_languages = []
-            
+
             # 1. 提取音频 (0-20%)
             if progress_callback:
                 await progress_callback(10.0, "正在提取音频...")
@@ -1131,7 +1131,7 @@ print(json.dumps({{
             await self.extract_audio(str(video_path), str(audio_path))
             if progress_callback:
                 await progress_callback(20.0, "音频提取完成")
-            
+
             # 2. 初始化模型 (20-30%)
             if not self.model or self.model_name != model_name:
                 logger.info("Step 2/3: Loading model...")
@@ -1140,7 +1140,7 @@ print(json.dumps({{
                 await self.initialize_model(model_name, progress_callback=progress_callback)
                 if progress_callback:
                     await progress_callback(30.0, "模型加载完成")
-            
+
             # 3. 转录 (30-80%)
             logger.info("Step 3/3: Transcribing...")
             if progress_callback:
@@ -1150,26 +1150,26 @@ print(json.dumps({{
                 language=source_language,
                 progress_callback=progress_callback
             )
-            
+
             segments = result['segments']
             detected_language = result['language']
-            
+
             logger.info(f"Transcription result: {len(segments)} segments, language: {detected_language}")
-            
+
             # 检查是否有识别到的内容
             if not segments:
                 logger.warning("No speech detected in the video")
                 if progress_callback:
                     await progress_callback(85.0, "未检测到语音内容")
-            
+
             if progress_callback:
                 await progress_callback(80.0, f"识别完成，检测到语言: {detected_language}")
-            
+
             # 4. 生成字幕文件 (80-85%)
             output_files = []
-            
+
             logger.info(f"Generating subtitle files in formats: {formats}")
-            
+
             # 原始语言字幕
             for fmt in formats:
                 if fmt == "srt":
@@ -1180,23 +1180,23 @@ print(json.dumps({{
                     ext = "vtt"
                 else:
                     continue
-                
+
                 output_file = output_dir / f"{video_path.stem}.{detected_language}.{ext}"
                 output_file.write_text(content, encoding='utf-8')
                 output_files.append(str(output_file))
                 logger.info(f"Generated subtitle file: {output_file}")
-            
+
             if progress_callback:
                 await progress_callback(85.0, "字幕文件生成完成")
-            
+
             # 5. 翻译（如果需要）(85-95%)
             logger.info(f"Target languages: {target_languages}, detected: {detected_language}")
-            
+
             if target_languages and segments:  # 只有在有字幕内容时才翻译
                 # 过滤掉与检测语言相同的目标语言
                 langs_to_translate = [l for l in target_languages if l != detected_language]
                 logger.info(f"Languages to translate: {langs_to_translate}")
-                
+
                 if not langs_to_translate:
                     logger.info("No translation needed - target language same as detected language")
                     if progress_callback:
@@ -1204,15 +1204,15 @@ print(json.dumps({{
                 else:
                     total_langs = len(langs_to_translate)
                     lang_idx = 0
-                    
+
                     for target_lang in langs_to_translate:
                         lang_idx += 1
                         logger.info(f"Translating subtitles to {target_lang} ({lang_idx}/{total_langs})...")
-                        
+
                         if progress_callback:
                             progress = 85.0 + (lang_idx / max(total_langs, 1)) * 10.0
                             await progress_callback(progress, f"翻译字幕到 {target_lang}...")
-                        
+
                         try:
                             # 读取原始 SRT 文件进行翻译
                             srt_file = output_dir / f"{video_path.stem}.{detected_language}.srt"
@@ -1242,19 +1242,19 @@ print(json.dumps({{
                             logger.error(f"Translation to {target_lang} failed: {e}")
                             if progress_callback:
                                 await progress_callback(progress, f"翻译 {target_lang} 失败: {str(e)[:50]}")
-            
+
             if progress_callback:
                 await progress_callback(98.0, "清理临时文件...")
-            
+
             # 6. 清理临时文件
             if audio_path.exists():
                 audio_path.unlink()
-            
+
             if progress_callback:
                 await progress_callback(100.0, "处理完成")
-            
+
             logger.info(f"Video processing completed: {len(output_files)} files generated")
-            
+
             return {
                 "success": True,
                 "output_files": output_files,
@@ -1262,7 +1262,7 @@ print(json.dumps({{
                 "segments_count": len(segments),
                 "duration": result.get('duration', 0) if isinstance(result, dict) else 0
             }
-            
+
         except Exception as e:
             logger.error(f"Video processing failed: {e}")
             raise

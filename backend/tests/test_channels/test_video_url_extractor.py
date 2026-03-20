@@ -112,10 +112,10 @@ def extracted_video_strategy(draw):
 def video_list_strategy(draw):
     """生成视频列表（可能有重复ID）"""
     num_videos = draw(st.integers(min_value=0, max_value=20))
-    
+
     # 生成一些唯一ID
     unique_ids = [draw(video_id_strategy()) for _ in range(max(1, num_videos // 2))]
-    
+
     videos = []
     for i in range(num_videos):
         # 有50%概率使用已有ID（制造重复）
@@ -124,7 +124,7 @@ def video_list_strategy(draw):
         else:
             video_id = draw(video_id_strategy())
             unique_ids.append(video_id)
-        
+
         domain = draw(video_domain_strategy())
         videos.append(ExtractedVideo(
             url=f"https://{domain}/video/{video_id}.mp4?t={i}",
@@ -132,7 +132,7 @@ def video_list_strategy(draw):
             source="http",
             domain=domain,
         ))
-    
+
     return videos
 
 
@@ -144,11 +144,11 @@ def video_list_strategy(draw):
 class TestVideoURLPatternMatching:
     """
     Property 8: Video URL Pattern Matching
-    
+
     For any URL string, the VideoURLExtractor.is_video_url() should return true
     if and only if the URL matches known video号 patterns AND does not match
     exclusion patterns (thumbnails, API calls, etc.).
-    
+
     **Feature: weixin-channels-deep-research, Property 8: Video URL Pattern Matching**
     **Validates: Requirements 6.1, 6.4**
     """
@@ -157,7 +157,7 @@ class TestVideoURLPatternMatching:
     @settings(max_examples=100)
     def test_video_urls_detected(self, url):
         """测试视频URL被正确检测
-        
+
         Property: 所有匹配视频模式的URL应该被检测为视频URL。
         """
         extractor = VideoURLExtractor()
@@ -168,7 +168,7 @@ class TestVideoURLPatternMatching:
     @settings(max_examples=100)
     def test_excluded_urls_rejected(self, url):
         """测试排除URL被正确拒绝
-        
+
         Property: 所有匹配排除模式的URL应该被拒绝。
         """
         extractor = VideoURLExtractor()
@@ -179,7 +179,7 @@ class TestVideoURLPatternMatching:
     @settings(max_examples=100)
     def test_non_video_domains_rejected(self, domain):
         """测试非视频域名被拒绝
-        
+
         Property: 非视频域名的URL应该被拒绝。
         """
         extractor = VideoURLExtractor()
@@ -196,7 +196,7 @@ class TestVideoURLPatternMatching:
     def test_known_video_patterns(self):
         """测试已知视频模式"""
         extractor = VideoURLExtractor()
-        
+
         video_urls = [
             "https://wxapp.tc.qq.com/stodownload?m=abc123",
             "https://finder.video.qq.com/video.mp4",
@@ -206,14 +206,14 @@ class TestVideoURLPatternMatching:
             "https://abc.tc.qq.com/path?encfilekey=xyz",
             "https://mpvideo.qpic.cn/video.mp4",
         ]
-        
+
         for url in video_urls:
             assert extractor.is_video_url(url) is True, f"Should detect: {url}"
 
     def test_known_exclude_patterns(self):
         """测试已知排除模式"""
         extractor = VideoURLExtractor()
-        
+
         excluded_urls = [
             "https://finder.video.qq.com/image.jpg",
             "https://finder.video.qq.com/photo.png",
@@ -223,7 +223,7 @@ class TestVideoURLPatternMatching:
             "https://finder.video.qq.com/beacon/track",
             "https://finder.video.qq.com/thumbnail/small.jpg",
         ]
-        
+
         for url in excluded_urls:
             assert extractor.is_video_url(url) is False, f"Should exclude: {url}"
 
@@ -236,11 +236,11 @@ class TestVideoURLPatternMatching:
 class TestVideoDeduplicationByID:
     """
     Property 9: Video Deduplication by ID
-    
+
     For any sequence of detected videos, the deduplicate() function should return
     a list where no two videos have the same video_id. The first occurrence of
     each video_id should be preserved.
-    
+
     **Feature: weixin-channels-deep-research, Property 9: Video Deduplication by ID**
     **Validates: Requirements 6.5**
     """
@@ -249,12 +249,12 @@ class TestVideoDeduplicationByID:
     @settings(max_examples=100)
     def test_no_duplicate_ids_after_dedup(self, videos):
         """测试去重后没有重复ID
-        
+
         Property: 去重后的列表中不应有两个视频具有相同的video_id。
         """
         extractor = VideoURLExtractor()
         result = extractor.deduplicate(videos)
-        
+
         # 检查没有重复ID
         seen_ids = set()
         for video in result:
@@ -266,18 +266,18 @@ class TestVideoDeduplicationByID:
     @settings(max_examples=100)
     def test_first_occurrence_preserved(self, videos):
         """测试保留第一次出现
-        
+
         Property: 每个video_id的第一次出现应该被保留。
         """
         extractor = VideoURLExtractor()
         result = extractor.deduplicate(videos)
-        
+
         # 构建原始列表中每个ID的第一次出现
         first_occurrences = {}
         for video in videos:
             if video.video_id not in first_occurrences:
                 first_occurrences[video.video_id] = video
-        
+
         # 验证结果中的每个视频都是第一次出现
         for video in result:
             expected = first_occurrences[video.video_id]
@@ -288,18 +288,18 @@ class TestVideoDeduplicationByID:
     @settings(max_examples=100)
     def test_dedup_preserves_order(self, videos):
         """测试去重保持顺序
-        
+
         Property: 去重后的列表应该保持原始顺序。
         """
         extractor = VideoURLExtractor()
         result = extractor.deduplicate(videos)
-        
+
         # 获取原始列表中每个唯一ID的首次出现索引
         first_indices = {}
         for i, video in enumerate(videos):
             if video.video_id not in first_indices:
                 first_indices[video.video_id] = i
-        
+
         # 验证结果顺序
         prev_index = -1
         for video in result:
@@ -331,7 +331,7 @@ class TestVideoDeduplicationByID:
         """测试全部唯一时去重"""
         extractor = VideoURLExtractor()
         videos = [
-            ExtractedVideo(url=f"https://example.com/{i}.mp4", video_id=f"id{i}", 
+            ExtractedVideo(url=f"https://example.com/{i}.mp4", video_id=f"id{i}",
                           source="http", domain="example.com")
             for i in range(5)
         ]
@@ -496,12 +496,12 @@ class TestExtractFromClashConnection:
     def test_extract_from_clash_connection(self):
         """测试从Clash连接提取"""
         extractor = VideoURLExtractor()
-        
+
         conn = Mock()
         conn.host = "finder.video.qq.com"
         conn.dst_ip = "1.2.3.4"
         conn.dst_port = 443
-        
+
         result = extractor.extract_from_clash_connection(conn)
         assert result is not None
         assert result.source == "clash_api"
@@ -509,12 +509,12 @@ class TestExtractFromClashConnection:
     def test_non_video_clash_connection(self):
         """测试非视频Clash连接"""
         extractor = VideoURLExtractor()
-        
+
         conn = Mock()
         conn.host = "www.google.com"
         conn.dst_ip = "1.2.3.4"
         conn.dst_port = 443
-        
+
         result = extractor.extract_from_clash_connection(conn)
         assert result is None
 
@@ -539,26 +539,26 @@ class TestExtractAndDeduplicate:
         """测试拒绝重复"""
         extractor = VideoURLExtractor()
         url = "https://finder.video.qq.com/video.mp4"
-        
+
         result1 = extractor.extract_and_deduplicate(url)
         assert result1 is not None
-        
+
         result2 = extractor.extract_and_deduplicate(url)
         assert result2 is None
-        
+
         assert extractor.get_extracted_count() == 1
 
     def test_clear_extracted_ids(self):
         """测试清除已提取ID"""
         extractor = VideoURLExtractor()
         url = "https://finder.video.qq.com/video.mp4"
-        
+
         extractor.extract_and_deduplicate(url)
         assert extractor.get_extracted_count() == 1
-        
+
         extractor.clear_extracted_ids()
         assert extractor.get_extracted_count() == 0
-        
+
         # 现在可以再次提取
         result = extractor.extract_and_deduplicate(url)
         assert result is not None
@@ -578,7 +578,7 @@ class TestExtractedVideoDataclass:
             decryption_key="key123",
             quality="1080p",
         )
-        
+
         d = video.to_dict()
         assert d["url"] == "https://example.com/video.mp4"
         assert d["video_id"] == "abc123"

@@ -23,7 +23,7 @@ class QRLoginStatus(str, Enum):
 @dataclass
 class QRCodeResult:
     """二维码生成结果
-    
+
     Attributes:
         qrcode_url: 二维码内容URL（用于生成二维码图片，可以是URL或base64图片）
         qrcode_key: 二维码唯一标识（用于轮询状态）
@@ -39,7 +39,7 @@ class QRCodeResult:
 @dataclass
 class QRLoginResult:
     """扫码登录结果
-    
+
     Attributes:
         status: 登录状态
         message: 状态消息（中文）
@@ -58,7 +58,7 @@ class QRCodeResponse(BaseModel):
     qrcode_key: str
     expires_in: int
     message: str
-    
+
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
@@ -75,7 +75,7 @@ class QRStatusResponse(BaseModel):
     """扫码状态响应模型（API响应）"""
     status: str  # loading, waiting, scanned, success, expired, error
     message: str
-    
+
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
@@ -92,7 +92,7 @@ class QRSupportedPlatform(BaseModel):
     platform_name_zh: str
     qr_expiry_seconds: int
     enabled: bool
-    
+
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
@@ -108,7 +108,7 @@ class QRSupportedPlatform(BaseModel):
 class QRSupportedPlatformsResponse(BaseModel):
     """支持扫码登录的平台列表响应"""
     platforms: List[QRSupportedPlatform]
-    
+
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
@@ -136,7 +136,7 @@ class QRLoginErrorResponse(BaseModel):
     status: str = "error"
     error: str
     error_code: Optional[str] = None
-    
+
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
@@ -168,11 +168,11 @@ class QRLoginErrorCode:
 
 def get_status_message(status: QRLoginStatus, platform_name_zh: str = "") -> str:
     """获取状态对应的中文消息
-    
+
     Args:
         status: 登录状态
         platform_name_zh: 平台中文名称
-        
+
     Returns:
         对应的中文状态消息
     """

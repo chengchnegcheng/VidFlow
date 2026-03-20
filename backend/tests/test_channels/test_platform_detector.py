@@ -53,7 +53,7 @@ def valid_channels_url_strategy(draw):
         min_size=0,
         max_size=50
     ))
-    
+
     # 对于 szextshort.weixin.qq.com，需要包含 finder
     if domain == "szextshort.weixin.qq.com":
         path = f"/finder/{path}"
@@ -87,20 +87,20 @@ def random_url_strategy(draw):
         min_size=3,
         max_size=15
     ))
-    
+
     subdomain = draw(st.one_of(
         st.just(""),
         st.text(alphabet="abcdefghijklmnopqrstuvwxyz", min_size=2, max_size=10).map(lambda x: x + ".")
     ))
-    
+
     domain = f"{subdomain}{domain_name}{tld}"
-    
+
     path = draw(st.text(
         alphabet="abcdefghijklmnopqrstuvwxyz0123456789/-_",
         min_size=0,
         max_size=50
     ))
-    
+
     protocol = draw(st.sampled_from(["http://", "https://"]))
     return f"{protocol}{domain}/{path}"
 
@@ -113,11 +113,11 @@ def random_url_strategy(draw):
 class TestURLPatternDetection:
     """
     Property 2: URL Pattern Detection Correctness
-    
+
     For any URL string, the PlatformDetector.is_channels_video_url() function
     should return true if and only if the URL matches known video号 patterns
     (finder.video.qq.com, channels.weixin.qq.com, etc.), and false for all other URLs.
-    
+
     **Feature: weixin-channels-download, Property 2: URL Pattern Detection Correctness**
     **Validates: Requirements 2.1**
     """
@@ -143,7 +143,7 @@ class TestURLPatternDetection:
         result1 = PlatformDetector.is_channels_video_url(url)
         result2 = PlatformDetector.is_channels_video_url(url)
         result3 = PlatformDetector.is_channels_video_url(url)
-        
+
         assert result1 == result2 == result3, "Detection should be deterministic"
 
     def test_empty_url_returns_false(self):
@@ -161,7 +161,7 @@ class TestURLPatternDetection:
             "https://mpvideo.qpic.cn/video/abc123.mp4",
             "http://finder.video.wechat.com/video/test",
         ]
-        
+
         for url in valid_urls:
             assert PlatformDetector.is_channels_video_url(url) is True, f"Should detect: {url}"
 
@@ -177,7 +177,7 @@ class TestURLPatternDetection:
             "https://mp.weixin.qq.com/s/abc123",  # 公众号文章，不是视频号
             "ftp://finder.video.qq.com/video",  # 不同协议
         ]
-        
+
         for url in invalid_urls:
             assert PlatformDetector.is_channels_video_url(url) is False, f"Should reject: {url}"
 
@@ -188,7 +188,7 @@ class TestURLPatternDetection:
             "https://Finder.Video.QQ.Com/video/123",
             "https://finder.video.qq.com/video/123",
         ]
-        
+
         for url in urls:
             assert PlatformDetector.is_channels_video_url(url) is True
 
@@ -294,7 +294,7 @@ class TestContentTypeDetection:
             "application/octet-stream",
             "application/mp4",
         ]
-        
+
         for ct in video_types:
             assert PlatformDetector.is_video_content_type(ct) is True
 
@@ -306,7 +306,7 @@ class TestContentTypeDetection:
             "image/png",
             "audio/mp3",
         ]
-        
+
         for ct in non_video_types:
             assert PlatformDetector.is_video_content_type(ct) is False
 

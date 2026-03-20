@@ -287,27 +287,27 @@ async def get_system_info():
     try:
         # CPU 使用率
         cpu_usage = psutil.cpu_percent(interval=0.1)
-        
+
         # 内存使用率
         memory = psutil.virtual_memory()
         memory_usage = memory.percent
-        
+
         # 磁盘使用率
         disk = psutil.disk_usage('/')
         disk_usage = disk.percent
-        
+
         # 网络速度（简化版，实际需要持续监控）
         network_speed = {
             "download": 0,
             "upload": 0
         }
-        
+
         # 运行时长
         uptime_seconds = (datetime.now() - START_TIME).total_seconds()
         hours = int(uptime_seconds // 3600)
         minutes = int((uptime_seconds % 3600) // 60)
         uptime = f"{hours}h {minutes}m"
-        
+
         return SystemInfo(
             cpu_usage=round(cpu_usage, 1),
             memory_usage=round(memory_usage, 1),
@@ -330,11 +330,11 @@ _GITHUB_VERSION_CACHE_ERROR_TTL_SECONDS = 60
 async def _get_github_version(repo: str, timeout: float = 5.0) -> Optional[str]:
     """
     从 GitHub API 获取最新版本号
-    
+
     Args:
         repo: GitHub 仓库，格式为 "owner/repo"（如 "yt-dlp/yt-dlp"）
         timeout: 超时时间
-    
+
     Returns:
         版本字符串或 None
     """
@@ -392,39 +392,39 @@ async def _get_github_version(repo: str, timeout: float = 5.0) -> Optional[str]:
 async def _get_tool_version(tool_path: str, version_arg: str, parse_fn=None, timeout: float = 5.0) -> Optional[str]:
     """
     通用工具版本检查函数（支持并行执行）
-    
+
     Args:
         tool_path: 工具路径
         version_arg: 版本查询参数（如 "-version" 或 "--version"）
         parse_fn: 可选的版本解析函数
-    
+
     Returns:
         版本字符串或 None
     """
     try:
         import asyncio
         import os
-        
+
         # 检查工具是否存在
         if not os.path.exists(tool_path):
             logger.warning(f"[Version Check] Tool not found: {tool_path}")
             return None
-        
+
         logger.debug(f"[Version Check] Getting version for: {tool_path} {version_arg}")
-        
+
         process = await asyncio.create_subprocess_exec(
             str(tool_path), version_arg,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE
         )
-        
+
         # 设置超时（默认 5 秒，yt-dlp/ffmpeg 足够）
         try:
             stdout, stderr = await asyncio.wait_for(
                 process.communicate(),
                 timeout=timeout
             )
-            
+
             # yt-dlp 和 ffmpeg 都可能输出到 stdout 或 stderr
             output_raw = stdout or stderr
             if output_raw:
@@ -437,7 +437,7 @@ async def _get_tool_version(tool_path: str, version_arg: str, parse_fn=None, tim
                         return result
                     logger.info(f"[Version Check] {tool_path}: {output[:50]}")
                     return output
-            
+
             logger.warning(f"[Version Check] {tool_path} {version_arg}: no output (returncode={process.returncode})")
         except asyncio.TimeoutError:
             logger.warning(f"[Version Check] {tool_path} {version_arg}: timeout after {timeout}s")
@@ -455,17 +455,17 @@ async def check_tools_status():
     from src.core.tool_manager import get_tool_manager
     import sys
     import asyncio
-    
+
     tools = []
     tool_mgr = get_tool_manager()
-    
+
     # 获取工具路径
     ffmpeg_path = tool_mgr.get_ffmpeg_path() or shutil.which("ffmpeg")
     ytdlp_path = tool_mgr.get_ytdlp_path() or shutil.which("yt-dlp")
-    
+
     # 检查内置版本
     from src.core.tool_manager import BUNDLED_BIN_DIR
-    
+
     def is_bundled(tool_path):
         if not tool_path or not BUNDLED_BIN_DIR:
             return False
@@ -474,10 +474,10 @@ async def check_tools_status():
         except:
             # Python < 3.9 兼容
             return str(BUNDLED_BIN_DIR) in str(tool_path)
-    
+
     ffmpeg_bundled = is_bundled(ffmpeg_path)
     ytdlp_bundled = is_bundled(ytdlp_path)
-    
+
     # 并行检查版本（性能优化：2秒而非4秒）
     def parse_ffmpeg_version(output):
         """解析 FFmpeg 版本"""
@@ -490,24 +490,24 @@ async def check_tools_status():
                     if part.lower() == 'version' and i + 1 < len(parts):
                         return parts[i + 1]
         return None
-    
+
     version_tasks = []
-    
+
     # FFmpeg 优先从 GitHub 获取版本（使用 BtbN/FFmpeg-Builds 仓库）
     if ffmpeg_path:
         version_tasks.append(_get_github_version("BtbN/FFmpeg-Builds", timeout=5.0))
     else:
         version_tasks.append(asyncio.sleep(0, result=None))  # 占位任务
-    
+
     # yt-dlp 优先从 GitHub 获取版本
     if ytdlp_path:
         version_tasks.append(_get_github_version("yt-dlp/yt-dlp", timeout=5.0))
     else:
         version_tasks.append(asyncio.sleep(0, result=None))  # 占位任务
-    
+
     # 并行执行版本检查
     ffmpeg_version, ytdlp_version = await asyncio.gather(*version_tasks, return_exceptions=True)
-    
+
     # 处理异常结果
     if isinstance(ffmpeg_version, Exception):
         ffmpeg_version = None
@@ -519,7 +519,7 @@ async def check_tools_status():
             ffmpeg_version = await _get_tool_version(str(ffmpeg_path), "-version", parse_ffmpeg_version)
         except Exception:
             ffmpeg_version = None
-    
+
     # 添加 FFmpeg 工具状态
     tools.append(ToolStatus(
         id="ffmpeg",
@@ -532,12 +532,12 @@ async def check_tools_status():
         official_url="https://ffmpeg.org",
         bundled=ffmpeg_bundled
     ))
-    
+
     # 调试日志（yt-dlp）
     logger.info(f"[yt-dlp] Path from tool_mgr: {tool_mgr.get_ytdlp_path()}")
     logger.info(f"[yt-dlp] Path from which: {shutil.which('yt-dlp')}")
     logger.info(f"[yt-dlp] Final path: {ytdlp_path}")
-    
+
     # 添加 yt-dlp 工具状态
     tools.append(ToolStatus(
         id="ytdlp",
@@ -551,16 +551,16 @@ async def check_tools_status():
         bundled=ytdlp_bundled,
         updating=tool_mgr._updating_tools.get("ytdlp", False)
     ))
-    
+
     # 检查 faster-whisper
     whisper_available = await tool_mgr.check_faster_whisper()
     whisper_version = None
     whisper_compatible = True
     whisper_reason = None
-    
+
     # 注意：不再硬编码Python版本检查
     # faster-whisper的兼容性由pip在安装时自然处理
-    
+
     if whisper_available:
         try:
             try:
@@ -574,7 +574,7 @@ async def check_tools_status():
                 pass
         except Exception:
             pass
-    
+
     tools.append(ToolStatus(
         id="faster-whisper",
         name="faster-whisper",
@@ -586,7 +586,7 @@ async def check_tools_status():
         compatible=whisper_compatible,
         incompatible_reason=whisper_reason
     ))
-    
+
     # 检查 Playwright（用于抖音/TikTok下载）
     playwright_status = await tool_mgr.check_playwright_status()
     tools.append(ToolStatus(
@@ -601,7 +601,7 @@ async def check_tools_status():
         compatible=True,
         incompatible_reason=playwright_status.get("error")
     ))
-    
+
     return tools
 
 @router.get("/storage")
@@ -611,10 +611,10 @@ async def get_storage_info(db: AsyncSession = Depends(get_session)):
         from pathlib import Path
         from sqlalchemy import select, func
         from src.models.download import DownloadTask
-        
+
         base_dir = get_base_dir()
         data_dir = base_dir / "data"
-        
+
         def get_dir_size(path: Path) -> int:
             """计算目录大小"""
             total = 0
@@ -627,7 +627,7 @@ async def get_storage_info(db: AsyncSession = Depends(get_session)):
             except Exception:
                 pass
             return total
-        
+
         def format_size(bytes_size: int) -> str:
             """格式化大小"""
             if bytes_size == 0:
@@ -637,19 +637,19 @@ async def get_storage_info(db: AsyncSession = Depends(get_session)):
                     return f"{bytes_size:.1f} {unit}"
                 bytes_size /= 1024.0
             return f"{bytes_size:.1f} TB"
-        
+
         # 数据库大小
         db_path = data_dir / "database.db"
         db_size = get_dir_size(db_path) if db_path.exists() else 0
-        
+
         # 缓存大小
         temp_dir = data_dir / "temp"
         cache_size = get_dir_size(temp_dir) if temp_dir.exists() else 0
-        
+
         # 日志大小
         logs_dir = data_dir / "logs"
         logs_size = get_dir_size(logs_dir) if logs_dir.exists() else 0
-        
+
         # 获取下载历史计数
         download_count = 0
         try:
@@ -657,7 +657,7 @@ async def get_storage_info(db: AsyncSession = Depends(get_session)):
             download_count = result.scalar() or 0
         except Exception as e:
             logger.warning(f"Failed to get download count: {e}")
-        
+
         return {
             "database_size": format_size(db_size),
             "cache_size": format_size(cache_size),
@@ -674,21 +674,21 @@ async def clear_cache():
     try:
         base_dir = get_base_dir()
         cleared_items = []
-        
+
         # 清理 temp 目录
         temp_dir = base_dir / "data" / "temp"
         if temp_dir.exists():
             shutil.rmtree(temp_dir)
             temp_dir.mkdir(parents=True, exist_ok=True)
             cleared_items.append("temp")
-        
+
         # 清理视频信息缓存目录
         cache_dir = base_dir / "cache" / "video_info"
         if cache_dir.exists():
             shutil.rmtree(cache_dir)
             cache_dir.mkdir(parents=True, exist_ok=True)
             cleared_items.append("video_info")
-        
+
         # 清理内存缓存
         try:
             from src.core.downloaders.cache_manager import get_cache
@@ -697,7 +697,7 @@ async def clear_cache():
             cleared_items.append("memory_cache")
         except Exception as e:
             logger.warning(f"Failed to clear memory cache: {e}")
-        
+
         return {
             "message": "缓存已清理",
             "cleared": cleared_items
@@ -723,14 +723,14 @@ async def get_downloads_path():
     """获取 VidFlow 默认下载文件夹路径"""
     try:
         sys_platform = platform.system()
-        
+
         # 获取用户主目录下的 Downloads/VidFlow 文件夹
         home_dir = os.path.expanduser("~")
         downloads_path = os.path.join(home_dir, "Downloads", "VidFlow")
-        
+
         # 确保目录存在
         Path(downloads_path).mkdir(parents=True, exist_ok=True)
-        
+
         return {"path": downloads_path}
     except Exception as e:
         # 即使出错也返回 200，只是路径为空
@@ -741,10 +741,10 @@ async def get_downloads_path():
 async def websocket_endpoint(websocket: WebSocket):
     """WebSocket 端点 - 用于实时推送进度"""
     from src.core.websocket_manager import get_ws_manager
-    
+
     ws_manager = get_ws_manager()
     await ws_manager.connect(websocket)
-    
+
     try:
         while True:
             # 保持连接，接收客户端消息（如果需要）
@@ -764,20 +764,20 @@ async def install_ffmpeg():
     try:
         from src.core.tool_manager import get_tool_manager, BIN_DIR
         from src.core.websocket_manager import get_ws_manager
-        
+
         tool_mgr = get_tool_manager()
         ws_manager = get_ws_manager()
-        
+
         # 设置进度回调
         async def progress_callback(tool_id: str, progress: int, message: str):
             await ws_manager.send_tool_progress(tool_id, progress, message)
-        
+
         tool_mgr.set_progress_callback(progress_callback)
-        
+
         # 获取远程版本（使用 BtbN/FFmpeg-Builds 仓库）
         remote_version = await _get_github_version("BtbN/FFmpeg-Builds", timeout=5.0)
         logger.info(f"[Tools] GitHub FFmpeg-Builds version: {remote_version}")
-        
+
         if not remote_version:
             logger.warning("[Tools] Failed to get FFmpeg version from GitHub, will update anyway")
             # 无法获取远程版本，进行更新以确保最新
@@ -790,7 +790,7 @@ async def install_ffmpeg():
                 "updated": True,
                 "version": "unknown"
             }
-        
+
         # 读取本地版本记录文件
         version_file = BIN_DIR / ".ffmpeg_version"
         local_version = None
@@ -799,9 +799,9 @@ async def install_ffmpeg():
                 local_version = version_file.read_text().strip()
             except Exception as e:
                 logger.debug(f"[Tools] Failed to read local version: {e}")
-        
+
         logger.info(f"[Tools] FFmpeg version check: local={local_version}, remote={remote_version}")
-        
+
         # 比较版本
         if local_version == remote_version:
             # 版本相同，无需更新
@@ -813,19 +813,19 @@ async def install_ffmpeg():
                 "updated": False,
                 "version": remote_version
             }
-        
+
         # 版本不同或无本地版本记录，进行更新
         logger.info(f"[Tools] FFmpeg version mismatch, updating from {local_version} to {remote_version}...")
         await tool_mgr.download_ffmpeg()
         ffmpeg_path = await tool_mgr.setup_ffmpeg()
-        
+
         # 保存版本号到文件
         try:
             version_file.write_text(remote_version)
             logger.info(f"[Tools] Saved FFmpeg version: {remote_version}")
         except Exception as e:
             logger.warning(f"[Tools] Failed to save version file: {e}")
-        
+
         return {
             "success": True,
             "message": f"FFmpeg 更新成功 (版本: {remote_version})",
@@ -844,20 +844,20 @@ async def install_ytdlp():
         from src.core.tool_manager import get_tool_manager, BIN_DIR
         from src.core.websocket_manager import get_ws_manager
         import json
-        
+
         tool_mgr = get_tool_manager()
         ws_manager = get_ws_manager()
-        
+
         # 设置进度回调
         async def progress_callback(tool_id: str, progress: int, message: str):
             await ws_manager.send_tool_progress(tool_id, progress, message)
-        
+
         tool_mgr.set_progress_callback(progress_callback)
-        
+
         # 获取远程版本
         remote_version = await _get_github_version("yt-dlp/yt-dlp", timeout=5.0)
         logger.info(f"[Tools] GitHub yt-dlp version: {remote_version}")
-        
+
         if not remote_version:
             logger.warning("[Tools] Failed to get yt-dlp version from GitHub, will update anyway")
             # 无法获取远程版本，进行更新以确保最新
@@ -870,7 +870,7 @@ async def install_ytdlp():
                 "updated": True,
                 "version": "unknown"
             }
-        
+
         # 读取本地版本记录文件
         version_file = BIN_DIR / ".ytdlp_version"
         local_version = None
@@ -879,9 +879,9 @@ async def install_ytdlp():
                 local_version = version_file.read_text().strip()
             except Exception as e:
                 logger.debug(f"[Tools] Failed to read local version: {e}")
-        
+
         logger.info(f"[Tools] yt-dlp version check: local={local_version}, remote={remote_version}")
-        
+
         # 比较版本
         if local_version == remote_version:
             # 版本相同，无需更新
@@ -893,19 +893,19 @@ async def install_ytdlp():
                 "updated": False,
                 "version": remote_version
             }
-        
+
         # 版本不同或无本地版本记录，进行更新
         logger.info(f"[Tools] yt-dlp version mismatch, updating from {local_version} to {remote_version}...")
         await tool_mgr.download_ytdlp()
         ytdlp_path = await tool_mgr.setup_ytdlp()
-        
+
         # 保存版本号到文件
         try:
             version_file.write_text(remote_version)
             logger.info(f"[Tools] Saved yt-dlp version: {remote_version}")
         except Exception as e:
             logger.warning(f"[Tools] Failed to save version file: {e}")
-        
+
         return {
             "success": True,
             "message": f"yt-dlp 更新成功 (版本: {remote_version})",
@@ -926,10 +926,10 @@ async def install_playwright(background_tasks: BackgroundTasks = None):
     try:
         from src.core.tool_manager import get_tool_manager
         from src.core.websocket_manager import get_ws_manager
-        
+
         tool_mgr = get_tool_manager()
         ws_manager = get_ws_manager()
-        
+
         # 先检查是否已安装
         status = await tool_mgr.check_playwright_status()
         if status.get("installed"):
@@ -939,17 +939,17 @@ async def install_playwright(background_tasks: BackgroundTasks = None):
                 "version": status.get("version"),
                 "already_installed": True
             }
-        
+
         # 后台安装任务
         async def install_task():
             try:
                 # 进度回调
                 async def progress_callback(percent, message):
                     await ws_manager.send_tool_progress("playwright", percent, message)
-                
+
                 await ws_manager.send_tool_progress("playwright", 0, "开始安装 Playwright...")
                 result = await tool_mgr.install_playwright(progress_callback)
-                
+
                 if result.get("success"):
                     await ws_manager.send_tool_progress("playwright", 100, result.get("message", "安装完成"))
                 else:
@@ -965,7 +965,7 @@ async def install_playwright(background_tasks: BackgroundTasks = None):
                     "tool_id": "playwright",
                     "error": str(e)
                 })
-        
+
         # 添加到后台任务
         if background_tasks:
             background_tasks.add_task(install_task)
@@ -973,13 +973,13 @@ async def install_playwright(background_tasks: BackgroundTasks = None):
             import asyncio
             t = asyncio.create_task(install_task())
             t.add_done_callback(_handle_task_exception)
-        
+
         return {
             "success": True,
             "message": "Playwright 安装任务已启动，请通过 WebSocket 查看进度",
             "status": "started"
         }
-    
+
     except Exception as e:
         logger.error(f"Install Playwright failed: {e}")
         raise HTTPException(status_code=500, detail=f"安装失败: {str(e)}")
@@ -989,10 +989,10 @@ async def get_playwright_status():
     """获取 Playwright 安装状态"""
     try:
         from src.core.tool_manager import get_tool_manager
-        
+
         tool_mgr = get_tool_manager()
         status = await tool_mgr.check_playwright_status()
-        
+
         return {
             "status": "success",
             **status
@@ -1006,19 +1006,19 @@ async def download_ytdlp():
     """下载/更新 yt-dlp"""
     try:
         from src.core.tool_manager import get_tool_manager
-        
+
         tool_mgr = get_tool_manager()
-        
+
         # 异步下载（后台任务）
         import asyncio
-        
+
         async def download_task():
             await tool_mgr.download_ytdlp()
-        
+
         # 创建后台任务（不等待完成）
         t = asyncio.create_task(download_task())
         t.add_done_callback(_handle_task_exception)
-        
+
         return {
             "success": True,
             "message": "yt-dlp 下载已启动"
@@ -1032,16 +1032,16 @@ async def reset_ytdlp_to_bundled():
     try:
         from pathlib import Path
         import platform
-        
+
         # 确定下载文件的路径
         system = platform.system()
         exe_name = "yt-dlp.exe" if system == "Windows" else "yt-dlp"
-        
+
         # 获取工具目录
         base_dir = Path(__file__).parent.parent.parent
         bin_dir = base_dir / "tools" / "bin"
         downloaded_path = bin_dir / exe_name
-        
+
         if downloaded_path.exists():
             downloaded_path.unlink()  # 删除文件
             logger.info(f"Deleted downloaded yt-dlp: {downloaded_path}")
@@ -1064,15 +1064,15 @@ async def install_whisper():
     try:
         from src.core.tool_manager import get_tool_manager
         from src.core.websocket_manager import get_ws_manager
-        
+
         tool_mgr = get_tool_manager()
         ws_manager = get_ws_manager()
-        
+
         # 发送开始通知
         await ws_manager.send_tool_progress("faster-whisper", 0, "开始安装 faster-whisper...")
-        
+
         success = await tool_mgr.install_faster_whisper()
-        
+
         if success:
             await ws_manager.send_tool_progress("faster-whisper", 100, "安装完成")
             return {
@@ -1176,7 +1176,7 @@ async def install_ai_tools(version: str = "cpu", background_tasks: BackgroundTas
     """
     安装 AI 工具（faster-whisper + PyTorch）
     使用后台任务，立即返回，通过 WebSocket 推送进度
-    
+
     Args:
         version: "cpu" 或 "cuda"
         background_tasks: FastAPI 后台任务
@@ -1184,10 +1184,10 @@ async def install_ai_tools(version: str = "cpu", background_tasks: BackgroundTas
     try:
         from src.core.tool_manager import get_tool_manager
         from src.core.websocket_manager import get_ws_manager
-        
+
         tool_mgr = get_tool_manager()
         ws_manager = get_ws_manager()
-        
+
         # 后台安装任务
         async def install_task():
             try:
@@ -1226,13 +1226,13 @@ async def install_ai_tools(version: str = "cpu", background_tasks: BackgroundTas
             import asyncio
             t = asyncio.create_task(install_task())
             t.add_done_callback(_handle_task_exception)
-        
+
         return {
             "success": True,
             "message": "安装任务已启动，请通过 WebSocket 查看进度",
             "status": "started"
         }
-    
+
     except Exception as e:
         logger.error(f"Install AI tools failed: {e}")
         raise HTTPException(status_code=500, detail=f"安装失败: {str(e)}")
@@ -1291,17 +1291,17 @@ async def install_all_tools():
     """一键安装所有工具"""
     try:
         from src.core.tool_manager import get_tool_manager
-        
+
         tool_mgr = get_tool_manager()
         results = await tool_mgr.setup_all_tools()
-        
+
         # 安装 faster-whisper
         whisper_success = await tool_mgr.install_faster_whisper()
         results['faster-whisper'] = {
             'success': whisper_success,
             'message': '安装成功' if whisper_success else '安装失败'
         }
-        
+
         return {
             "success": True,
             "message": "工具安装完成",
@@ -1315,7 +1315,7 @@ async def update_dependencies():
     """更新所有 Python 依赖包"""
     try:
         import sys
-        
+
         # 使用异步 subprocess 避免阻塞
         # 更新 pip
         process = await asyncio.create_subprocess_exec(
@@ -1324,10 +1324,10 @@ async def update_dependencies():
             stderr=asyncio.subprocess.PIPE
         )
         await process.communicate()
-        
+
         if process.returncode != 0:
             raise Exception("pip 更新失败")
-        
+
         # 更新所有已安装的包
         process = await asyncio.create_subprocess_exec(
             sys.executable, '-m', 'pip', 'install', '--upgrade', '-r', 'requirements.txt',
@@ -1335,11 +1335,11 @@ async def update_dependencies():
             stderr=asyncio.subprocess.PIPE
         )
         stdout, stderr = await process.communicate()
-        
+
         if process.returncode != 0:
             error_msg = stderr.decode('utf-8', errors='ignore')
             raise Exception(f"依赖包更新失败: {error_msg}")
-        
+
         return {
             "success": True,
             "message": "依赖包更新成功"
@@ -1353,7 +1353,7 @@ async def open_terminal():
     try:
         import subprocess
         system = platform.system()
-        
+
         if system == "Windows":
             # Windows: 打开 PowerShell 在项目目录
             subprocess.Popen(['powershell.exe'], cwd=os.getcwd())
@@ -1363,7 +1363,7 @@ async def open_terminal():
         else:
             # Linux: 打开默认终端
             subprocess.Popen(['x-terminal-emulator'], cwd=os.getcwd())
-        
+
         return {
             "success": True,
             "message": "终端已打开"
@@ -1375,7 +1375,7 @@ async def open_terminal():
 async def get_python_info():
     """获取 Python 环境信息"""
     import sys
-    
+
     return {
         "python_version": f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
         "python_path": sys.executable,
@@ -1398,15 +1398,15 @@ async def check_proxy():
     """检测网络连接（测试是否能访问 Google）"""
     import httpx
     import time
-    
+
     # 获取系统代理设置（可能为空）
     http_proxy = os.environ.get('HTTP_PROXY') or os.environ.get('http_proxy')
     https_proxy = os.environ.get('HTTPS_PROXY') or os.environ.get('https_proxy')
     proxy_url = https_proxy or http_proxy
-    
+
     test_url = "https://www.google.com"
     start_time = time.time()
-    
+
     try:
         # 根据是否有代理配置，选择不同的客户端创建方式
         if proxy_url:
@@ -1422,11 +1422,11 @@ async def check_proxy():
                 timeout=10.0,
                 follow_redirects=True
             )
-        
+
         async with client:
             response = await client.head(test_url)  # 使用 HEAD 请求更快
             response_time = time.time() - start_time
-            
+
             if response.status_code in [200, 301, 302]:  # 允许重定向
                 return ProxyStatus(
                     available=True,
@@ -1440,7 +1440,7 @@ async def check_proxy():
                     proxy_url=proxy_url if proxy_url else "直接连接",
                     error=f"无法访问 Google (HTTP {response.status_code})"
                 )
-    
+
     except httpx.TimeoutException:
         return ProxyStatus(
             available=False,
@@ -1465,7 +1465,7 @@ async def open_folder(request: dict = Body(...)):
     """打开文件夹"""
     import subprocess
     import platform
-    
+
     folder_path = request.get("path")
     path = _validate_folder_path(folder_path)
 
@@ -1488,13 +1488,13 @@ async def select_file(request: dict = Body(...)):
     """打开文件选择对话框"""
     import tkinter as tk
     from tkinter import filedialog
-    
+
     try:
         # 创建隐藏的 Tk 窗口
         root = tk.Tk()
         root.withdraw()
         root.attributes('-topmost', True)
-        
+
         # 获取过滤器
         filters = request.get("filters", [])
         filetypes = []
@@ -1503,23 +1503,23 @@ async def select_file(request: dict = Body(...)):
             extensions = f.get("extensions", ["*"])
             ext_str = ";".join([f"*.{ext}" for ext in extensions])
             filetypes.append((name, ext_str))
-        
+
         if not filetypes:
             filetypes = [("所有文件", "*.*")]
-        
+
         # 打开文件选择对话框
         file_path = filedialog.askopenfilename(
             title="选择文件",
             filetypes=filetypes
         )
-        
+
         root.destroy()
-        
+
         if file_path:
             return {"path": file_path}
         else:
             return {"path": None}
-            
+
     except Exception as e:
         logger.error(f"Failed to select file: {e}")
         raise HTTPException(status_code=500, detail=f"选择文件失败: {str(e)}")
@@ -1529,13 +1529,13 @@ async def save_file(request: dict = Body(...)):
     """打开文件保存对话框"""
     import tkinter as tk
     from tkinter import filedialog
-    
+
     try:
         # 创建隐藏的 Tk 窗口
         root = tk.Tk()
         root.withdraw()
         root.attributes('-topmost', True)
-        
+
         # 获取默认路径和过滤器
         default_path = request.get("default_path", "")
         if default_path:
@@ -1551,10 +1551,10 @@ async def save_file(request: dict = Body(...)):
             extensions = f.get("extensions", ["*"])
             ext_str = ";".join([f"*.{ext}" for ext in extensions])
             filetypes.append((name, ext_str))
-        
+
         if not filetypes:
             filetypes = [("所有文件", "*.*")]
-        
+
         # 打开文件保存对话框
         file_path = filedialog.asksaveasfilename(
             title="保存文件",
@@ -1562,14 +1562,14 @@ async def save_file(request: dict = Body(...)):
             filetypes=filetypes,
             defaultextension=".mp4"
         )
-        
+
         root.destroy()
-        
+
         if file_path:
             return {"path": file_path}
         else:
             return {"path": None}
-            
+
     except Exception as e:
         logger.error(f"Failed to save file: {e}")
         raise HTTPException(status_code=500, detail=f"保存文件失败: {str(e)}")
@@ -1579,10 +1579,10 @@ async def get_gpu_status():
     """获取GPU状态和加速插件信息"""
     try:
         from src.core.gpu_manager import get_gpu_manager
-        
+
         gpu_mgr = get_gpu_manager()
         status = await gpu_mgr.get_status()  # 异步调用
-        
+
         return status
     except Exception as e:
         logger.error(f"Failed to get GPU status: {e}")
@@ -1594,10 +1594,10 @@ async def install_gpu_package(background_tasks: BackgroundTasks = None):
     try:
         from src.core.gpu_manager import get_gpu_manager
         from src.core.websocket_manager import get_ws_manager
-        
+
         gpu_mgr = get_gpu_manager()
         ws_manager = get_ws_manager()
-        
+
         # 启动后台安装任务
         async def install_task():
             try:
@@ -1637,7 +1637,7 @@ async def install_gpu_package(background_tasks: BackgroundTasks = None):
         else:
             t = asyncio.create_task(install_task())
             t.add_done_callback(_handle_task_exception)
-        
+
         return {
             "status": "success",
             "success": True,
@@ -1844,7 +1844,7 @@ async def get_cookies_status():
     try:
         cookies_dir = get_cookies_dir()
         status_list = []
-        
+
         for platform_id, platform_info in SUPPORTED_PLATFORMS.items():
             cookie_file = cookies_dir / platform_info["filename"]
             configured = cookie_file.exists() and cookie_file.stat().st_size > 0
@@ -1857,14 +1857,14 @@ async def get_cookies_status():
                 category=platform_info["category"],
                 guide_url=platform_info["guide_url"]
             )
-            
+
             if configured:
                 stat = cookie_file.stat()
                 status.file_size = stat.st_size
                 status.last_modified = datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M:%S")
-            
+
             status_list.append(status)
-        
+
         return {
             "status": "success",
             "platforms": status_list
@@ -1959,19 +1959,19 @@ async def get_cookie_content(platform: str):
     try:
         if platform not in SUPPORTED_PLATFORMS:
             raise HTTPException(status_code=400, detail=f"不支持的平台: {platform}")
-        
+
         cookies_dir = get_cookies_dir()
         cookie_file = cookies_dir / SUPPORTED_PLATFORMS[platform]["filename"]
-        
+
         if not cookie_file.exists():
             return {
                 "status": "success",
                 "content": "",
                 "configured": False
             }
-        
+
         content = read_cookie_file(cookie_file)
-        
+
         return {
             "status": "success",
             "content": content,
@@ -1991,28 +1991,28 @@ async def save_cookie_content(platform: str, cookie_data: CookieContent):
     try:
         if platform not in SUPPORTED_PLATFORMS:
             raise HTTPException(status_code=400, detail=f"不支持的平台: {platform}")
-        
+
         cookies_dir = get_cookies_dir()
         cookie_file = cookies_dir / SUPPORTED_PLATFORMS[platform]["filename"]
-        
+
         # 验证 Cookie 格式
         is_valid, errors, cleaned_content = validate_netscape_cookie_format(cookie_data.content)
-        
+
         if errors:
             # 有格式错误，返回详细错误信息
             error_summary = f"Cookie 格式存在 {len(errors)} 个错误:\n" + "\n".join(errors[:5])
             if len(errors) > 5:
                 error_summary += f"\n... 还有 {len(errors) - 5} 个错误"
-            
+
             raise HTTPException(
-                status_code=400, 
+                status_code=400,
                 detail={
                     "message": error_summary,
                     "errors": errors,
                     "error_count": len(errors)
                 }
             )
-        
+
         # 保存Cookie内容
         write_cookie_file(cookie_file, cookie_data.content)
         # region agent log
@@ -2038,7 +2038,7 @@ async def save_cookie_content(platform: str, cookie_data: CookieContent):
         except Exception:
             pass
         # endregion
-        
+
         return {
             "status": "success",
             "message": f"{SUPPORTED_PLATFORMS[platform]['name']} Cookie已保存",
@@ -2057,16 +2057,16 @@ async def delete_cookie(platform: str):
     try:
         if platform not in SUPPORTED_PLATFORMS:
             raise HTTPException(status_code=400, detail=f"不支持的平台: {platform}")
-        
+
         cookies_dir = get_cookies_dir()
         cookie_file = cookies_dir / SUPPORTED_PLATFORMS[platform]["filename"]
-        
+
         if cookie_file.exists():
             cookie_file.unlink()
             message = f"{SUPPORTED_PLATFORMS[platform]['name']} Cookie已删除"
         else:
             message = f"{SUPPORTED_PLATFORMS[platform]['name']} Cookie不存在"
-        
+
         return {
             "status": "success",
             "message": message
@@ -2084,10 +2084,10 @@ async def check_selenium_status():
     """检查Selenium是否可用"""
     try:
         from src.core.cookie_helper import get_cookie_browser_manager
-        
+
         manager = get_cookie_browser_manager()
         status = manager.get_status()
-        
+
         return {
             "status": "success",
             "data": status
@@ -2129,24 +2129,24 @@ async def extract_cookies_from_browser():
     """从浏览器提取Cookie"""
     try:
         from src.core.cookie_helper import get_cookie_browser_manager
-        
+
         manager = get_cookie_browser_manager()
         result = await manager.extract_cookies()
-        
+
         # 业务层面的错误（如未登录、未检测到平台 Cookie）直接返回给前端
         # 由前端根据 status 字段展示友好提示，而不是抛 HTTP 错误
         if result.get("status") == "error":
             return result
-        
+
         # 自动保存到文件
         platform = result.get("platform")
         content = result.get("content")
-        
+
         if platform and content:
             cookies_dir = get_cookies_dir()
             # 确保目录存在
             cookies_dir.mkdir(parents=True, exist_ok=True)
-            
+
             cookie_file = cookies_dir / SUPPORTED_PLATFORMS[platform]["filename"]
             try:
                 write_cookie_file(cookie_file, content)
@@ -2157,7 +2157,7 @@ async def extract_cookies_from_browser():
                     "status": "error",
                     "error": f"保存 Cookie 文件失败: {str(write_error)}"
                 }
-        
+
         return result
     except Exception as e:
         logger.error(f"Failed to extract cookies: {e}")

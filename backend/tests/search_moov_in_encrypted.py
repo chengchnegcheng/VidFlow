@@ -26,7 +26,7 @@ for key in range(256):
     decrypted = bytearray(encrypted_data)
     for i in range(len(decrypted)):
         decrypted[i] ^= key
-    
+
     # 搜索 moov
     moov_pos = decrypted.find(b'moov')
     if moov_pos > 4:
@@ -35,31 +35,31 @@ for key in range(256):
             box_size = struct.unpack('>I', decrypted[moov_pos-4:moov_pos])[0]
             if 8 <= box_size <= len(encrypted_data):
                 print(f'✓ 密钥 0x{key:02X}: 在位置 {moov_pos-4} 找到 moov box (大小: {box_size} 字节)')
-                
+
                 # 显示解密后的数据
                 print(f'  解密后的前32字节:')
                 print(f'  {" ".join(f"{b:02X}" for b in decrypted[:32])}')
-                
+
                 # 检查是否有 ftyp
                 ftyp_pos = decrypted.find(b'ftyp')
                 if ftyp_pos > 0:
                     print(f'  也找到 ftyp 在位置 {ftyp_pos}')
-                
+
                 # 尝试重建完整文件
                 print(f'\n  尝试重建完整的 MP4 文件...')
-                
+
                 # 解密整个头部
                 full_decrypted = bytearray(data)
                 for i in range(encrypted_header_size):
                     full_decrypted[i] ^= key
-                
+
                 output_file = file_path.with_name('视频号_完整解密.mp4')
                 output_file.write_bytes(full_decrypted)
-                
+
                 print(f'  ✓ 已保存到: {output_file}')
                 print(f'  文件大小: {len(full_decrypted)} 字节')
                 print(f'  文件头: {" ".join(f"{b:02X}" for b in full_decrypted[:32])}')
-                
+
                 # 验证文件头
                 if full_decrypted[4:8] == b'ftyp':
                     print(f'\n  ✓✓✓ 成功！文件头是有效的 MP4 (ftyp)！')

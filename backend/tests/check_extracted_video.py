@@ -10,18 +10,18 @@ video_path = Path("D:/Coding Project/VidFlow/VidFlow/backend/tests/output/视频
 if video_path.exists():
     print(f"✅ 文件存在: {video_path}")
     print(f"文件大小: {video_path.stat().st_size / 1024 / 1024:.2f} MB")
-    
+
     # 检查文件头
     with open(video_path, 'rb') as f:
         header = f.read(12)
         print(f"文件头: {header.hex()}")
-        
+
         # 检查是否是 MP4
         if header[4:8] == b'ftyp':
             print("✅ 这是一个有效的 MP4 文件")
         else:
             print("❌ 这不是一个有效的 MP4 文件")
-            
+
         # 检查是否有 moov box
         f.seek(0)
         content = f.read(min(10 * 1024 * 1024, video_path.stat().st_size))  # 读取前 10MB 或整个文件

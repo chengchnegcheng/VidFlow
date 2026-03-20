@@ -116,7 +116,7 @@ export function AIToolsCard({
           </div>
         </div>
       </CardHeader>
-      
+
       <CardContent className="space-y-4">
         {/* 状态信息 */}
         <div className="grid grid-cols-2 gap-4 text-sm">

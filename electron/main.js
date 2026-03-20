@@ -363,26 +363,26 @@ function startPythonBackend() {
     };
 
     const isDev = !app.isPackaged;
-    
+
     console.log('========================================');
     console.log('Starting Python Backend...');
     console.log(`Mode: ${isDev ? 'Development' : 'Production'}`);
     console.log(`Platform: ${process.platform}`);
     console.log('========================================');
-    
+
     if (isDev) {
       // 开发模式：使用 Python 虚拟环境
-      const pythonPath = process.platform === 'win32' 
+      const pythonPath = process.platform === 'win32'
         ? path.join(__dirname, '../backend/venv/Scripts/python.exe')
         : path.join(__dirname, '../backend/venv/bin/python');
-      
+
       const scriptPath = path.join(__dirname, '../backend/src/main.py');
-      
+
       console.log(`[DEV] Python path: ${pythonPath}`);
       console.log(`[DEV] Script path: ${scriptPath}`);
       console.log(`[DEV] Python exists: ${fs.existsSync(pythonPath)}`);
       console.log(`[DEV] Script exists: ${fs.existsSync(scriptPath)}`);
-      
+
       // 指定 UTF-8 编码环境和禁用输出缓冲
       const env = {
         ...process.env,
@@ -393,7 +393,7 @@ function startPythonBackend() {
         // Windows 控制台编码
         PYTHONLEGACYWINDOWSSTDIO: '1'
       };
-      
+
       pythonProcess = spawn(pythonPath, [scriptPath, '-u'], { env });
     } else {
       // 生产模式：使用打包的可执行文件
@@ -435,7 +435,7 @@ function startPythonBackend() {
           console.error('[PROD] Failed to set executable permission:', error);
         }
       }
-      
+
       // 指定 UTF-8 编码环境和禁用输出缓冲
       const env = {
         ...process.env,
@@ -445,17 +445,17 @@ function startPythonBackend() {
         VIDFLOW_STARTUP_TOKEN: startupToken,
         PYTHONLEGACYWINDOWSSTDIO: '1'
       };
-      
+
       pythonProcess = spawn(backendPath, [], { env });
     }
-    
+
     console.log('Backend process spawned, waiting for startup...');
 
     pythonProcess.stdout.on('data', (data) => {
       // 使用 UTF-8 解码 Python 输出
       const output = data.toString('utf8');
       console.log(`[BACKEND STDOUT] ${output}`);
-      
+
       // 检测端口信息输出（支持多种格式）
       if (output.includes('Uvicorn running on') || output.includes('Backend startup completed')) {
         const match = output.match(/http:\/\/127\.0\.0\.1:(\d+)/);
@@ -465,7 +465,7 @@ function startPythonBackend() {
           safeResolve(port);
         }
       }
-      
+
       // 如果看到端口文件写入日志，立即尝试读取
       if (output.includes('Server will start on port:')) {
         const portMatch = output.match(/port:\s*(\d+)/);
@@ -484,7 +484,7 @@ function startPythonBackend() {
       // 使用 UTF-8 解码 Python 错误输出
       const errorOutput = data.toString('utf8');
       console.error(`[BACKEND STDERR] ${errorOutput}`);
-      
+
       // 检查是否是启动信息（有些日志会输出到 stderr）
       if (errorOutput.includes('Uvicorn running on')) {
         const match = errorOutput.match(/http:\/\/127\.0\.0\.1:(\d+)/);
@@ -519,7 +519,7 @@ function startPythonBackend() {
         });
       }
     });
-    
+
     pythonProcess.on('error', (error) => {
       console.error('========================================');
       console.error('❌ Python process error:', error);
@@ -601,7 +601,7 @@ function tryReadPortFile(expectedStartupToken = null) {
 // 创建主窗口
 function createWindow() {
   const isDev = !app.isPackaged;
-  
+
   // 根据平台选择图标格式
   let iconPath;
   if (isDev) {
@@ -650,7 +650,7 @@ function createWindow() {
     },
     icon: iconPath
   });
-  
+
   console.log('Main window created');
 
   // 处理新窗口打开（例如点击外部链接）
@@ -755,36 +755,36 @@ function createWindow() {
     console.log('[PROD] __dirname:', __dirname);
     console.log('[PROD] app.isPackaged:', app.isPackaged);
     console.log('[PROD] process.resourcesPath:', process.resourcesPath);
-    
+
     // 正确的路径：从 app.asar 中加载
     // __dirname 在打包后指向 app.asar/electron
     const frontendPath = path.join(__dirname, '..', 'frontend', 'dist', 'index.html');
-    
+
     console.log('[PROD] Loading from:', frontendPath);
-    
+
     mainWindow.loadFile(frontendPath).then(() => {
       console.log('[PROD] Frontend loaded successfully');
     }).catch(err => {
       console.error('[PROD] Failed to load frontend:', err);
       console.error('[PROD] Path:', frontendPath);
-      
+
       // 显示详细错误信息
       const errorHtml = `
         <html>
           <head><style>
-            body { 
-              background: #1a1a1a; 
-              color: #fff; 
-              font-family: 'Segoe UI', sans-serif; 
+            body {
+              background: #1a1a1a;
+              color: #fff;
+              font-family: 'Segoe UI', sans-serif;
               padding: 40px;
               max-width: 800px;
               margin: 0 auto;
             }
             h1 { color: #ff6b6b; margin-bottom: 20px; }
-            .info { 
-              background: #2a2a2a; 
-              padding: 15px; 
-              border-radius: 8px; 
+            .info {
+              background: #2a2a2a;
+              padding: 15px;
+              border-radius: 8px;
               margin: 15px 0;
               font-family: 'Consolas', monospace;
               font-size: 13px;
@@ -806,7 +806,7 @@ function createWindow() {
       `;
       mainWindow.loadURL(`data:text/html,${encodeURIComponent(errorHtml)}`);
     });
-    
+
     // F12 打开开发者工具
     mainWindow.webContents.on('before-input-event', (event, input) => {
       if (input.key === 'F12') {
@@ -850,10 +850,10 @@ function createWindow() {
         <html>
           <head>
             <style>
-              body { 
-                background: #1a1a1a; 
-                color: #fff; 
-                font-family: sans-serif; 
+              body {
+                background: #1a1a1a;
+                color: #fff;
+                font-family: sans-serif;
                 padding: 50px;
                 display: flex;
                 flex-direction: column;
@@ -863,10 +863,10 @@ function createWindow() {
                 margin: 0;
               }
               h1 { color: #ff6b6b; }
-              .error-code { 
-                background: #2a2a2a; 
-                padding: 20px; 
-                border-radius: 8px; 
+              .error-code {
+                background: #2a2a2a;
+                padding: 20px;
+                border-radius: 8px;
                 margin: 20px 0;
                 font-family: monospace;
               }
@@ -887,27 +887,27 @@ function createWindow() {
       mainWindow.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(errorHtml));
     }
   });
-  
+
   // 监听加载完成
   mainWindow.webContents.on('did-finish-load', () => {
     console.log('Page loaded successfully');
   });
-  
+
   // 监听 DOM 加载完成
   mainWindow.webContents.on('dom-ready', () => {
     console.log('DOM ready');
   });
-  
+
   // 防止窗口意外关闭
   mainWindow.on('closed', () => {
     console.log('Window closed event triggered');
     mainWindow = null;
   });
-  
+
   // 捕获未处理的异常，防止崩溃
   mainWindow.webContents.on('crashed', (event, killed) => {
     console.error('❌ Renderer process crashed!', { killed });
-    
+
     // 显示错误对话框
     dialog.showMessageBoxSync(mainWindow, {
       type: 'error',
@@ -916,18 +916,18 @@ function createWindow() {
       buttons: ['确定'],
       icon: getIconPath()
     });
-    
+
     // 重新加载窗口
     if (mainWindow) {
       mainWindow.reload();
     }
   });
-  
+
   mainWindow.webContents.on('render-process-gone', (event, details) => {
     console.error('❌ Render process gone!', details);
     console.error('Reason:', details.reason);
     console.error('Exit code:', details.exitCode);
-    
+
     if (details.reason !== 'clean-exit') {
       dialog.showMessageBoxSync(mainWindow, {
         type: 'error',
@@ -938,7 +938,7 @@ function createWindow() {
       });
     }
   });
-  
+
   // 捕获未响应
   mainWindow.webContents.on('unresponsive', () => {
     console.error('❌ Window became unresponsive');
@@ -951,12 +951,12 @@ function createWindow() {
       defaultId: 0,
       icon: getIconPath()
     });
-    
+
     if (choice === 1) {
       mainWindow.reload();
     }
   });
-  
+
   mainWindow.webContents.on('responsive', () => {
     console.log('✅ Window became responsive again');
   });
@@ -980,7 +980,7 @@ function createWindow() {
     console.log('Platform:', process.platform);
     console.log('DISABLE_TRAY:', process.env.DISABLE_TRAY);
     console.log('========================================');
-    
+
     // 如果不是退出应用，在 Windows 上最小化到托盘
     // 但如果设置了 DISABLE_TRAY 环境变量，则直接退出
     if (!app.isQuitting && process.platform === 'win32' && !process.env.DISABLE_TRAY) {
@@ -1081,10 +1081,10 @@ function createTray() {
     console.log('⚠️ Tray disabled by environment variable');
     return;
   }
-  
+
   try {
     const isDev = !app.isPackaged;
-    
+
     // 托盘图标路径
     // Windows 使用 .ico
     // macOS 使用 Template 图标（系统会自动适应亮/暗模式）
@@ -1112,7 +1112,7 @@ function createTray() {
     console.log('Icon exists:', fs.existsSync(iconPath));
     console.log('Mode:', isDev ? 'Development' : 'Production');
     console.log('Platform:', process.platform);
-    
+
     if (!fs.existsSync(iconPath)) {
       console.error('❌ Tray icon not found:', iconPath);
       return;
@@ -1120,17 +1120,17 @@ function createTray() {
 
     tray = new Tray(iconPath);
     console.log('✅ Tray created successfully');
-    
+
     // 托盘提示文本
     tray.setToolTip('VidFlow - 全能视频下载器');
-    
+
     // 创建托盘右键菜单
     // 使用固定宽度的标签，通过空格填充使菜单更宽
     const padLabel = (text, width = 24) => {
       const spaces = ' '.repeat(Math.max(0, width - text.length));
       return text + spaces;
     };
-    
+
     const contextMenu = Menu.buildFromTemplate([
       {
         label: padLabel('显示主窗口'),
@@ -1222,9 +1222,9 @@ function createTray() {
         }
       }
     ]);
-    
+
     tray.setContextMenu(contextMenu);
-    
+
     // 双击托盘图标显示/隐藏窗口
     tray.on('double-click', () => {
       if (mainWindow) {
@@ -1236,7 +1236,7 @@ function createTray() {
         }
       }
     });
-    
+
     // Windows 单击托盘图标显示/隐藏窗口
     if (process.platform === 'win32') {
       tray.on('click', () => {
@@ -1250,7 +1250,7 @@ function createTray() {
         }
       });
     }
-    
+
     console.log('✅ Tray menu and events configured');
   } catch (error) {
     console.error('❌ Failed to create tray:', error);
@@ -1268,15 +1268,15 @@ app.whenReady().then(async () => {
   console.log('========================================');
   console.log('App is ready, starting initialization...');
   console.log('========================================');
-  
+
   // macOS: 设置 Dock 图标
   if (process.platform === 'darwin' && app.dock) {
     const isDev = !app.isPackaged;
     // Dock 图标使用 PNG 格式（nativeImage 更好支持）
-    const dockIconPath = isDev 
+    const dockIconPath = isDev
       ? path.join(__dirname, '../resources/icons/icon.png')
       : path.join(process.resourcesPath, 'icons', 'icon.png');
-    
+
     console.log('Setting macOS Dock icon:', dockIconPath);
     if (fs.existsSync(dockIconPath)) {
       try {
@@ -1295,11 +1295,11 @@ app.whenReady().then(async () => {
       console.warn('Dock icon file not found:', dockIconPath);
     }
   }
-  
+
   // 移除应用菜单栏
   Menu.setApplicationMenu(null);
   console.log('Menu removed');
-  
+
   // 先创建窗口，立即显示界面给用户
   console.log('Creating window first...');
   createWindow();
@@ -1382,7 +1382,7 @@ app.whenReady().then(async () => {
         message: error.message || '后端启动失败'
       });
     }
-    
+
     // 或者直接在窗口中显示错误页面
     setTimeout(() => {
       if (mainWindow && mainWindow.webContents) {
@@ -1390,10 +1390,10 @@ app.whenReady().then(async () => {
           <html>
             <head>
               <style>
-                body { 
-                  background: #1a1a1a; 
-                  color: #fff; 
-                  font-family: 'Segoe UI', sans-serif; 
+                body {
+                  background: #1a1a1a;
+                  color: #fff;
+                  font-family: 'Segoe UI', sans-serif;
                   padding: 40px;
                   display: flex;
                   flex-direction: column;
@@ -1403,10 +1403,10 @@ app.whenReady().then(async () => {
                   margin: 0;
                 }
                 h1 { color: #ff6b6b; margin-bottom: 20px; }
-                .error { 
-                  background: #2a2a2a; 
-                  padding: 20px; 
-                  border-radius: 8px; 
+                .error {
+                  background: #2a2a2a;
+                  padding: 20px;
+                  border-radius: 8px;
                   margin: 20px 0;
                   max-width: 600px;
                 }
@@ -1434,7 +1434,7 @@ app.on('activate', () => {
   console.log('App activated');
   console.log('Windows count:', BrowserWindow.getAllWindows().length);
   console.log('========================================');
-  
+
   if (BrowserWindow.getAllWindows().length === 0) {
     createWindow();
   }
@@ -1446,7 +1446,7 @@ app.on('window-all-closed', () => {
   console.log('window-all-closed event triggered!');
   console.log('Platform:', process.platform);
   console.log('========================================');
-  
+
   // macOS 下所有窗口关闭时退出应用
   // Windows 下窗口关闭时不退出，继续在托盘运行
   if (process.platform === 'darwin') {
@@ -1486,12 +1486,12 @@ app.on('quit', () => {
   console.log('========================================');
   console.log('App quit!');
   console.log('========================================');
-  
+
   // 关闭 Python 后端
   if (pythonProcess) {
     pythonProcess.kill();
   }
-  
+
   // 销毁托盘图标
   if (tray) {
     tray.destroy();
@@ -1603,12 +1603,12 @@ ipcMain.handle('generate-video-thumbnail', async (event, videoPath) => {
 
     const { spawn } = require('child_process');
     const crypto = require('crypto');
-    
+
     // 生成缓存文件名
     const hash = crypto.createHash('md5').update(videoPath).digest('hex');
     const thumbnailDir = path.join(app.getPath('userData'), 'thumbnails');
     const thumbnailPath = path.join(thumbnailDir, `${hash}.jpg`);
-    
+
     // 如果缩略图已存在，读取并返回 base64
     if (fs.existsSync(thumbnailPath)) {
       try {
@@ -1625,17 +1625,17 @@ ipcMain.handle('generate-video-thumbnail', async (event, videoPath) => {
         }
       }
     }
-    
+
     // 创建缩略图目录
     if (!fs.existsSync(thumbnailDir)) {
       fs.mkdirSync(thumbnailDir, { recursive: true });
     }
-    
+
     // 查找 ffmpeg 路径
     let ffmpegPath = null;
     const isWindows = process.platform === 'win32';
     const ffmpegBinary = isWindows ? 'ffmpeg.exe' : 'ffmpeg';
-    
+
     const possiblePaths = [
       path.join(__dirname, '../backend/tools/bin', ffmpegBinary),
       path.join(__dirname, '../resources/backend/tools/bin', ffmpegBinary),
@@ -1643,19 +1643,19 @@ ipcMain.handle('generate-video-thumbnail', async (event, videoPath) => {
       path.join(process.resourcesPath, 'resources/backend/tools/bin', ffmpegBinary),
       'ffmpeg' // 系统 PATH
     ];
-    
+
     for (const p of possiblePaths) {
       if (p === 'ffmpeg' || fs.existsSync(p)) {
         ffmpegPath = p;
         break;
       }
     }
-    
+
     if (!ffmpegPath) {
       // FFmpeg not found
       return null;
     }
-    
+
     // 使用 ffmpeg 生成缩略图（从视频 1 秒处截取）
     return new Promise((resolve, reject) => {
       const ffmpeg = spawn(ffmpegPath, [
@@ -1666,13 +1666,13 @@ ipcMain.handle('generate-video-thumbnail', async (event, videoPath) => {
         '-y',                 // 覆盖已存在的文件
         thumbnailPath
       ]);
-      
+
       let errorOutput = '';
-      
+
       ffmpeg.stderr.on('data', (data) => {
         errorOutput += data.toString();
       });
-      
+
       ffmpeg.on('close', (code) => {
         if (code === 0 && fs.existsSync(thumbnailPath)) {
           try {
@@ -1689,12 +1689,12 @@ ipcMain.handle('generate-video-thumbnail', async (event, videoPath) => {
           resolve(null);
         }
       });
-      
+
       ffmpeg.on('error', (err) => {
         // FFmpeg spawn failed
         resolve(null);
       });
-      
+
       // 超时处理（5秒）
       setTimeout(() => {
         ffmpeg.kill();
@@ -1714,16 +1714,16 @@ ipcMain.handle('show-notification', async (event, options) => {
     const defaultIcon = process.platform === 'win32'
       ? path.join(__dirname, '../resources/icons/icon.ico')
       : path.join(__dirname, '../resources/icons/icon.png');
-    
+
     const notification = new Notification({
       title: options.title || 'VidFlow',
       body: options.body || '',
       icon: options.icon || defaultIcon,
       silent: options.silent || false
     });
-    
+
     notification.show();
-    
+
     // 点击通知时聚焦窗口
     notification.on('click', () => {
       if (mainWindow) {
@@ -1733,7 +1733,7 @@ ipcMain.handle('show-notification', async (event, options) => {
         mainWindow.focus();
       }
     });
-    
+
     return { success: true };
   } catch (error) {
     console.error('Notification error:', error);
@@ -1785,7 +1785,7 @@ ipcMain.handle('custom-update-download', async () => {
     if (!updater) {
       return { success: false, error: 'Updater not initialized' };
     }
-    
+
     // 检查是否有增量更新可用，优先使用增量更新
     const updateInfo = updater.updateInfo;
     if (updater.useDeltaUpdate && updateInfo && updateInfo.delta_available && updateInfo.delta_info) {

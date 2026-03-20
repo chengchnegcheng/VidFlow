@@ -4,10 +4,10 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
-import { 
-  useChannelsSniffer, 
-  STATUS_POLLING_INTERVAL_MS, 
-  VIDEOS_POLLING_INTERVAL_MS 
+import {
+  useChannelsSniffer,
+  STATUS_POLLING_INTERVAL_MS,
+  VIDEOS_POLLING_INTERVAL_MS
 } from '../../hooks/useChannelsSniffer';
 import { SnifferState } from '../../types/channels';
 
@@ -138,7 +138,7 @@ describe('useChannelsSniffer Hook', () => {
       // 初始状态检查（在 useEffect 执行前）
       expect(result.current.state.videos).toEqual([]);
       expect(result.current.state.error).toBeNull();
-      
+
       // 等待初始化完成
       await act(async () => {
         vi.advanceTimersByTime(100);
@@ -153,7 +153,7 @@ describe('useChannelsSniffer Hook', () => {
      */
     it('should transition to running state when starting sniffer', async () => {
       let currentStatus = mockStoppedStatus;
-      
+
       mockInvoke.mockImplementation(async (cmd: string) => {
         if (cmd === 'channels_get_status') {
           return currentStatus;
@@ -201,7 +201,7 @@ describe('useChannelsSniffer Hook', () => {
      */
     it('should transition to stopped state when stopping sniffer', async () => {
       let currentStatus = mockRunningStatus;
-      
+
       mockInvoke.mockImplementation(async (cmd: string) => {
         if (cmd === 'channels_get_status') {
           return currentStatus;

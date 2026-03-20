@@ -101,13 +101,13 @@ CHANNELS_PAGE_PREFETCH_MAX_BYTES = 2 * 1024 * 1024
 
 class ProxySniffer:
     """代理嗅探器
-    
+
     使用 mitmproxy 实现 HTTP/HTTPS 代理，自动识别视频号视频 URL。
     集成 VideoURLExtractor 进行统一的URL处理和去重。
-    
+
     Validates: Requirements 6.2, 6.3
     """
-    
+
     def __init__(
         self,
         port: int = 8888,
@@ -146,10 +146,10 @@ class ProxySniffer:
 
         # 视频检测回调
         self._on_video_detected: Optional[Callable[[DetectedVideo], None]] = None
-        
+
         # 集成 VideoURLExtractor 进行统一URL处理
         self._video_url_extractor = VideoURLExtractor()
-        
+
         # HTTP 监控器（用于提取 encfilekey）
         self._http_monitor: Optional[HTTPMonitor] = None
         self._video_sniffer_addon: Optional["VideoSnifferAddon"] = None
@@ -174,15 +174,15 @@ class ProxySniffer:
         self._renderer_recycle_reason: Optional[str] = None
         self._renderer_recycle_at: Optional[datetime] = None
         self._recent_renderer_process_activity: Dict[int, Tuple[str, float]] = {}
-    
+
     @property
     def is_running(self) -> bool:
         """代理是否正在运行"""
         return self._state == SnifferState.RUNNING
-    
+
     def set_on_video_detected(self, callback: Callable[[DetectedVideo], None]) -> None:
         """设置视频检测回调
-        
+
         Args:
             callback: 检测到视频时的回调函数
         """
@@ -237,10 +237,10 @@ class ProxySniffer:
             else:
                 await self._quic_manager.stop_blocking()
         return self.get_quic_status()
-    
+
     async def start(self) -> SnifferStartResult:
         """启动代理服务器
-        
+
         Returns:
             SnifferStartResult: 启动结果
         """
@@ -249,13 +249,13 @@ class ProxySniffer:
                 success=True,
                 proxy_address=f"127.0.0.1:{self.port}"
             )
-        
+
         if self._state in (SnifferState.STARTING, SnifferState.STOPPING):
             return SnifferStartResult(
                 success=False,
                 error_message="代理正在启动或停止中"
             )
-        
+
         # 检查端口是否可用
         if not self._is_port_available(self.port):
             self._state = SnifferState.ERROR
@@ -265,7 +265,7 @@ class ProxySniffer:
                 error_message=self._error_message,
                 error_code=ErrorCode.PORT_IN_USE
             )
-        
+
         self._state = SnifferState.STARTING
         self._error_message = None
         self._stop_requested = False
@@ -288,7 +288,7 @@ class ProxySniffer:
             self._renderer_recycle_reason = None
             self._renderer_recycle_at = None
             self._recent_renderer_process_activity.clear()
-        
+
         try:
             # 启动代理线程
             if self.transparent_mode and self.quic_blocking_enabled:
@@ -298,7 +298,7 @@ class ProxySniffer:
 
             self._proxy_thread = Thread(target=self._run_proxy, daemon=True)
             self._proxy_thread.start()
-            
+
             # 等待代理启动
             for _ in range(50):  # 最多等待 5 秒
                 await asyncio.sleep(0.1)
@@ -310,7 +310,7 @@ class ProxySniffer:
                         success=False,
                         error_message=self._error_message or "代理启动失败"
                     )
-            
+
             if self._state != SnifferState.RUNNING:
                 self._state = SnifferState.ERROR
                 self._error_message = "代理启动超时"
@@ -319,7 +319,7 @@ class ProxySniffer:
                     success=False,
                     error_message=self._error_message
                 )
-            
+
             self._started_at = datetime.now()
             self._start_port_cache_refresh_thread()
 
@@ -327,7 +327,7 @@ class ProxySniffer:
                 success=True,
                 proxy_address=f"127.0.0.1:{self.port}"
             )
-            
+
         except PermissionError:
             self._state = SnifferState.ERROR
             self._error_message = get_error_message(ErrorCode.PERMISSION_DENIED)
@@ -346,7 +346,7 @@ class ProxySniffer:
                 success=False,
                 error_message=self._error_message
             )
-    
+
     def _run_proxy(self) -> None:
         """在线程中运行代理"""
         loop = None
@@ -399,7 +399,7 @@ class ProxySniffer:
                     loop.close()
                 except Exception as e:
                     logger.debug(f"Error closing event loop: {e}")
-    
+
     async def _async_run_proxy(self) -> None:
         """异步运行代理"""
         from mitmproxy import options
@@ -443,7 +443,7 @@ class ProxySniffer:
 
         # 创建 HTTP 监控器并设置回调
         self._http_monitor = HTTPMonitor(on_video_detected=self._on_http_video_detected)
-        
+
         # 添加插件
         self._video_sniffer_addon = VideoSnifferAddon(self)
         self._master.addons.add(self._video_sniffer_addon)
@@ -469,7 +469,7 @@ class ProxySniffer:
                 logger.debug(f"Post-run cleanup error (expected during shutdown): {e}")
 
         self._handle_unexpected_proxy_exit()
-    
+
     async def stop(self) -> bool:
         """停止代理服务器
 
@@ -553,10 +553,10 @@ class ProxySniffer:
             self._state = SnifferState.ERROR
             self._error_message = str(e)
             return False
-    
+
     def get_status(self) -> SnifferStatus:
         """获取嗅探器状态
-        
+
         Returns:
             SnifferStatus: 当前状态
         """
@@ -568,16 +568,16 @@ class ProxySniffer:
             started_at=self._started_at,
             error_message=self._error_message,
         )
-    
+
     def get_detected_videos(self) -> List[DetectedVideo]:
         """获取检测到的视频列表
-        
+
         Returns:
             检测到的视频列表
         """
         with self._lock:
             return list(self._detected_videos)
-    
+
     def clear_videos(self) -> None:
         """清空检测到的视频列表"""
         with self._lock:
@@ -586,11 +586,11 @@ class ProxySniffer:
             self._video_keys.clear()
             # 同时清除 VideoURLExtractor 的ID缓存
             self._video_url_extractor.clear_extracted_ids()
-    
+
     def get_video_url_extractor(self) -> VideoURLExtractor:
         """获取视频URL提取器实例"""
         return self._video_url_extractor
-    
+
     def record_request(self, url: str) -> None:
         """Record proxy request stats for diagnostics."""
         try:
@@ -984,26 +984,26 @@ class ProxySniffer:
 
     def _on_http_video_detected(self, video_info: Dict[str, Any]) -> None:
         """HTTP 监控器检测到视频时的回调
-        
+
         Args:
             video_info: 视频信息（包含 url 和 encfilekey）
         """
         try:
             url = video_info.get('url')
             encfilekey = video_info.get('encfilekey')
-            
+
             if not url:
                 return
-            
+
             logger.info(f"HTTP 监控器检测到视频: {url[:100]}...")
             logger.info(f"  encfilekey: {encfilekey[:50] if encfilekey else 'None'}...")
-            
+
             # 检查是否已经存在
             video_id = PlatformDetector.extract_video_id(url)
             if not video_id:
                 video_id = hashlib.md5(url.encode()).hexdigest()[:16]
             query_params = parse_qs(urlparse(url).query)
-            
+
             # 查找是否已存在（包含 taskid 跨画质去重）
             incoming_taskid = self._extract_taskid(url)
             existing_video = None
@@ -1015,7 +1015,7 @@ class ProxySniffer:
                     if incoming_taskid and self._extract_taskid(v.url) == incoming_taskid:
                         existing_video = v
                         break
-            
+
             if existing_video:
                 # encfilekey 只是资源标识，不是 decodeKey。
                 # 这里不写入 decryption_key，避免后续误当作解密密钥。
@@ -1032,21 +1032,21 @@ class ProxySniffer:
                     encryption_type=self._infer_encryption_type(url),
                     decryption_key=None,
                 )
-                
+
                 self.add_detected_video(video)
                 logger.info(f"添加新视频: {video.title}")
-                
+
         except Exception as e:
             logger.exception(f"处理 HTTP 监控器检测到的视频失败: {e}")
-    
+
     def is_video_url(self, url: str) -> bool:
         """检查URL是否是视频号相关的视频URL
-        
+
         使用 VideoURLExtractor 进行统一检查。
-        
+
         Args:
             url: URL字符串
-            
+
         Returns:
             是否是视频URL
         """
@@ -1579,7 +1579,7 @@ class ProxySniffer:
                 len(normalized_keys),
             )
         return updated
-    
+
     def add_detected_video(self, video: DetectedVideo) -> bool:
         """添加检测到的视频
 
@@ -1655,18 +1655,18 @@ class ProxySniffer:
                 return False
             if normalized_url in self._video_urls or key in self._video_keys:
                 return False
-            
+
             self._video_urls.add(normalized_url)
             self._video_keys.add(key)
             self._detected_videos.append(video)
-            
+
             # 触发回调
             if self._on_video_detected:
                 try:
                     self._on_video_detected(video)
                 except Exception:
                     logger.exception("Error in video detected callback")
-            
+
             return True
 
     @staticmethod
@@ -1996,13 +1996,13 @@ class ProxySniffer:
         else:
             logger.info(f"Video already exists: {url}")
             return None
-    
+
     def _is_port_available(self, port: int) -> bool:
         """检查端口是否可用
-        
+
         Args:
             port: 端口号
-            
+
         Returns:
             端口可用返回 True
         """
@@ -2016,7 +2016,7 @@ class ProxySniffer:
 
 class VideoSnifferAddon:
     """mitmproxy 插件，用于嗅探视频 URL
-    
+
     集成 VideoURLExtractor 进行统一的URL模式匹配。
     """
 
@@ -3906,14 +3906,14 @@ class VideoSnifferAddon:
 
     def _try_extract_api_metadata(self, flow) -> None:
         """尝试从 API 响应中提取视频元数据
-        
+
         Args:
             flow: mitmproxy flow 对象
         """
         try:
             url = flow.request.pretty_url
             content_type = flow.response.headers.get("Content-Type", "")
-            
+
             # 调试日志
             content_type_lower = content_type.lower()
             response_text = self._get_flow_response_text(flow)
@@ -3995,7 +3995,7 @@ class VideoSnifferAddon:
             if not response_text.strip():
                 return
             logger.debug(f"[META] Checking URL: {url[:80]}, Content-Type: {content_type}")
-            
+
             # 跳过 JS/CSS 等静态资源文件——这些文件可能包含
             # encfilekey、finder.video.qq.com 等字符串（应用代码引用），
             # 会被误识别为视频元数据
@@ -4007,9 +4007,9 @@ class VideoSnifferAddon:
             if "json" not in content_type_lower:
                 self._cache_text_response_metadata(url, response_text)
                 return
-            
+
             logger.info(f"[META] Found JSON response: {url[:80]}")
-            
+
             # 检查是否是微信相关的 API
             parsed_url = urlparse(url)
             domain = parsed_url.netloc.lower()
@@ -4019,7 +4019,7 @@ class VideoSnifferAddon:
                 'qq.com',
                 'qpic.cn'
             ])
-            
+
             if not is_wechat_api:
                 logger.debug(f"[META] Not a WeChat API: {domain}")
                 return
@@ -4030,10 +4030,10 @@ class VideoSnifferAddon:
 
             if not response_text.strip():
                 return
-            
+
             logger.info(f"[META] WeChat API detected: {domain}")
             self._cache_text_response_metadata(url, response_text)
-            
+
             # 尝试解析 JSON 响应
             try:
                 import json
@@ -4080,7 +4080,7 @@ class VideoSnifferAddon:
                 pass
             except Exception as e:
                 logger.debug(f"Error parsing API response: {e}")
-                
+
         except Exception as e:
             logger.debug(f"Error extracting API metadata: {e}")
 
@@ -4886,7 +4886,7 @@ class VideoSnifferAddon:
         except Exception as e:
             logger.debug(f"Error caching thumbnail from image response: {e}")
             return False
-    
+
     def _parse_wechat_api_response(self, data: Any) -> Optional[VideoMetadata]:
         """解析微信 API 响应中的视频元数据
 
@@ -4973,7 +4973,7 @@ class VideoSnifferAddon:
             or metadata.duration
             or metadata.resolution
         ) else None
-    
+
     def _extract_feed_items_from_json(self, data: Any) -> List[dict]:
         """从 API JSON 响应中提取视频列表（feedList/objectList 等）。"""
         if not isinstance(data, dict):
@@ -5044,12 +5044,12 @@ class VideoSnifferAddon:
             视频密钥或 None
         """
         key_fields = ['encfilekey', 'm', 'taskid', 'taskId', 'filekey', 'videoId', 'video_id', 'mediaId', 'mediaid', 'objectId', 'feedId', 'objectid', 'feedid']
-        
+
         def search_dict(d: dict) -> Optional[str]:
             for key_field in key_fields:
                 if key_field in d and d[key_field]:
                     return str(d[key_field])
-            
+
             # 递归搜索
             for value in d.values():
                 if isinstance(value, dict):
@@ -5063,7 +5063,7 @@ class VideoSnifferAddon:
                             if result:
                                 return result
             return None
-        
+
         if isinstance(data, dict):
             return search_dict(data)
         elif isinstance(data, list):
@@ -5072,23 +5072,23 @@ class VideoSnifferAddon:
                     result = search_dict(item)
                     if result:
                         return result
-        
+
         return None
-    
+
     def _extract_video_id_from_json(self, data: Any) -> Optional[str]:
         """从 JSON 数据中提取统一的 video_id（用于缓存键）
-        
+
         优先使用 PlatformDetector 的逻辑生成 video_id
-        
+
         Args:
             data: JSON 数据
-            
+
         Returns:
             video_id 或 None
         """
         # 尝试提取关键字段
         key_fields = ['encfilekey', 'm', 'taskid', 'taskId', 'objectId', 'feedId', 'videoId', 'video_id', 'mediaId', 'mediaid', 'objectid', 'feedid']
-        
+
         def search_dict(d: dict) -> Optional[str]:
             for key_field in key_fields:
                 if key_field in d and d[key_field]:
@@ -5099,7 +5099,7 @@ class VideoSnifferAddon:
                     video_id = PlatformDetector.extract_video_id(dummy_url)
                     if video_id:
                         return video_id
-            
+
             # 递归搜索
             for value in d.values():
                 if isinstance(value, dict):
@@ -5113,7 +5113,7 @@ class VideoSnifferAddon:
                             if result:
                                 return result
             return None
-        
+
         if isinstance(data, dict):
             return search_dict(data)
         elif isinstance(data, list):
@@ -5122,7 +5122,7 @@ class VideoSnifferAddon:
                     result = search_dict(item)
                     if result:
                         return result
-        
+
         return None
 
     def request(self, flow) -> None:
@@ -5272,11 +5272,11 @@ class VideoSnifferAddon:
             except (TypeError, ValueError):
                 content_length_int = 0
             is_large_file = content_length_int > 100000  # 大于 100KB
-            
+
             if not is_video_type and not is_video_domain:
                 logger.debug(f"Content-Type not matched: {content_type} for URL: {url}")
                 return
-            
+
             # 对于视频号域名，即使 Content-Type 不是视频也记录（可能是加密的）
             if is_video_domain and not is_video_type:
                 if self._cache_thumbnail_from_image(url, content_type):
@@ -5302,23 +5302,23 @@ class VideoSnifferAddon:
 
             if is_video_type:
                 logger.info(f"Matched video content type: {content_type}")
-            
+
             # 提取视频 ID
             video_id = PlatformDetector.extract_video_id(url)
             if not video_id:
                 video_id = hashlib.md5(url.encode()).hexdigest()[:16]
-            
+
             # 解析 URL（提前解析，供后续使用）
             parsed_url = urlparse(url)
             query_params = parse_qs(parsed_url.query)
-            
+
             # 尝试从缓存中获取元数据
             metadata = None
-            
+
             # 尝试使用多种方式查找缓存的元数据
             # 优先使用 video_id 作为缓存键，确保一致性
             cache_keys = [video_id]  # 首先使用统一的 video_id
-            
+
             # 添加 URL 参数作为备用键
             for key_param in [
                 'encfilekey', 'm', 'taskid', 'taskId',
@@ -5336,7 +5336,7 @@ class VideoSnifferAddon:
                     prefix_key = f"pfx:{key[:36]}"
                     if prefix_key not in cache_keys:
                         cache_keys.append(prefix_key)
-            
+
             # 尝试所有可能的缓存键
             with self._metadata_cache_lock:
                 for cache_key in cache_keys:
@@ -5344,7 +5344,7 @@ class VideoSnifferAddon:
                     if metadata:
                         logger.info(f"使用缓存的元数据 (key={cache_key[:16]}...): title={metadata.title}, thumbnail={metadata.thumbnail}")
                         break
-            
+
             # 如果缓存中没有，尝试从响应头中提取基本信息
             if not metadata:
                 headers = dict(flow.response.headers)
@@ -5388,7 +5388,7 @@ class VideoSnifferAddon:
                             metadata.duration = recent_metadata.duration
                         if metadata.filesize is None and recent_metadata.filesize is not None:
                             metadata.filesize = recent_metadata.filesize
-            
+
             # 生成标题（优先使用元数据）
             title = None
             # 不设置缩略图，让前端使用本地生成
@@ -5402,11 +5402,11 @@ class VideoSnifferAddon:
 
             # 先做一次标题清洗，避免携带“视频号视频 Cvvj5Ix3”等噪声值
             title = self.sniffer._sanitize_video_title(title)
-            
+
             # 如果元数据中没有标题，从 URL 参数中提取
             if not title:
                 title = self.sniffer._build_fallback_title(video_id, query_params)
-            
+
             # 最后的保险：如果标题仍然为空，使用默认值
             title = self.sniffer._sanitize_video_title(title)
             if not title:
@@ -5421,7 +5421,7 @@ class VideoSnifferAddon:
                 # 只有当 metadata 是通过精确键匹配（非 fallback）获取时才使用
                 if not recent_metadata or metadata.decode_key != recent_metadata.decode_key:
                     decryption_key = self.sniffer._normalize_decode_key(metadata.decode_key)
-            
+
             # 详细日志
             logger.info(f"视频信息提取结果:")
             logger.info(f"  - 标题: {title}")
@@ -5429,7 +5429,7 @@ class VideoSnifferAddon:
             logger.info(f"  - 时长: {metadata.duration if metadata else '无'}")
             logger.info(f"  - 文件大小: {metadata.filesize if metadata else '无'}")
             logger.info(f"  - URL: {url[:100]}...")
-            
+
             # 创建视频对象
             video = DetectedVideo(
                 id=video_id,
@@ -5443,13 +5443,13 @@ class VideoSnifferAddon:
                 encryption_type=self.sniffer._infer_encryption_type(url, decryption_key),
                 decryption_key=decryption_key,
             )
-            
+
             # 添加到列表
             added = self.sniffer.add_detected_video(video)
             if added:
                 logger.info(f"✓ 新视频已添加: {title}")
             else:
                 logger.info(f"○ 视频已存在，已更新元数据: {title}")
-            
+
         except Exception:
             logger.exception("Error processing response")

@@ -42,7 +42,7 @@ def generate_mac_tray_template():
         # macOS Template 图标：保持原始 alpha 通道，将所有非透明像素变成黑色
         # 这样系统可以根据菜单栏颜色自动调整
         result_1x = Image.new('RGBA', size_1x, (0, 0, 0, 0))
-        
+
         for x in range(size_1x[0]):
             for y in range(size_1x[1]):
                 r, g, b, a = img_1x.getpixel((x, y))
@@ -59,7 +59,7 @@ def generate_mac_tray_template():
         img_2x = img.resize(size_2x, Image.Resampling.LANCZOS)
 
         result_2x = Image.new('RGBA', size_2x, (0, 0, 0, 0))
-        
+
         for x in range(size_2x[0]):
             for y in range(size_2x[1]):
                 r, g, b, a = img_2x.getpixel((x, y))

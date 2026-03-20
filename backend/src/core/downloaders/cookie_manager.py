@@ -60,7 +60,7 @@ def get_cookie_base_dir() -> Path:
     else:
         # 开发环境，使用源码目录
         base_dir = Path(__file__).parent.parent.parent.parent
-    
+
     cookie_dir = base_dir / "data" / "cookies"
     cookie_dir.mkdir(parents=True, exist_ok=True)
     return cookie_dir
@@ -69,27 +69,27 @@ def get_cookie_base_dir() -> Path:
 def get_cookie_path_for_platform(platform: str) -> Optional[Path]:
     """
     获取平台对应的 Cookie 文件路径
-    
+
     Args:
         platform: 平台名称（youtube, bilibili, douyin 等）
-        
+
     Returns:
         Cookie 文件路径，如果文件不存在则返回 None
     """
     platform_lower = platform.lower()
     cookie_filename = PLATFORM_COOKIE_MAP.get(platform_lower)
-    
+
     if not cookie_filename:
         logger.debug(f"No cookie mapping found for platform: {platform}")
         return None
-    
+
     cookie_dir = get_cookie_base_dir()
     cookie_path = cookie_dir / cookie_filename
-    
+
     if cookie_path.exists():
         logger.debug(f"Found cookie file for {platform}: {cookie_path}")
         return cookie_path
-    
+
     logger.debug(f"Cookie file not found for {platform}: {cookie_path}")
     return None
 
@@ -97,10 +97,10 @@ def get_cookie_path_for_platform(platform: str) -> Optional[Path]:
 def has_cookie_for_platform(platform: str) -> bool:
     """
     检查平台是否已配置 Cookie
-    
+
     Args:
         platform: 平台名称
-        
+
     Returns:
         是否已配置 Cookie
     """
@@ -110,10 +110,10 @@ def has_cookie_for_platform(platform: str) -> bool:
 def get_cookie_filename_for_platform(platform: str) -> Optional[str]:
     """
     获取平台对应的 Cookie 文件名（不检查是否存在）
-    
+
     Args:
         platform: 平台名称
-        
+
     Returns:
         Cookie 文件名
     """
@@ -123,10 +123,10 @@ def get_cookie_filename_for_platform(platform: str) -> Optional[str]:
 def get_platform_display_name(platform: str) -> str:
     """
     获取平台的显示名称（中文）
-    
+
     Args:
         platform: 平台名称
-        
+
     Returns:
         平台显示名称
     """
@@ -136,18 +136,18 @@ def get_platform_display_name(platform: str) -> str:
 def create_friendly_cookie_error(platform: str, original_error: str = "") -> str:
     """
     创建友好的 Cookie 配置错误提示（中文）
-    
+
     Args:
         platform: 平台名称
         original_error: 原始错误信息（可选，用于调试）
-        
+
     Returns:
         用户友好的错误提示
     """
     platform_name = get_platform_display_name(platform)
     cookie_filename = get_cookie_filename_for_platform(platform) or f"{platform}_cookies.txt"
     cookie_dir = get_cookie_base_dir()
-    
+
     error_message = f"""该视频需要登录才能访问。
 
 💡 解决方法：
@@ -169,11 +169,11 @@ def create_friendly_cookie_error(platform: str, original_error: str = "") -> str
 def create_fallback_success_message(platform: str, fallback_reason: str) -> str:
     """
     创建回退成功的提示信息
-    
+
     Args:
         platform: 平台名称
         fallback_reason: 回退原因
-        
+
     Returns:
         回退成功提示
     """

@@ -50,11 +50,11 @@ VALID_FLV_HEADER = b'\x46\x4c\x56\x01\x05\x00\x00\x00\x09\x00\x00\x00\x00'
 class TestEncryptionDetectionAndDecryption:
     """
     Property 8: Encryption Detection and Decryption Round-Trip
-    
-    For any encrypted video file with known encryption type, detecting the 
-    encryption type should return the correct type. For XOR-encrypted files, 
+
+    For any encrypted video file with known encryption type, detecting the
+    encryption type should return the correct type. For XOR-encrypted files,
     decrypting with the correct key should produce a valid video file.
-    
+
     **Feature: weixin-channels-download, Property 8: Encryption Detection and Decryption Round-Trip**
     **Validates: Requirements 5.1, 5.2, 5.3**
     """
@@ -65,7 +65,7 @@ class TestEncryptionDetectionAndDecryption:
         file_path = temp_dir / "test.mp4"
         with open(file_path, 'wb') as f:
             f.write(VALID_MP4_HEADER + b'\x00' * 100)
-        
+
         encryption_type = VideoDecryptor.detect_encryption(file_path)
         assert encryption_type == EncryptionType.NONE
 
@@ -74,7 +74,7 @@ class TestEncryptionDetectionAndDecryption:
         file_path = temp_dir / "test.webm"
         with open(file_path, 'wb') as f:
             f.write(VALID_WEBM_HEADER + b'\x00' * 100)
-        
+
         encryption_type = VideoDecryptor.detect_encryption(file_path)
         assert encryption_type == EncryptionType.NONE
 
@@ -83,11 +83,11 @@ class TestEncryptionDetectionAndDecryption:
         # 创建 XOR 加密的文件
         key = bytes([0xA3])
         encrypted_header = VideoDecryptor.encrypt_xor(VALID_MP4_HEADER, key)
-        
+
         file_path = temp_dir / "encrypted.mp4"
         with open(file_path, 'wb') as f:
             f.write(encrypted_header + b'\x00' * 100)
-        
+
         encryption_type = VideoDecryptor.detect_encryption(file_path)
         assert encryption_type == EncryptionType.XOR
 
@@ -100,7 +100,7 @@ class TestEncryptionDetectionAndDecryption:
         """检测空文件"""
         file_path = temp_dir / "empty.mp4"
         file_path.touch()
-        
+
         encryption_type = VideoDecryptor.detect_encryption(file_path)
         assert encryption_type == EncryptionType.UNKNOWN
 
@@ -110,15 +110,15 @@ class TestEncryptionDetectionAndDecryption:
         # 原始数据
         original_data = VALID_MP4_HEADER + b'\x00' * 1000
         key = bytes([0xA3])
-        
+
         # 加密
         encrypted_data = VideoDecryptor.encrypt_xor(original_data, key)
-        
+
         # 写入加密文件
         encrypted_path = temp_dir / "encrypted.mp4"
         with open(encrypted_path, 'wb') as f:
             f.write(encrypted_data)
-        
+
         # 解密
         decrypted_path = temp_dir / "decrypted.mp4"
         result = await VideoDecryptor.decrypt(
@@ -127,14 +127,14 @@ class TestEncryptionDetectionAndDecryption:
             EncryptionType.XOR,
             key
         )
-        
+
         assert result.success is True
         assert decrypted_path.exists()
-        
+
         # 验证解密后的内容
         with open(decrypted_path, 'rb') as f:
             decrypted_data = f.read()
-        
+
         assert decrypted_data == original_data
 
     @pytest.mark.asyncio
@@ -143,15 +143,15 @@ class TestEncryptionDetectionAndDecryption:
         # 原始数据
         original_data = VALID_MP4_HEADER + b'\x00' * 500
         key = bytes([0xA3])
-        
+
         # 加密
         encrypted_data = VideoDecryptor.encrypt_xor(original_data, key)
-        
+
         # 写入加密文件
         encrypted_path = temp_dir / "encrypted.mp4"
         with open(encrypted_path, 'wb') as f:
             f.write(encrypted_data)
-        
+
         # 解密（不提供密钥，自动检测）
         decrypted_path = temp_dir / "decrypted.mp4"
         result = await VideoDecryptor.decrypt(
@@ -160,13 +160,13 @@ class TestEncryptionDetectionAndDecryption:
             EncryptionType.XOR,
             key=None  # 自动检测
         )
-        
+
         assert result.success is True
-        
+
         # 验证解密后的内容
         with open(decrypted_path, 'rb') as f:
             decrypted_data = f.read()
-        
+
         assert decrypted_data == original_data
 
     @pytest.mark.asyncio
@@ -177,7 +177,7 @@ class TestEncryptionDetectionAndDecryption:
         input_path = temp_dir / "original.mp4"
         with open(input_path, 'wb') as f:
             f.write(original_data)
-        
+
         # "解密"
         output_path = temp_dir / "output.mp4"
         result = await VideoDecryptor.decrypt(
@@ -185,13 +185,13 @@ class TestEncryptionDetectionAndDecryption:
             output_path,
             EncryptionType.NONE
         )
-        
+
         assert result.success is True
         assert output_path.exists()
-        
+
         with open(output_path, 'rb') as f:
             output_data = f.read()
-        
+
         assert output_data == original_data
 
     @pytest.mark.asyncio
@@ -202,7 +202,7 @@ class TestEncryptionDetectionAndDecryption:
             temp_dir / "output.mp4",
             EncryptionType.XOR
         )
-        
+
         assert result.success is False
         assert "不存在" in result.error_message
 
@@ -213,17 +213,17 @@ class TestEncryptionDetectionAndDecryption:
         original_data = VALID_MP4_HEADER + b'\x00' * 10000
         key = bytes([0xA3])
         encrypted_data = VideoDecryptor.encrypt_xor(original_data, key)
-        
+
         encrypted_path = temp_dir / "encrypted.mp4"
         with open(encrypted_path, 'wb') as f:
             f.write(encrypted_data)
-        
+
         # 记录进度回调
         progress_calls = []
-        
+
         async def progress_callback(processed: int, total: int):
             progress_calls.append((processed, total))
-        
+
         # 解密
         decrypted_path = temp_dir / "decrypted.mp4"
         result = await VideoDecryptor.decrypt(
@@ -233,10 +233,10 @@ class TestEncryptionDetectionAndDecryption:
             key,
             progress_callback
         )
-        
+
         assert result.success is True
         assert len(progress_calls) > 0
-        
+
         # 验证进度值
         for processed, total in progress_calls:
             assert 0 <= processed <= total
@@ -254,27 +254,27 @@ class TestXOREncryption:
         """单字节密钥 XOR"""
         data = b"Hello, World!"
         key = bytes([0xA3])
-        
+
         encrypted = VideoDecryptor.encrypt_xor(data, key)
         decrypted = VideoDecryptor.encrypt_xor(encrypted, key)
-        
+
         assert decrypted == data
 
     def test_xor_multi_byte_key(self):
         """多字节密钥 XOR"""
         data = b"Hello, World!"
         key = bytes([0xA3, 0x5A, 0xFF])
-        
+
         encrypted = VideoDecryptor.encrypt_xor(data, key)
         decrypted = VideoDecryptor.encrypt_xor(encrypted, key)
-        
+
         assert decrypted == data
 
     def test_xor_empty_data(self):
         """空数据 XOR"""
         data = b""
         key = bytes([0xA3])
-        
+
         encrypted = VideoDecryptor.encrypt_xor(data, key)
         assert encrypted == b""
 
@@ -282,7 +282,7 @@ class TestXOREncryption:
         """空密钥 XOR（应该返回原数据）"""
         data = b"Hello, World!"
         key = b""
-        
+
         result = VideoDecryptor.encrypt_xor(data, key)
         assert result == data
 
@@ -295,7 +295,7 @@ class TestXOREncryption:
         """XOR 往返属性：加密后解密应该得到原数据"""
         encrypted = VideoDecryptor.encrypt_xor(data, key)
         decrypted = VideoDecryptor.encrypt_xor(encrypted, key)
-        
+
         assert decrypted == data
 
 
@@ -310,28 +310,28 @@ class TestKeyExtraction:
         """从 URL 提取十六进制密钥"""
         url = "https://example.com/video?key=a3b5c7"
         key = VideoDecryptor.extract_key_from_url(url)
-        
+
         assert key == bytes.fromhex("a3b5c7")
 
     def test_extract_string_key_from_url(self):
         """从 URL 提取字符串密钥"""
         url = "https://example.com/video?key=notahexkey"
         key = VideoDecryptor.extract_key_from_url(url)
-        
+
         assert key == b"notahexkey"
 
     def test_extract_key_alternative_param(self):
         """从其他参数名提取密钥"""
         url = "https://example.com/video?decryptkey=ff00"
         key = VideoDecryptor.extract_key_from_url(url)
-        
+
         assert key == bytes.fromhex("ff00")
 
     def test_extract_key_no_param(self):
         """没有密钥参数"""
         url = "https://example.com/video?vid=123"
         key = VideoDecryptor.extract_key_from_url(url)
-        
+
         assert key is None
 
     def test_extract_key_empty_url(self):

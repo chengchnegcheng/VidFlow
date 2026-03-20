@@ -214,7 +214,7 @@ export function ToolsConfig() {
     // 这样即使用户刷新页面，也能正确显示安装完成状态
     if (aiProgress && aiProgress.progress === 100) {
       console.log('[ToolsConfig] AI installation complete:', aiProgress, 'installingAI:', installingAI);
-      
+
       // 如果正在安装中，执行完成逻辑
       if (installingAI) {
         setTimeout(() => {
@@ -251,7 +251,7 @@ export function ToolsConfig() {
     // 修复：即使 uninstallingAI 为 false，也要检测卸载完成状态
     if (aiUninstallProgress && aiUninstallProgress.progress === 100) {
       console.log('[ToolsConfig] AI uninstallation complete:', aiUninstallProgress, 'uninstallingAI:', uninstallingAI);
-      
+
       if (uninstallingAI) {
         clearUninstallTimeout();
         setTimeout(async () => {
@@ -368,7 +368,7 @@ export function ToolsConfig() {
         `${apiUrl}/api/v1/system/tools/ytdlp/downloaded`,
         { method: 'DELETE' }
       );
-      
+
       if (response.ok) {
         const result = await response.json();
         toast.success(result.message || '恢复成功');
@@ -548,7 +548,7 @@ export function ToolsConfig() {
         `${apiUrl}/api/v1/system/tools/ai/install?version=${aiVersion}`,
         { method: 'POST' }
       );
-      
+
       if (response.ok) {
         await response.json(); // 获取响应但不需要使用
         toast.info('AI 工具安装已启动', {
@@ -601,7 +601,7 @@ export function ToolsConfig() {
         `${apiUrl}/api/v1/system/tools/ai/uninstall`,
         { method: 'POST' }
       );
-      
+
       if (response.ok) {
         toast.info('卸载已开始', {
           description: '请稍等，进度将实时更新'
@@ -651,8 +651,8 @@ export function ToolsConfig() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button 
-            variant="outline" 
+          <Button
+            variant="outline"
             size="sm"
             onClick={() => {
               fetchToolsStatus();
@@ -670,7 +670,7 @@ export function ToolsConfig() {
       {/* AI 功能 */}
       <div className="space-y-4">
         <h3 className="text-lg font-semibold">AI 功能</h3>
-        
+
         {/* AI 工具卡片（新的独立组件） */}
         <AIToolsCard
           status={aiToolsStatus}
@@ -683,7 +683,7 @@ export function ToolsConfig() {
           onInstall={handleInstallAI}
           onUninstall={handleUninstallAI}
         />
-        
+
         {/* GPU 加速状态 */}
         {gpuInfo && aiToolsStatus?.installed && (
           <GPUStatusCard gpuInfo={gpuInfo} onRefresh={fetchGPUStatus} />
@@ -813,7 +813,7 @@ function ToolCard({
           </Button>
         </div>
       </CardHeader>
-      
+
       <CardContent className="space-y-4">
         {/* 状态信息 */}
         <div className="grid grid-cols-2 gap-4 text-sm">
@@ -965,7 +965,7 @@ function ToolCard({
               )}
             </>
           )}
-          
+
           {/* 未安装工具：显示安装按钮 */}
           {!tool.bundled && !tool.installed && showInstallButton && (
             <Button
@@ -986,7 +986,7 @@ function ToolCard({
               )}
             </Button>
           )}
-          
+
           {/* 查看说明按钮（所有非内置工具） */}
           {!tool.bundled && (
             <Button
@@ -1119,7 +1119,7 @@ function GPUStatusCard({ gpuInfo, onRefresh }: { gpuInfo: GPUInfo; onRefresh: ()
           </div>
         </div>
       </CardHeader>
-      
+
       <CardContent className="space-y-4">
         <div className="grid grid-cols-2 gap-4 text-sm">
           <div>

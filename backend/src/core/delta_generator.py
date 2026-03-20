@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 # 排除的目录（这些目录很少变化，且体积巨大）
 EXCLUDE_DIRS = {
     'playwright',
-    'selenium', 
+    'selenium',
     'pip',
     'setuptools',
     '_tcl_data',
@@ -93,7 +93,7 @@ class DeltaManifest:
     total_size: int
     full_package_size: int
     file_count: int
-    
+
     def to_dict(self):
         return asdict(self)
 
@@ -120,7 +120,7 @@ class DeltaGenerator:
 
     # 差异包大小阈值（超过全量包的70%则不推荐）
     SIZE_THRESHOLD = 0.7
-    
+
     # 最小节省比例（低于20%不推荐增量更新）
     MIN_SAVINGS = 0.2
 
@@ -145,12 +145,12 @@ class DeltaGenerator:
     def _should_exclude(self, rel_path: str) -> bool:
         """检查文件是否应该被排除"""
         path_parts = Path(rel_path).parts
-        
+
         # 检查目录排除
         for part in path_parts:
             if part in EXCLUDE_DIRS:
                 return True
-        
+
         # 检查文件模式排除
         filename = Path(rel_path).name
         for pattern in EXCLUDE_PATTERNS:
@@ -162,7 +162,7 @@ class DeltaGenerator:
                     return True
             elif pattern in rel_path:
                 return True
-        
+
         return False
 
     def _is_important_file(self, rel_path: str) -> bool:
@@ -182,26 +182,26 @@ class DeltaGenerator:
             Dict[相对路径, (哈希值, 文件大小)]
         """
         files = {}
-        
+
         for file_path in directory.rglob('*'):
             if not file_path.is_file():
                 continue
-                
+
             rel_path = file_path.relative_to(directory).as_posix()
             if prefix:
                 rel_path = f"{prefix}/{rel_path}"
-            
+
             # 跳过排除的文件
             if self._should_exclude(rel_path):
                 continue
-            
+
             try:
                 file_hash = self.calculate_file_hash(file_path)
                 file_size = file_path.stat().st_size
                 files[rel_path] = (file_hash, file_size)
             except Exception as e:
                 logger.warning(f"无法处理文件 {rel_path}: {e}")
-        
+
         return files
 
     def _scan_release_directory(self, release_dir: Path) -> Dict[str, Tuple[str, int, Path]]:
@@ -215,51 +215,51 @@ class DeltaGenerator:
             Dict[安装路径, (哈希值, 文件大小, 源文件路径)]
         """
         files = {}
-        
+
         # 扫描 VidFlow-Backend 目录 -> 映射到 backend/
         backend_dir = release_dir / "VidFlow-Backend"
         if backend_dir.exists():
             for file_path in backend_dir.rglob('*'):
                 if not file_path.is_file():
                     continue
-                
+
                 # 相对于 VidFlow-Backend 的路径
                 rel_to_backend = file_path.relative_to(backend_dir).as_posix()
                 # 映射到安装目录结构: backend/xxx
                 install_path = f"backend/{rel_to_backend}"
-                
+
                 if self._should_exclude(install_path):
                     continue
-                
+
                 try:
                     file_hash = self.calculate_file_hash(file_path)
                     file_size = file_path.stat().st_size
                     files[install_path] = (file_hash, file_size, file_path)
                 except Exception as e:
                     logger.warning(f"无法处理文件 {install_path}: {e}")
-        
+
         # 扫描 frontend/dist 目录 -> 映射到 frontend/dist/
         frontend_dist_dir = release_dir / "frontend" / "dist"
         if frontend_dist_dir.exists():
             for file_path in frontend_dist_dir.rglob('*'):
                 if not file_path.is_file():
                     continue
-                
+
                 # 相对于 frontend/dist 的路径
                 rel_to_dist = file_path.relative_to(frontend_dist_dir).as_posix()
                 # 映射到安装目录结构: frontend/dist/xxx
                 install_path = f"frontend/dist/{rel_to_dist}"
-                
+
                 if self._should_exclude(install_path):
                     continue
-                
+
                 try:
                     file_hash = self.calculate_file_hash(file_path)
                     file_size = file_path.stat().st_size
                     files[install_path] = (file_hash, file_size, file_path)
                 except Exception as e:
                     logger.warning(f"无法处理文件 {install_path}: {e}")
-        
+
         return files
 
     def _compare_directories(
@@ -345,12 +345,12 @@ class DeltaGenerator:
 
         # 比较差异
         changes = self._compare_directories(source_files, target_files)
-        
+
         # 统计
         added = sum(1 for c in changes if c.action == "add")
         replaced = sum(1 for c in changes if c.action == "replace")
         deleted = sum(1 for c in changes if c.action == "delete")
-        
+
         logger.info(f"文件变更: 新增 {added}, 修改 {replaced}, 删除 {deleted}")
 
         if not changes:
@@ -374,7 +374,7 @@ class DeltaGenerator:
                 _, _, source_file = target_files[change.path]
                 dest_file = files_dir / change.path
                 dest_file.parent.mkdir(parents=True, exist_ok=True)
-                
+
                 try:
                     shutil.copy2(source_file, dest_file)
                     total_size += change.target_size
@@ -428,7 +428,7 @@ class DeltaGenerator:
         delta_size = delta_path.stat().st_size
 
         savings_percent = ((full_size - delta_size) / full_size * 100) if full_size > 0 else 0
-        
+
         # 判断是否推荐使用增量更新
         is_recommended = (
             delta_size < (full_size * self.SIZE_THRESHOLD) and
@@ -464,25 +464,25 @@ class DeltaGenerator:
 def main():
     """命令行入口"""
     import sys
-    
+
     if len(sys.argv) < 5:
         print("用法: python delta_generator.py <source_version> <target_version> <source_dir> <target_dir> [platform] [arch]")
         print("示例: python delta_generator.py 1.0.2 1.0.3 releases/v1.0.2 releases/v1.0.3 win32 x64")
         sys.exit(1)
-    
+
     source_version = sys.argv[1]
     target_version = sys.argv[2]
     source_dir = Path(sys.argv[3])
     target_dir = Path(sys.argv[4])
     platform = sys.argv[5] if len(sys.argv) > 5 else "win32"
     arch = sys.argv[6] if len(sys.argv) > 6 else "x64"
-    
+
     # 设置日志
     logging.basicConfig(
         level=logging.INFO,
         format='%(asctime)s - %(levelname)s - %(message)s'
     )
-    
+
     # 生成差异包
     generator = DeltaGenerator(Path("releases/deltas"))
     result = generator.generate_delta(
@@ -490,7 +490,7 @@ def main():
         source_dir, target_dir,
         platform, arch
     )
-    
+
     print(f"\n✅ 差异包已生成: {result.delta_path}")
     print(f"   哈希: {result.delta_hash[:32]}...")
 

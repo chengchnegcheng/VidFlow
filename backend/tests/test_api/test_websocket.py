@@ -10,7 +10,7 @@ from src.main import app
 @pytest.mark.api
 class TestWebSocketAPI:
     """WebSocket API 测试类"""
-    
+
     @pytest.mark.asyncio
     async def test_websocket_endpoint_exists(self):
         """测试 WebSocket 端点存在"""
@@ -19,7 +19,7 @@ class TestWebSocketAPI:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             # 尝试 HTTP GET 到 WebSocket 端点会返回错误
             response = await client.get("/ws")
-        
+
         # WebSocket 端点不接受 HTTP GET，应该返回错误或特定响应
         # FastAPI对WebSocket的HTTP请求通常返回404
         assert response.status_code in [

@@ -8,7 +8,7 @@ import React from 'react';
 import { Button } from '../ui/button';
 import { Alert, AlertDescription } from '../ui/alert';
 import { Badge } from '../ui/badge';
-import { 
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -18,19 +18,19 @@ import {
 import { Switch } from '../ui/switch';
 import { Label } from '../ui/label';
 import { ProxyWarning } from './ProxyWarning';
-import { 
-  Play, 
-  Square, 
-  Loader2, 
-  Wifi, 
-  WifiOff, 
+import {
+  Play,
+  Square,
+  Loader2,
+  Wifi,
+  WifiOff,
   AlertCircle,
   Shield,
   Download,
   Zap,
 } from 'lucide-react';
-import { 
-  SnifferStatusResponse, 
+import {
+  SnifferStatusResponse,
   SnifferState,
   DriverStatusResponse,
   CaptureMode,
@@ -124,7 +124,7 @@ export const SnifferControl: React.FC<SnifferControlProps> = ({
 }) => {
   const [startWarning, setStartWarning] = React.useState<string | null>(null);
   const [selectedMode, setSelectedMode] = React.useState<MultiCaptureMode>(currentMultiMode || 'hybrid');
-  
+
   const state = status?.state || 'stopped';
   const isRunning = state === 'running';
   const isStopped = state === 'stopped';
@@ -176,16 +176,16 @@ export const SnifferControl: React.FC<SnifferControlProps> = ({
       isAdmin,
       driverStatus,
     });
-    
+
     setStartWarning(null);
-    
+
     try {
       if (isRunning) {
         await onStop();
       } else if (isStopped) {
         console.log('[SnifferControl] Calling onStart with captureMode:', captureMode);
         const result = await onStart(undefined, captureMode);
-        
+
         // 检查返回结果，即使 success=true 也可能有警告信息
         if (result) {
           if (result.success) {
@@ -247,8 +247,8 @@ export const SnifferControl: React.FC<SnifferControlProps> = ({
             </SelectTrigger>
             <SelectContent>
               {availableModes.map((mode) => (
-                <SelectItem 
-                  key={mode.mode} 
+                <SelectItem
+                  key={mode.mode}
                   value={mode.mode}
                   disabled={!mode.available}
                 >

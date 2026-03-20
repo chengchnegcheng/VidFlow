@@ -1,4 +1,4 @@
-﻿"""VidFlow backend entrypoint."""
+"""VidFlow backend entrypoint."""
 
 import asyncio
 import atexit

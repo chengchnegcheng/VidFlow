@@ -247,7 +247,7 @@ export function SubtitleProcessor() {
       const pathParts = videoPath.split(/[\\/]/);
       pathParts.pop(); // 移除文件名
       const subtitleFolder = pathParts.join('\\') + '\\subtitles';
-      
+
       await invoke('open_folder', { path: subtitleFolder });
     } catch (error) {
       toast.error('打开文件夹失败', {
@@ -263,7 +263,7 @@ export function SubtitleProcessor() {
       const pathParts = videoPath.split(/[\\/]/);
       pathParts.pop(); // 移除文件名
       const subtitleFolder = pathParts.join('\\') + '\\subtitles';
-      
+
       await invoke('open_folder', { path: subtitleFolder });
       toast.success('已打开字幕文件夹');
     } catch (error) {
@@ -491,7 +491,7 @@ export function SubtitleProcessor() {
                       <CardContent className="p-4">
                         <div className="flex gap-4">
                           <FileVideo className="size-10 text-primary flex-shrink-0 mt-1" />
-                          
+
                           <div className="flex-1 min-w-0">
                             <div className="flex items-start justify-between gap-4 mb-2">
                               <div className="flex-1 min-w-0">
@@ -552,16 +552,16 @@ export function SubtitleProcessor() {
                             <div className="flex gap-2 flex-wrap">
                               {task.status === 'completed' && (
                                 <>
-                                  <Button 
-                                    size="sm" 
+                                  <Button
+                                    size="sm"
                                     variant="outline"
                                     onClick={() => handleOpenSubtitleFolder(task.video_path)}
                                   >
                                     <FolderOpen className="size-4 mr-2" />
                                     打开文件夹
                                   </Button>
-                                  <Button 
-                                    size="sm" 
+                                  <Button
+                                    size="sm"
                                     variant="outline"
                                     onClick={() => handleDownloadSubtitle(task.video_path)}
                                   >
@@ -571,8 +571,8 @@ export function SubtitleProcessor() {
                                 </>
                               )}
                               {task.status === 'failed' && (
-                                <Button 
-                                  size="sm" 
+                                <Button
+                                  size="sm"
                                   variant="outline"
                                   onClick={() => handleRetryTask(task)}
                                 >

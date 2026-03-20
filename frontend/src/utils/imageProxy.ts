@@ -26,9 +26,9 @@ export function getProxiedImageUrl(url: string | undefined | null): string {
     'weixin.qq.com',
     'wechat.com',
   ];
-  
+
   const needsProxy = wechatDomains.some(domain => url.includes(domain));
-  
+
   if (needsProxy) {
     // 使用后端图片代理 API
     const apiBase = getApiBaseUrl()
@@ -56,7 +56,7 @@ export function handleImageError(
   fallbackUrl?: string
 ) {
   const img = e.currentTarget;
-  
+
   // 避免无限循环
   if (img.dataset.errorHandled === 'true') {
     return;

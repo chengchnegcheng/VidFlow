@@ -99,8 +99,8 @@ interface DownloadManagerProps {
 
 export function DownloadManager({ onNavigateToSettings }: DownloadManagerProps = {}) {
   const { settings } = useSettings();
-  const { 
-    downloads: currentTasks, 
+  const {
+    downloads: currentTasks,
     refreshDownloads,
     videoInfoState,
     setVideoInfoUrl,
@@ -109,31 +109,31 @@ export function DownloadManager({ onNavigateToSettings }: DownloadManagerProps =
     setVideoCookieWarning,
     clearVideoInfo,
   } = useTaskProgress();
-  
+
   // 从全局状态获取
   const url = videoInfoState.url;
   const videoInfo = videoInfoState.info;
   const infoLoading = videoInfoState.loading;
   const cookieWarning = videoInfoState.cookieWarning;
-  
+
   // 本地状态
   const [selectedQuality, setSelectedQuality] = useState(settings.defaultQuality || 'best');
   const [selectedFormat, setSelectedFormat] = useState(settings.defaultFormat || 'mp4');
   const [loading, setLoading] = useState(false); // downloading state
   const [thumbnailError, setThumbnailError] = useState(false); // thumbnail load error
-  
+
   // 设置 URL
   const setUrl = (newUrl: string) => {
     setVideoInfoUrl(newUrl);
   };
-  
+
   // 打开文件夹
   const handleOpenFolder = async (filePath?: string) => {
     if (!filePath) {
       toast.error('文件路径不存在');
       return;
     }
-    
+
     try {
       // 检查是否在 Electron 环境
       if (window.electron && window.electron.isElectron) {
@@ -150,14 +150,14 @@ export function DownloadManager({ onNavigateToSettings }: DownloadManagerProps =
       });
     }
   };
-  
+
   // URL格式验证
   const isValidUrl = (urlString: string): boolean => {
     // 检查是否包含协议
     if (!urlString.startsWith('http://') && !urlString.startsWith('https://')) {
       return false;
     }
-    
+
     try {
       new URL(urlString);
       return true;
@@ -182,37 +182,37 @@ export function DownloadManager({ onNavigateToSettings }: DownloadManagerProps =
   const cleanUrl = (text: string): string => {
     // 移除首尾空格
     text = text.trim();
-    
+
     // 使用正则提取 URL
     const urlPattern = /(https?:\/\/[^\s]+)/gi;
     const matches = text.match(urlPattern);
-    
+
     if (matches && matches.length > 0) {
       // 获取第一个匹配的 URL
       let cleanedUrl = matches[0];
-      
+
       // 移除 URL 末尾可能的特殊字符和文本
       // 例如：https://v.douyin.com/xxx/ M@W.zt 09/29 UlC:/
       cleanedUrl = cleanedUrl.split(/\s/)[0]; // 按空格分割，取第一部分
-      
+
       // 移除末尾的特殊字符（但保留 / ? # & = 等有效字符）
       cleanedUrl = cleanedUrl.replace(/[^\w\-._~:/?#[\]@!$&'()*+,;=%]+$/, '');
-      
+
       return cleanedUrl;
     }
-    
+
     return text;
   };
 
   // 获取视频信息
   const handleGetInfo = async () => {
     const cleanedUrl = cleanUrl(url);
-    
+
     // 如果清理后的 URL 与原始输入不同，更新输入框
     if (cleanedUrl !== url) {
       setUrl(cleanedUrl);
     }
-    
+
     if (!cleanedUrl) {
       toast.error('请输入视频链接');
       return;
@@ -228,7 +228,7 @@ export function DownloadManager({ onNavigateToSettings }: DownloadManagerProps =
 
     // 检测平台
     const platform = detectPlatform(cleanedUrl);
-    
+
     // 检查是否需要Cookie
     if (PLATFORMS_REQUIRING_COOKIE.includes(platform)) {
       const hasCookie = await checkCookieStatus(platform);
@@ -240,9 +240,9 @@ export function DownloadManager({ onNavigateToSettings }: DownloadManagerProps =
           instagram: 'Instagram',
           twitter: 'Twitter/X'
         };
-        setVideoCookieWarning({ 
-          platform, 
-          platformName: platformNames[platform] || platform 
+        setVideoCookieWarning({
+          platform,
+          platformName: platformNames[platform] || platform
         });
         toast.warning(`${platformNames[platform]} 需要配置Cookie`, {
           description: '点击下方提示配置Cookie以获取更好的下载体验'
@@ -273,12 +273,12 @@ export function DownloadManager({ onNavigateToSettings }: DownloadManagerProps =
   // 开始下载
   const handleDownload = async () => {
     const cleanedUrl = cleanUrl(url);
-    
+
     // 更新输入框
     if (cleanedUrl !== url) {
       setUrl(cleanedUrl);
     }
-    
+
     if (!cleanedUrl) {
       toast.error('请输入视频链接');
       return;
@@ -435,8 +435,8 @@ export function DownloadManager({ onNavigateToSettings }: DownloadManagerProps =
                 }}
                 className={url.trim() && !isValidUrl(cleanUrl(url)) ? 'border-destructive' : ''}
               />
-              <Button 
-                onClick={handleGetInfo} 
+              <Button
+                onClick={handleGetInfo}
                 disabled={loading || infoLoading}
                 variant="secondary"
               >
@@ -456,7 +456,7 @@ export function DownloadManager({ onNavigateToSettings }: DownloadManagerProps =
                 请输入有效的视频链接（需以 http:// 或 https:// 开头）
               </p>
             )}
-            
+
             {/* Cookie 警告提示 */}
             {cookieWarning && (
               <div className="bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded-lg p-3">
@@ -519,8 +519,8 @@ export function DownloadManager({ onNavigateToSettings }: DownloadManagerProps =
             <div className="space-y-4 p-4 border rounded-lg bg-muted/50">
               <div className="flex gap-4">
                 {videoInfo.thumbnail && !thumbnailError ? (
-                  <img 
-                    src={getProxiedImageUrl(videoInfo.thumbnail)} 
+                  <img
+                    src={getProxiedImageUrl(videoInfo.thumbnail)}
                     alt={videoInfo.title}
                     className="w-32 h-32 object-cover rounded bg-muted"
                     onError={(e) => {
@@ -563,9 +563,9 @@ export function DownloadManager({ onNavigateToSettings }: DownloadManagerProps =
                   )}
                 </div>
               </div>
-              
+
               <Separator />
-              
+
               <div className="flex gap-2">
                 <div className="flex-1">
                   <Label>视频质量</Label>
@@ -584,7 +584,7 @@ export function DownloadManager({ onNavigateToSettings }: DownloadManagerProps =
                     </SelectContent>
                   </Select>
                 </div>
-                
+
                 <div className="flex-1">
                   <Label>格式</Label>
                   <Select value={selectedFormat} onValueChange={setSelectedFormat}>
@@ -600,8 +600,8 @@ export function DownloadManager({ onNavigateToSettings }: DownloadManagerProps =
                   </Select>
                 </div>
               </div>
-              
-              <Button 
+
+              <Button
                 onClick={handleDownload}
                 disabled={loading}
                 className="w-full"
@@ -634,7 +634,7 @@ export function DownloadManager({ onNavigateToSettings }: DownloadManagerProps =
                 {currentTasks.map((task) => {
                   const statusInfo = getStatusBadge(task.status);
                   const platform = getPlatformConfig(task.platform);
-                  
+
                   return (
                     <DownloadTaskCard
                       key={task.task_id}

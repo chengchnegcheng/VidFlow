@@ -21,7 +21,7 @@ describe('App Component', () => {
 
   it('shows navigation items', () => {
     render(<App />);
-    
+
     // 检查导航项是否存在
     expect(screen.getByText('下载中心')).toBeInTheDocument();
     expect(screen.getByText('任务管理')).toBeInTheDocument();

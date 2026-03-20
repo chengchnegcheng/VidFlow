@@ -183,7 +183,7 @@ function AppContent() {
         console.error('获取状态失败', e);
       }
     };
-    
+
     fetchStats();
     const interval = setInterval(fetchStats, 3000);
     return () => clearInterval(interval);
@@ -248,8 +248,8 @@ function AppContent() {
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="font-semibold text-[15px] tracking-tight">VidFlow Desktop</span>
-                  <Badge 
-                    variant="secondary" 
+                  <Badge
+                    variant="secondary"
                     className="text-[10px] px-1.5 py-0 h-4 font-semibold bg-primary text-primary-foreground border-0 shadow-sm rounded-full"
                   >
                     v{appVersion}
@@ -264,7 +264,7 @@ function AppContent() {
                 </Badge>
               )}
             </div>
-            
+
             <div className="flex items-center gap-2" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
               {/* 网络状态 */}
               <Tooltip>
@@ -397,7 +397,7 @@ function AppContent() {
                 {navigationItems.map((item) => {
                   const Icon = item.icon;
                   const isActive = activeTab === item.id;
-                  
+
                   return (
                     <Tooltip key={item.id} delayDuration={0}>
                       <TooltipTrigger asChild>
@@ -449,8 +449,8 @@ function AppContent() {
               {activeTab === 'burn' && <BurnSubtitle />}
               {activeTab === 'logs' && <LogViewer />}
               {activeTab === 'settings' && (
-                <SettingsPanel 
-                  appVersion={appVersion} 
+                <SettingsPanel
+                  appVersion={appVersion}
                   targetCookiePlatform={targetCookiePlatform}
                   onCookiePlatformHandled={() => setTargetCookiePlatform(null)}
                 />
@@ -461,14 +461,14 @@ function AppContent() {
 
         {/* Toast Notifications */}
         <Toaster />
-        
+
         {/* Update Notification */}
         <CustomUpdateNotification />
-        
+
         {/* About Dialog */}
-        <AboutDialog 
-          isOpen={showAboutDialog} 
-          onClose={() => setShowAboutDialog(false)} 
+        <AboutDialog
+          isOpen={showAboutDialog}
+          onClose={() => setShowAboutDialog(false)}
           version={appVersion}
         />
             </TooltipProvider>

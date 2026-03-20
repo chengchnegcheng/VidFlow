@@ -1,4 +1,4 @@
-﻿"""
+"""
 图片代理API - 解决防盗链问题
 用于代理B站、YouTube等平台的图片请求
 """
@@ -44,24 +44,24 @@ def _resolve_image_referer(url: str) -> str:
 async def proxy_image(url: str):
     """
     代理图片请求，添加正确的Referer头
-    
+
     Args:
         url: 图片URL
-        
+
     Returns:
         图片二进制数据
     """
     try:
         # 根据URL确定Referer
         referer = _resolve_image_referer(url)
-        
+
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             'Referer': referer,
             'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
             'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
         }
-        
+
         # 增加超时时间到30秒，并添加重试机制
         # verify=False: 当系统代理指向 mitmproxy 时，SSL 证书链不受信任
         # trust_env=False: 避免走系统/环境变量代理，直接连接目标服务器
@@ -74,7 +74,7 @@ async def proxy_image(url: str):
         ) as client:
             response = await client.get(url, headers=headers)
             response.raise_for_status()
-            
+
             # 返回图片
             return Response(
                 content=response.content,
@@ -84,7 +84,7 @@ async def proxy_image(url: str):
                     'Access-Control-Allow-Origin': '*',  # 允许跨域
                 }
             )
-    
+
     except httpx.TimeoutException:
         logger.error(f"Timeout fetching image: {url}")
         raise HTTPException(status_code=504, detail="Image fetch timeout")

@@ -105,9 +105,9 @@ describe('SnifferControl Component', () => {
      */
     it('should render error message', () => {
       render(
-        <SnifferControl 
-          {...defaultProps} 
-          error="端口已被占用" 
+        <SnifferControl
+          {...defaultProps}
+          error="端口已被占用"
         />
       );
 
@@ -174,9 +174,9 @@ describe('SnifferControl Component', () => {
       };
 
       render(
-        <SnifferControl 
-          {...defaultProps} 
-          status={status} 
+        <SnifferControl
+          {...defaultProps}
+          status={status}
           quicStatus={quicStatus}
           onQUICToggle={mockOnQUICToggle}
         />
@@ -288,9 +288,9 @@ describe('SnifferControl Component', () => {
       };
 
       render(
-        <SnifferControl 
-          {...defaultProps} 
-          status={status} 
+        <SnifferControl
+          {...defaultProps}
+          status={status}
           quicStatus={quicStatus}
           onQUICToggle={mockOnQUICToggle}
         />
@@ -329,9 +329,9 @@ describe('SnifferControl Component', () => {
       ];
 
       render(
-        <SnifferControl 
-          {...defaultProps} 
-          status={status} 
+        <SnifferControl
+          {...defaultProps}
+          status={status}
           availableModes={availableModes}
           currentMultiMode="hybrid"
         />

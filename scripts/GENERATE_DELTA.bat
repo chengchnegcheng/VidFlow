@@ -29,7 +29,7 @@ for /d %%d in (releases\v*) do (
 )
 echo.
 
-set /p SOURCE_VERSION=请输入源版本号 (旧版本，如 1.0.2): 
+set /p SOURCE_VERSION=请输入源版本号 (旧版本，如 1.0.2):
 
 if "%SOURCE_VERSION%"=="" (
     echo ❌ 源版本号不能为空

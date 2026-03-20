@@ -51,7 +51,7 @@ def invalid_config_strategy(draw):
         "empty_processes",
         "invalid_backoff",
     ]))
-    
+
     config = {
         "preferred_mode": "hybrid",
         "auto_fallback": True,
@@ -63,7 +63,7 @@ def invalid_config_strategy(draw):
         "recovery_backoff_base": 1.0,
         "recovery_backoff_max": 30.0,
     }
-    
+
     if invalid_type == "invalid_port":
         config["clash_api_address"] = "127.0.0.1:invalid"
     elif invalid_type == "negative_timeout":
@@ -73,7 +73,7 @@ def invalid_config_strategy(draw):
     elif invalid_type == "invalid_backoff":
         config["recovery_backoff_base"] = 50.0
         config["recovery_backoff_max"] = 10.0  # max < base
-    
+
     return config
 
 
@@ -85,11 +85,11 @@ def invalid_config_strategy(draw):
 class TestConfigurationValidation:
     """
     Property 14: Configuration Validation
-    
+
     For any configuration dictionary, the validate() function should return an
     empty list for valid configurations and a non-empty list of error messages
     for invalid configurations. Invalid configurations should not be applied.
-    
+
     **Feature: weixin-channels-deep-research, Property 14: Configuration Validation**
     **Validates: Requirements 10.4, 10.6**
     """
@@ -98,12 +98,12 @@ class TestConfigurationValidation:
     @settings(max_examples=100)
     def test_valid_config_returns_empty_errors(self, config_dict):
         """测试有效配置返回空错误列表
-        
+
         Property: 对于有效配置，validate()应该返回空列表。
         """
         config = MultiModeCaptureConfig.from_dict(config_dict)
         errors = config.validate()
-        
+
         assert isinstance(errors, list), "validate() should return a list"
         assert len(errors) == 0, f"Valid config should have no errors, got: {errors}"
 
@@ -111,12 +111,12 @@ class TestConfigurationValidation:
     @settings(max_examples=100)
     def test_invalid_config_returns_errors(self, config_dict):
         """测试无效配置返回非空错误列表
-        
+
         Property: 对于无效配置，validate()应该返回非空错误消息列表。
         """
         config = MultiModeCaptureConfig.from_dict(config_dict)
         errors = config.validate()
-        
+
         assert isinstance(errors, list), "validate() should return a list"
         assert len(errors) > 0, f"Invalid config should have errors: {config_dict}"
 
@@ -182,7 +182,7 @@ class TestConfigManagerBasics:
         manager = ConfigManager()
         config = manager.get_config()
         default = MultiModeCaptureConfig.get_defaults()
-        
+
         assert config.preferred_mode == default.preferred_mode
         assert config.auto_fallback == default.auto_fallback
 
@@ -195,21 +195,21 @@ class TestConfigPersistence:
         with tempfile.TemporaryDirectory() as tmpdir:
             config_path = Path(tmpdir) / "test_config.json"
             manager = ConfigManager(config_path=config_path)
-            
+
             # 修改配置
             config = MultiModeCaptureConfig(
                 preferred_mode=CaptureMode.CLASH_API,
                 quic_blocking_enabled=True,
             )
-            
+
             # 保存
             assert manager.save(config) is True
             assert config_path.exists()
-            
+
             # 重新加载
             manager2 = ConfigManager(config_path=config_path)
             loaded = manager2.load()
-            
+
             assert loaded.preferred_mode == CaptureMode.CLASH_API
             assert loaded.quic_blocking_enabled is True
 
@@ -218,9 +218,9 @@ class TestConfigPersistence:
         with tempfile.TemporaryDirectory() as tmpdir:
             config_path = Path(tmpdir) / "nonexistent.json"
             manager = ConfigManager(config_path=config_path)
-            
+
             config = manager.load()
-            
+
             # 应该返回默认配置
             default = MultiModeCaptureConfig.get_defaults()
             assert config.preferred_mode == default.preferred_mode
@@ -229,14 +229,14 @@ class TestConfigPersistence:
         """测试加载无效JSON"""
         with tempfile.TemporaryDirectory() as tmpdir:
             config_path = Path(tmpdir) / "invalid.json"
-            
+
             # 写入无效JSON
             with open(config_path, 'w') as f:
                 f.write("not valid json {{{")
-            
+
             manager = ConfigManager(config_path=config_path)
             config = manager.load()
-            
+
             # 应该返回默认配置
             default = MultiModeCaptureConfig.get_defaults()
             assert config.preferred_mode == default.preferred_mode
@@ -246,13 +246,13 @@ class TestConfigPersistence:
         with tempfile.TemporaryDirectory() as tmpdir:
             config_path = Path(tmpdir) / "test_config.json"
             manager = ConfigManager(config_path=config_path)
-            
+
             # 第一次保存
             manager.save(MultiModeCaptureConfig(preferred_mode=CaptureMode.WINDIVERT))
-            
+
             # 第二次保存
             manager.save(MultiModeCaptureConfig(preferred_mode=CaptureMode.CLASH_API))
-            
+
             # 检查备份文件
             backup_path = manager.get_backup_path()
             assert backup_path.exists()
@@ -266,16 +266,16 @@ class TestConfigExportImport:
         with tempfile.TemporaryDirectory() as tmpdir:
             config_path = Path(tmpdir) / "config.json"
             export_path = Path(tmpdir) / "export.json"
-            
+
             manager = ConfigManager(config_path=config_path)
             manager.set_config(MultiModeCaptureConfig(
                 preferred_mode=CaptureMode.HYBRID,
                 quic_blocking_enabled=True,
             ))
-            
+
             assert manager.export_config(export_path) is True
             assert export_path.exists()
-            
+
             # 验证导出内容
             with open(export_path, 'r') as f:
                 data = json.load(f)
@@ -286,7 +286,7 @@ class TestConfigExportImport:
         """测试导入配置"""
         with tempfile.TemporaryDirectory() as tmpdir:
             import_path = Path(tmpdir) / "import.json"
-            
+
             # 创建导入文件
             import_data = {
                 "preferred_mode": "clash_api",
@@ -295,10 +295,10 @@ class TestConfigExportImport:
             }
             with open(import_path, 'w') as f:
                 json.dump(import_data, f)
-            
+
             manager = ConfigManager()
             config = manager.import_config(import_path)
-            
+
             assert config is not None
             assert config.preferred_mode == CaptureMode.CLASH_API
             assert config.quic_blocking_enabled is True
@@ -313,10 +313,10 @@ class TestConfigExportImport:
         """测试导入无效JSON"""
         with tempfile.TemporaryDirectory() as tmpdir:
             import_path = Path(tmpdir) / "invalid.json"
-            
+
             with open(import_path, 'w') as f:
                 f.write("not valid json")
-            
+
             manager = ConfigManager()
             config = manager.import_config(import_path)
             assert config is None
@@ -332,33 +332,33 @@ class TestConfigOperations:
             preferred_mode=CaptureMode.CLASH_API,
             quic_blocking_enabled=True,
         ))
-        
+
         config = manager.reset_to_defaults()
         default = MultiModeCaptureConfig.get_defaults()
-        
+
         assert config.preferred_mode == default.preferred_mode
         assert config.quic_blocking_enabled == default.quic_blocking_enabled
 
     def test_update_config(self):
         """测试更新配置"""
         manager = ConfigManager()
-        
+
         config = manager.update_config(
             preferred_mode="clash_api",
             quic_blocking_enabled=True,
         )
-        
+
         assert config.preferred_mode == CaptureMode.CLASH_API
         assert config.quic_blocking_enabled is True
 
     def test_is_valid(self):
         """测试配置有效性检查"""
         manager = ConfigManager()
-        
+
         # 有效配置
         manager.set_config(MultiModeCaptureConfig())
         assert manager.is_valid() is True
-        
+
         # 无效配置
         manager.set_config(MultiModeCaptureConfig(target_processes=[]))
         assert manager.is_valid() is False
@@ -368,9 +368,9 @@ class TestConfigOperations:
         with tempfile.TemporaryDirectory() as tmpdir:
             config_path = Path(tmpdir) / "config.json"
             manager = ConfigManager(config_path=config_path)
-            
+
             assert manager.config_exists() is False
-            
+
             manager.save()
             assert manager.config_exists() is True
 
@@ -379,10 +379,10 @@ class TestConfigOperations:
         with tempfile.TemporaryDirectory() as tmpdir:
             config_path = Path(tmpdir) / "config.json"
             manager = ConfigManager(config_path=config_path)
-            
+
             manager.save()
             assert config_path.exists()
-            
+
             assert manager.delete_config() is True
             assert not config_path.exists()
 
@@ -391,16 +391,16 @@ class TestConfigOperations:
         with tempfile.TemporaryDirectory() as tmpdir:
             config_path = Path(tmpdir) / "config.json"
             manager = ConfigManager(config_path=config_path)
-            
+
             # 保存原始配置
             manager.save(MultiModeCaptureConfig(preferred_mode=CaptureMode.WINDIVERT))
-            
+
             # 保存新配置（创建备份）
             manager.save(MultiModeCaptureConfig(preferred_mode=CaptureMode.CLASH_API))
-            
+
             # 从备份恢复
             assert manager.restore_from_backup() is True
-            
+
             # 验证恢复的配置
             config = manager.get_config()
             assert config.preferred_mode == CaptureMode.WINDIVERT
@@ -410,7 +410,7 @@ class TestConfigOperations:
         with tempfile.TemporaryDirectory() as tmpdir:
             config_path = Path(tmpdir) / "config.json"
             manager = ConfigManager(config_path=config_path)
-            
+
             assert manager.restore_from_backup() is False
 
 
@@ -422,9 +422,9 @@ class TestConfigTimestamps:
         with tempfile.TemporaryDirectory() as tmpdir:
             config_path = Path(tmpdir) / "config.json"
             manager = ConfigManager(config_path=config_path)
-            
+
             manager.save()
-            
+
             assert manager.last_load_time is None
             manager.load()
             assert manager.last_load_time is not None
@@ -434,7 +434,7 @@ class TestConfigTimestamps:
         with tempfile.TemporaryDirectory() as tmpdir:
             config_path = Path(tmpdir) / "config.json"
             manager = ConfigManager(config_path=config_path)
-            
+
             assert manager.last_save_time is None
             manager.save()
             assert manager.last_save_time is not None

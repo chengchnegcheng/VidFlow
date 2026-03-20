@@ -62,11 +62,11 @@ class ClashConnection:
 
 class ClashAPIMonitor:
     """Clash API监控器
-    
+
     通过Clash RESTful API监控连接。
     Validates: Requirements 5.1, 5.2, 5.3, 5.4, 5.5, 5.6
     """
-    
+
     # 视频号相关域名模式
     VIDEO_DOMAIN_PATTERNS = [
         r'finder\.video\.qq\.com',
@@ -78,10 +78,10 @@ class ClashAPIMonitor:
         r'vd\d?\.video\.qq\.com',
         r'.*\.tc\.qq\.com',
     ]
-    
+
     def __init__(self, api_address: str = "127.0.0.1:9090", api_secret: Optional[str] = None):
         """初始化Clash API监控器
-        
+
         Args:
             api_address: Clash API地址 (host:port)
             api_secret: API密钥
@@ -93,24 +93,24 @@ class ClashAPIMonitor:
         self._polling_task: Optional[asyncio.Task] = None
         self._on_connection_callback: Optional[Callable[[ClashConnection], None]] = None
         self._compiled_patterns = [re.compile(p, re.IGNORECASE) for p in self.VIDEO_DOMAIN_PATTERNS]
-    
+
     @property
     def base_url(self) -> str:
         addr = self.api_address
         if not addr.startswith(("http://", "https://")):
             addr = f"http://{addr}"
         return addr
-    
+
     @property
     def headers(self) -> Dict[str, str]:
         h = {"Content-Type": "application/json"}
         if self.api_secret:
             h["Authorization"] = f"Bearer {self.api_secret}"
         return h
-    
+
     async def connect(self) -> bool:
         """连接到Clash API
-        
+
         Returns:
             bool: 连接是否成功
         Validates: Requirements 5.1, 5.6
@@ -118,7 +118,7 @@ class ClashAPIMonitor:
         if not HAS_AIOHTTP:
             logger.error("aiohttp not available")
             return False
-        
+
         try:
             self._session = aiohttp.ClientSession(
                 timeout=aiohttp.ClientTimeout(total=10),
@@ -143,7 +143,7 @@ class ClashAPIMonitor:
         except Exception as e:
             logger.error(f"Unexpected error connecting to Clash API: {e}")
             return False
-    
+
     async def disconnect(self) -> None:
         """断开连接"""
         self._is_connected = False
@@ -153,30 +153,30 @@ class ClashAPIMonitor:
         if self._session:
             await self._session.close()
             self._session = None
-    
+
     @property
     def is_connected(self) -> bool:
         return self._is_connected
 
     async def get_connections(self) -> List[ClashConnection]:
         """获取当前所有连接
-        
+
         Returns:
             List[ClashConnection]: 连接列表
         Validates: Requirements 5.2
         """
         if not self._session or not self._is_connected:
             return []
-        
+
         try:
             async with self._session.get(f"{self.base_url}/connections") as resp:
                 if resp.status != 200:
                     logger.warning(f"Failed to get connections: status {resp.status}")
                     return []
-                
+
                 data = await resp.json()
                 connections = []
-                
+
                 for conn_data in data.get("connections", []):
                     try:
                         metadata = conn_data.get("metadata", {})
@@ -200,12 +200,12 @@ class ClashAPIMonitor:
                     except Exception as e:
                         logger.debug(f"Failed to parse connection: {e}")
                         continue
-                
+
                 return connections
         except Exception as e:
             logger.error(f"Error getting connections: {e}")
             return []
-    
+
     def _parse_time(self, time_str: str) -> datetime:
         """解析时间字符串"""
         if not time_str:
@@ -215,13 +215,13 @@ class ClashAPIMonitor:
             return datetime.fromisoformat(time_str.replace("Z", "+00:00"))
         except:
             return datetime.now()
-    
+
     def filter_video_connections(self, connections: List[ClashConnection]) -> List[ClashConnection]:
         """过滤出视频号相关连接
-        
+
         Args:
             connections: 所有连接
-            
+
         Returns:
             List[ClashConnection]: 视频相关连接
         Validates: Requirements 5.3
@@ -231,27 +231,27 @@ class ClashAPIMonitor:
             if self.is_video_connection(conn):
                 video_connections.append(conn)
         return video_connections
-    
+
     def is_video_connection(self, conn: ClashConnection) -> bool:
         """判断是否为视频相关连接"""
         host = conn.host or conn.dst_ip
         if not host:
             return False
-        
+
         for pattern in self._compiled_patterns:
             if pattern.search(host):
                 return True
         return False
-    
+
     async def get_traffic_stats(self) -> Dict[str, int]:
         """获取流量统计
-        
+
         Returns:
             Dict with 'download' and 'upload' bytes
         """
         if not self._session or not self._is_connected:
             return {"download": 0, "upload": 0}
-        
+
         try:
             async with self._session.get(f"{self.base_url}/traffic") as resp:
                 if resp.status == 200:
@@ -266,7 +266,7 @@ class ClashAPIMonitor:
 
     async def start_polling(self, interval: float = 1.0, callback: Optional[Callable[[ClashConnection], None]] = None) -> None:
         """开始轮询连接
-        
+
         Args:
             interval: 轮询间隔（秒）
             callback: 发现新视频连接时的回调
@@ -274,7 +274,7 @@ class ClashAPIMonitor:
         """
         self._on_connection_callback = callback
         self._polling_task = asyncio.create_task(self._poll_loop(interval))
-    
+
     async def stop_polling(self) -> None:
         """停止轮询"""
         if self._polling_task:
@@ -284,16 +284,16 @@ class ClashAPIMonitor:
             except asyncio.CancelledError:
                 pass
             self._polling_task = None
-    
+
     async def _poll_loop(self, interval: float) -> None:
         """轮询循环"""
         seen_ids = set()
-        
+
         while self._is_connected:
             try:
                 connections = await self.get_connections()
                 video_connections = self.filter_video_connections(connections)
-                
+
                 for conn in video_connections:
                     if conn.id not in seen_ids:
                         seen_ids.add(conn.id)
@@ -302,31 +302,31 @@ class ClashAPIMonitor:
                                 self._on_connection_callback(conn)
                             except Exception as e:
                                 logger.error(f"Callback error: {e}")
-                
+
                 # 清理旧ID
                 current_ids = {c.id for c in connections}
                 seen_ids = seen_ids & current_ids
-                
+
                 await asyncio.sleep(interval)
             except asyncio.CancelledError:
                 break
             except Exception as e:
                 logger.error(f"Polling error: {e}")
                 await asyncio.sleep(interval)
-    
+
     async def stream_connections(self) -> AsyncIterator[ClashConnection]:
         """流式获取新连接（WebSocket）
-        
+
         Yields:
             ClashConnection: 新检测到的视频连接
         Validates: Requirements 5.2 (optional WebSocket mode)
         """
         if not self._session or not self._is_connected:
             return
-        
+
         seen_ids = set()
         ws_url = f"{self.base_url.replace('http', 'ws')}/connections"
-        
+
         try:
             async with self._session.ws_connect(ws_url) as ws:
                 async for msg in ws:
@@ -361,19 +361,19 @@ class ClashAPIMonitor:
                         break
         except Exception as e:
             logger.error(f"WebSocket error: {e}")
-    
+
     async def close_connection(self, conn_id: str) -> bool:
         """关闭指定连接
-        
+
         Args:
             conn_id: 连接ID
-            
+
         Returns:
             bool: 是否成功
         """
         if not self._session or not self._is_connected:
             return False
-        
+
         try:
             async with self._session.delete(f"{self.base_url}/connections/{conn_id}") as resp:
                 return resp.status == 204

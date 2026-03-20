@@ -20,9 +20,9 @@ async function initializeBackendPort() {
     }
     return portInitialized;
   }
-  
+
   initializationInProgress = true;
-  
+
   if (window.electron) {
     try {
       const config = await window.electron.invoke('get-backend-port');
@@ -39,7 +39,7 @@ async function initializeBackendPort() {
       console.error('❌ Failed to get backend port:', error);
     }
   }
-  
+
   initializationInProgress = false;
   return false;
 }
@@ -66,7 +66,7 @@ api.interceptors.request.use(
       console.log('🔄 Port not initialized, initializing now...');
       await initializeBackendPort();
     }
-    
+
     // 如果已经有端口，使用最新的 baseURL
     if (backendPort) {
       config.baseURL = API_BASE_URL;
@@ -74,7 +74,7 @@ api.interceptors.request.use(
     } else {
       console.warn('⚠️ Backend port not available, using default:', config.baseURL);
     }
-    
+
     return config;
   },
   (error) => Promise.reject(error)
@@ -188,7 +188,7 @@ export const apiClient = {
   ): Promise<{ tasks: DownloadTask[]; total: number }> {
     const params: any = { limit, offset };
     if (status) params.status = status;
-    
+
     const response = await api.get('/api/v1/downloads/tasks', { params });
     return response.data;
   },

@@ -300,32 +300,32 @@ export function SettingsPanel({ appVersion, targetCookiePlatform, onCookiePlatfo
       {/* Tabs */}
       <Tabs value={activeSettingsTab} onValueChange={setActiveSettingsTab} className="flex-1 flex flex-col">
         <TabsList className="w-full justify-start rounded-none border-b bg-transparent px-6 h-auto p-0">
-          <TabsTrigger 
-            value="download" 
+          <TabsTrigger
+            value="download"
             className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent"
           >
             下载设置
           </TabsTrigger>
-          <TabsTrigger 
+          <TabsTrigger
             value="appearance"
             className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent"
           >
             外观设置
           </TabsTrigger>
-          <TabsTrigger 
+          <TabsTrigger
             value="advanced"
             className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent"
           >
             高级设置
           </TabsTrigger>
-          <TabsTrigger 
+          <TabsTrigger
             value="tools"
             className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent"
           >
             <Wrench className="size-4 mr-2" />
             工具管理
           </TabsTrigger>
-          <TabsTrigger 
+          <TabsTrigger
             value="cookies"
             className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent"
           >
@@ -478,9 +478,9 @@ export function SettingsPanel({ appVersion, targetCookiePlatform, onCookiePlatfo
                     </SelectContent>
                   </Select>
                 </div>
-                
+
                 <Separator />
-                
+
                 <div className="space-y-2">
                   <Label>语言</Label>
                   <Select value={localSettings.language} onValueChange={(value) => updateSetting('language', value)}>
@@ -555,9 +555,9 @@ export function SettingsPanel({ appVersion, targetCookiePlatform, onCookiePlatfo
                     onCheckedChange={(checked) => updateSetting('saveHistory', checked)}
                   />
                 </div>
-                
+
                 <Separator />
-                
+
                 {/* 存储信息 */}
                 <div className="space-y-3">
                   <Label>存储管理</Label>
@@ -611,9 +611,9 @@ export function SettingsPanel({ appVersion, targetCookiePlatform, onCookiePlatfo
                       <span className="text-muted-foreground">加载中...</span>
                     </div>
                   )}
-                  <Button 
-                    variant="outline" 
-                    className="w-full" 
+                  <Button
+                    variant="outline"
+                    className="w-full"
                     onClick={handleClearCache}
                     disabled={clearingCache}
                   >
@@ -645,8 +645,8 @@ export function SettingsPanel({ appVersion, targetCookiePlatform, onCookiePlatfo
         {/* Cookie 管理 */}
         <TabsContent value="cookies" className="flex-1 overflow-auto data-[state=inactive]:hidden" forceMount>
           <div className="p-6 max-w-6xl" data-tab="cookies">
-            <CookieManager 
-              onCookieUpdate={fetchStorageInfo} 
+            <CookieManager
+              onCookieUpdate={fetchStorageInfo}
               targetPlatform={targetCookiePlatform}
               onTargetPlatformHandled={onCookiePlatformHandled}
             />

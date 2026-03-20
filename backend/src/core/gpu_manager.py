@@ -15,27 +15,27 @@ logger = logging.getLogger(__name__)
 
 class GPUManager:
     """GPU 加速管理"""
-    
+
     def __init__(self):
         self.gpu_info = None
         self._detection_done = False
         self._last_ai_packages_dir: Optional[str] = None
         self._detection_lock = asyncio.Lock()
         self._installing = False  # 安装状态追踪
-    
+
     async def _detect_gpu(self):
         """检测GPU硬件（异步）"""
         if self._detection_done:
             return
-        
+
         async with self._detection_lock:
             if self._detection_done:  # 双重检查
                 return
-            
+
             try:
                 # 在线程池中检测（避免阻塞）
                 check_nvidia = self._check_nvidia_gpu_sync  # 保存引用
-                
+
                 def _sync_detect():
                     try:
                         try:
@@ -135,14 +135,14 @@ class GPUManager:
                             "enabled": False,
                             "reason": f"Detection failed: {str(e)}"
                         }
-                
+
                 self.gpu_info = await asyncio.to_thread(_sync_detect)
-                
+
                 if self.gpu_info.get("enabled"):
                     logger.info(f"GPU detected: {self.gpu_info.get('device_name')}")
-                
+
                 self._detection_done = True
-            
+
             except Exception as e:
                 logger.error(f"GPU detection failed: {e}")
                 self.gpu_info = {
@@ -151,7 +151,7 @@ class GPUManager:
                     "reason": f"Detection failed: {str(e)}"
                 }
                 self._detection_done = True
-    
+
     def _check_nvidia_gpu_sync(self) -> bool:
         """检查是否有NVIDIA GPU（不依赖torch，同步版本）"""
         try:
@@ -165,7 +165,7 @@ class GPUManager:
                 # Windows 特定：隐藏控制台窗口
                 if hasattr(subprocess, 'CREATE_NO_WINDOW'):
                     kwargs['creationflags'] = subprocess.CREATE_NO_WINDOW
-                
+
                 result = subprocess.run(
                     ['nvidia-smi', '--query-gpu=name', '--format=csv,noheader'],
                     **kwargs
@@ -182,9 +182,9 @@ class GPUManager:
                 return result.returncode == 0
         except Exception as e:
             logger.debug(f"GPU detection failed: {e}")
-        
+
         return False
-    
+
     async def get_status(self) -> Dict:
         """获取GPU状态（异步）"""
         try:
@@ -200,7 +200,7 @@ class GPUManager:
         # 确保检测已完成
         if not self._detection_done:
             await self._detect_gpu()
-        
+
         # 提供默认值
         if not self.gpu_info:
             self.gpu_info = {
@@ -208,7 +208,7 @@ class GPUManager:
                 "enabled": False,
                 "reason": "Detection not completed"
             }
-        
+
         status = {
             "gpu_available": self.gpu_info.get("available", False),
             "gpu_enabled": self.gpu_info.get("enabled", False),
@@ -218,14 +218,14 @@ class GPUManager:
             "install_guide": None,
             "installing": self._installing  # 添加安装状态
         }
-        
+
         # 如果有GPU但未启用，提供安装指导
         if status["gpu_available"] and not status["gpu_enabled"]:
             status["can_install"] = True
             status["install_guide"] = self._get_install_guide()
-        
+
         return status
-    
+
     def _get_install_guide(self) -> Dict:
         """生成安装指导"""
         guide = {
@@ -267,24 +267,24 @@ class GPUManager:
                 "note": "在命令行中运行此命令"
             }
         }
-        
+
         return guide
-    
+
     def _get_install_command(self) -> str:
         """获取安装命令"""
         python_exe = sys.executable
-        
+
         # 检测CUDA版本（简化版，实际应该检测驱动版本）
         cuda_version = "cu118"  # 默认CUDA 11.8
-        
+
         cmd = f'"{python_exe}" -m pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/{cuda_version}'
-        
+
         return cmd
-    
+
     async def install_gpu_package(self, progress_callback=None) -> Dict:
         """安装GPU加速包"""
         self._installing = True
-        
+
         try:
             if progress_callback:
                 await progress_callback(0, "开始安装 GPU 加速包...")
@@ -452,7 +452,7 @@ class GPUManager:
                 "success": True,
                 "message": "GPU 加速包安装成功，请重启软件"
             }
-        
+
         except Exception as e:
             logger.error(f"Failed to install GPU package: {e}")
             return {"success": False, "error": f"安装失败: {str(e)}"}

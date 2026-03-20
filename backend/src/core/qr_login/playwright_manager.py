@@ -18,27 +18,27 @@ logger = logging.getLogger(__name__)
 
 class PlaywrightManager:
     """Playwright浏览器管理器
-    
+
     管理Playwright浏览器实例，提供：
     - 浏览器启动和关闭
     - Stealth脚本注入（防止检测）
     - 资源清理
     - 并发控制
     """
-    
+
     # 最大同时运行的浏览器实例数
     MAX_CONCURRENT_BROWSERS = 2
-    
+
     # Stealth脚本路径
     STEALTH_SCRIPT_PATH = Path(__file__).parent / "libs" / "stealth.min.js"
-    
+
     def __init__(self):
         self._playwright = None
         self._browser = None
         self._active_contexts: Dict[str, Any] = {}
         self._lock = asyncio.Lock()
         self._semaphore = asyncio.Semaphore(self.MAX_CONCURRENT_BROWSERS)
-    
+
     async def _ensure_playwright(self):
         """确保Playwright已初始化"""
         if self._playwright is None:
@@ -49,7 +49,7 @@ class PlaywrightManager:
             except Exception as e:
                 logger.error(f"Playwright初始化失败: {e}")
                 raise Exception(f"Playwright初始化失败: {e}")
-    
+
     async def _ensure_browser(self):
         """确保浏览器已启动"""
         await self._ensure_playwright()
@@ -132,33 +132,33 @@ class PlaywrightManager:
                 return path
 
         return None
-    
+
     async def create_context(
-        self, 
+        self,
         context_id: str,
         use_stealth: bool = True,
         extra_cookies: list = None,
         viewport: dict = None
     ):
         """创建新的浏览器上下文
-        
+
         Args:
             context_id: 上下文唯一标识
             use_stealth: 是否使用stealth脚本
             extra_cookies: 额外的Cookie列表
             viewport: 视口大小配置
-            
+
         Returns:
             BrowserContext实例
         """
         async with self._semaphore:
             async with self._lock:
                 await self._ensure_browser()
-                
+
                 # 默认视口
                 if viewport is None:
                     viewport = {'width': 1920, 'height': 1080}
-                
+
                 # 创建上下文
                 context = await self._browser.new_context(
                     viewport=viewport,
@@ -166,20 +166,20 @@ class PlaywrightManager:
                     locale='zh-CN',
                     timezone_id='Asia/Shanghai',
                 )
-                
+
                 # 注入stealth脚本
                 if use_stealth:
                     await self._inject_stealth(context)
-                
+
                 # 添加额外Cookie
                 if extra_cookies:
                     await context.add_cookies(extra_cookies)
-                
+
                 self._active_contexts[context_id] = context
                 logger.info(f"创建浏览器上下文: {context_id}")
-                
+
                 return context
-    
+
     async def _inject_stealth(self, context):
         """注入增强版stealth脚本防止检测
 
@@ -322,21 +322,21 @@ class PlaywrightManager:
                 logger.warning(f"加载外部stealth脚本失败，使用内置脚本: {e}")
 
         await context.add_init_script(stealth_script)
-    
+
     async def get_context(self, context_id: str):
         """获取已存在的上下文
-        
+
         Args:
             context_id: 上下文唯一标识
-            
+
         Returns:
             BrowserContext实例或None
         """
         return self._active_contexts.get(context_id)
-    
+
     async def close_context(self, context_id: str):
         """关闭并清理上下文
-        
+
         Args:
             context_id: 上下文唯一标识
         """
@@ -348,7 +348,7 @@ class PlaywrightManager:
                     logger.info(f"关闭浏览器上下文: {context_id}")
                 except Exception as e:
                     logger.warning(f"关闭上下文失败: {e}")
-    
+
     async def cleanup(self):
         """清理所有资源"""
         async with self._lock:
@@ -359,7 +359,7 @@ class PlaywrightManager:
                 except Exception as e:
                     logger.warning(f"关闭上下文 {context_id} 失败: {e}")
             self._active_contexts.clear()
-            
+
             # 关闭浏览器
             if self._browser:
                 try:
@@ -367,7 +367,7 @@ class PlaywrightManager:
                 except Exception as e:
                     logger.warning(f"关闭浏览器失败: {e}")
                 self._browser = None
-            
+
             # 停止Playwright
             if self._playwright:
                 try:
@@ -375,9 +375,9 @@ class PlaywrightManager:
                 except Exception as e:
                     logger.warning(f"停止Playwright失败: {e}")
                 self._playwright = None
-            
+
             logger.info("Playwright资源清理完成")
-    
+
     @property
     def active_context_count(self) -> int:
         """获取活跃上下文数量"""

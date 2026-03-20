@@ -32,35 +32,35 @@ class LocalizedErrorCode(Enum):
     CLASH_API_FAILED = "CLASH_API_FAILED"
     CLASH_AUTH_FAILED = "CLASH_AUTH_FAILED"
     PROXY_NOT_SUPPORTED = "PROXY_NOT_SUPPORTED"
-    
+
     # 捕获相关
     WINDIVERT_ADMIN = "WINDIVERT_ADMIN"
     WINDIVERT_DRIVER = "WINDIVERT_DRIVER"
     WINDIVERT_FILTER = "WINDIVERT_FILTER"
     CAPTURE_FAILED = "CAPTURE_FAILED"
     MODE_SWITCH_FAILED = "MODE_SWITCH_FAILED"
-    
+
     # 进程相关
     WECHAT_NOT_RUNNING = "WECHAT_NOT_RUNNING"
     WECHAT_RESTART_DETECTED = "WECHAT_RESTART_DETECTED"
     PROCESS_ACCESS_DENIED = "PROCESS_ACCESS_DENIED"
-    
+
     # TLS相关
     ECH_DETECTED = "ECH_DETECTED"
     SNI_EXTRACTION_FAILED = "SNI_EXTRACTION_FAILED"
     TLS_PARSE_ERROR = "TLS_PARSE_ERROR"
-    
+
     # 视频相关
     NO_VIDEO_DETECTED = "NO_VIDEO_DETECTED"
     VIDEO_EXPIRED = "VIDEO_EXPIRED"
     VIDEO_DECRYPT_FAILED = "VIDEO_DECRYPT_FAILED"
     VIDEO_DOWNLOAD_FAILED = "VIDEO_DOWNLOAD_FAILED"
-    
+
     # 系统相关
     RECOVERY_FAILED = "RECOVERY_FAILED"
     COMPONENT_FAILED = "COMPONENT_FAILED"
     NETWORK_ERROR = "NETWORK_ERROR"
-    
+
     # 配置相关
     CONFIG_INVALID = "CONFIG_INVALID"
     CONFIG_LOAD_FAILED = "CONFIG_LOAD_FAILED"
@@ -95,7 +95,7 @@ ERROR_MESSAGES_ZH: Dict[str, Dict[str, str]] = {
         "solution": "当前代理软件不支持API监控，请尝试使用透明捕获模式或关闭代理",
         "category": ErrorCategory.PROXY.value,
     },
-    
+
     # 捕获相关
     LocalizedErrorCode.WINDIVERT_ADMIN.value: {
         "message": "需要管理员权限",
@@ -122,7 +122,7 @@ ERROR_MESSAGES_ZH: Dict[str, Dict[str, str]] = {
         "solution": "无法切换到目标模式，请检查相关组件是否可用",
         "category": ErrorCategory.CAPTURE.value,
     },
-    
+
     # 进程相关
     LocalizedErrorCode.WECHAT_NOT_RUNNING.value: {
         "message": "未检测到微信进程",
@@ -139,7 +139,7 @@ ERROR_MESSAGES_ZH: Dict[str, Dict[str, str]] = {
         "solution": "请以管理员身份运行程序以获取进程访问权限",
         "category": ErrorCategory.PROCESS.value,
     },
-    
+
     # TLS相关
     LocalizedErrorCode.ECH_DETECTED.value: {
         "message": "检测到ECH加密",
@@ -156,7 +156,7 @@ ERROR_MESSAGES_ZH: Dict[str, Dict[str, str]] = {
         "solution": "TLS数据包格式异常，可能是非标准实现",
         "category": ErrorCategory.TLS.value,
     },
-    
+
     # 视频相关
     LocalizedErrorCode.NO_VIDEO_DETECTED.value: {
         "message": "未检测到视频",
@@ -178,7 +178,7 @@ ERROR_MESSAGES_ZH: Dict[str, Dict[str, str]] = {
         "solution": "下载过程中出错，请检查网络连接或重试",
         "category": ErrorCategory.VIDEO.value,
     },
-    
+
     # 系统相关
     LocalizedErrorCode.RECOVERY_FAILED.value: {
         "message": "自动恢复失败",
@@ -195,7 +195,7 @@ ERROR_MESSAGES_ZH: Dict[str, Dict[str, str]] = {
         "solution": "请检查网络连接是否正常，如使用代理请确保代理服务正常运行",
         "category": ErrorCategory.SYSTEM.value,
     },
-    
+
     # 配置相关
     LocalizedErrorCode.CONFIG_INVALID.value: {
         "message": "配置文件无效",
@@ -264,35 +264,35 @@ PROXY_SPECIFIC_GUIDANCE: Dict[str, Dict[str, str]] = {
 
 class ErrorMessageLocalizer:
     """错误消息本地化器
-    
+
     Property 15: Error Message Localization
     对于任何错误条件，系统应该生成用户友好的中文错误消息，
     描述问题并建议解决方案。技术细节和堆栈跟踪不应暴露给用户。
-    
+
     Validates: Requirements 7.3, 7.6
     """
-    
+
     def __init__(self, language: str = "zh"):
         """初始化本地化器
-        
+
         Args:
             language: 语言代码，目前支持 "zh"
         """
         self.language = language
         self._messages = ERROR_MESSAGES_ZH
         self._proxy_guidance = PROXY_SPECIFIC_GUIDANCE
-    
+
     def get_message(
         self,
         error_code: str,
         **kwargs: Any,
     ) -> Dict[str, str]:
         """获取本地化错误消息
-        
+
         Args:
             error_code: 错误码
             **kwargs: 消息模板参数
-            
+
         Returns:
             包含message、solution和category的字典
         """
@@ -302,9 +302,9 @@ class ErrorMessageLocalizer:
                 "solution": "请联系技术支持",
                 "category": ErrorCategory.SYSTEM.value,
             }
-        
+
         error_info = self._messages[error_code].copy()
-        
+
         # 格式化消息
         try:
             if kwargs:
@@ -312,9 +312,9 @@ class ErrorMessageLocalizer:
                 error_info["solution"] = error_info["solution"].format(**kwargs)
         except KeyError:
             pass
-        
+
         return error_info
-    
+
     def get_user_friendly_message(
         self,
         error_code: str,
@@ -322,60 +322,60 @@ class ErrorMessageLocalizer:
         **kwargs: Any,
     ) -> str:
         """获取用户友好的错误消息
-        
+
         Args:
             error_code: 错误码
             include_solution: 是否包含解决方案
             **kwargs: 消息模板参数
-            
+
         Returns:
             用户友好的错误消息字符串
         """
         error_info = self.get_message(error_code, **kwargs)
-        
+
         if include_solution:
             return f"{error_info['message']}。{error_info['solution']}"
         else:
             return error_info["message"]
-    
+
     def get_proxy_guidance(
         self,
         proxy_type: str,
         guidance_type: str,
     ) -> Optional[str]:
         """获取代理软件特定指导
-        
+
         Args:
             proxy_type: 代理类型（如 "clash", "surge"）
             guidance_type: 指导类型（如 "tun_disable", "direct_rule"）
-            
+
         Returns:
             指导文本，如果不存在则返回None
         """
         proxy_type_lower = proxy_type.lower()
-        
+
         if proxy_type_lower not in self._proxy_guidance:
             return None
-        
+
         guidance = self._proxy_guidance[proxy_type_lower]
         return guidance.get(guidance_type)
-    
+
     def get_proxy_name(self, proxy_type: str) -> str:
         """获取代理软件显示名称
-        
+
         Args:
             proxy_type: 代理类型
-            
+
         Returns:
             显示名称
         """
         proxy_type_lower = proxy_type.lower()
-        
+
         if proxy_type_lower in self._proxy_guidance:
             return self._proxy_guidance[proxy_type_lower].get("name", proxy_type)
-        
+
         return proxy_type
-    
+
     def format_error_for_user(
         self,
         error_code: str,
@@ -383,29 +383,29 @@ class ErrorMessageLocalizer:
         **kwargs: Any,
     ) -> Dict[str, Any]:
         """格式化错误信息供用户查看
-        
+
         Args:
             error_code: 错误码
             proxy_type: 代理类型（可选，用于提供特定指导）
             **kwargs: 消息模板参数
-            
+
         Returns:
             格式化的错误信息字典
         """
         error_info = self.get_message(error_code, **kwargs)
-        
+
         result = {
             "error_code": error_code,
             "message": error_info["message"],
             "solution": error_info["solution"],
             "category": error_info["category"],
         }
-        
+
         # 如果有代理类型，添加特定指导
         if proxy_type:
             proxy_name = self.get_proxy_name(proxy_type)
             result["proxy_name"] = proxy_name
-            
+
             # 根据错误类型添加特定指导
             if error_code == LocalizedErrorCode.PROXY_TUN_MODE.value:
                 guidance = self.get_proxy_guidance(proxy_type, "tun_disable")
@@ -422,17 +422,17 @@ class ErrorMessageLocalizer:
                 guidance = self.get_proxy_guidance(proxy_type, "api_enable")
                 if guidance:
                     result["proxy_guidance"] = guidance
-        
+
         return result
-    
+
     def is_warning_level(self, error_code: str) -> bool:
         """判断错误是否为警告级别
-        
+
         警告级别的错误不会阻止程序运行，只是提示用户。
-        
+
         Args:
             error_code: 错误码
-            
+
         Returns:
             是否为警告级别
         """
@@ -443,15 +443,15 @@ class ErrorMessageLocalizer:
             LocalizedErrorCode.SNI_EXTRACTION_FAILED.value,
         }
         return error_code in warning_codes
-    
+
     def is_fatal_level(self, error_code: str) -> bool:
         """判断错误是否为致命级别
-        
+
         致命级别的错误会阻止程序运行，需要用户干预。
-        
+
         Args:
             error_code: 错误码
-            
+
         Returns:
             是否为致命级别
         """
@@ -481,12 +481,12 @@ def get_localized_error(
     **kwargs: Any,
 ) -> Dict[str, Any]:
     """获取本地化错误信息（便捷函数）
-    
+
     Args:
         error_code: 错误码
         proxy_type: 代理类型
         **kwargs: 消息模板参数
-        
+
     Returns:
         格式化的错误信息
     """
@@ -495,11 +495,11 @@ def get_localized_error(
 
 def get_error_message_zh(error_code: str, **kwargs: Any) -> str:
     """获取中文错误消息（便捷函数）
-    
+
     Args:
         error_code: 错误码
         **kwargs: 消息模板参数
-        
+
     Returns:
         中文错误消息
     """

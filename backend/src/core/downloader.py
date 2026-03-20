@@ -19,7 +19,7 @@ class Downloader:
     视频下载器核心类
     使用智能回退策略：默认通用下载器，认证错误时回退到专用下载器
     """
-    
+
     def __init__(self, output_dir: str = None):
         # 如果没有指定输出目录，使用系统默认下载路径
         if output_dir is None:
@@ -30,7 +30,7 @@ class Downloader:
         self.active_downloads: Dict[str, Any] = {}
         # 使用智能下载管理器
         self._smart_manager = SmartDownloadManager(str(self.output_dir))
-        
+
     async def get_video_info(self, url: str) -> Dict[str, Any]:
         """
         获取视频信息（不下载）
@@ -49,7 +49,7 @@ class Downloader:
         """
         logger.info(f"Getting video info for: {url}")
         return await self._smart_manager.get_info_with_fallback(url)
-    
+
     async def download_video(
         self,
         url: str,
@@ -81,11 +81,11 @@ class Downloader:
         """
         # 如果指定了输出路径，更新智能管理器的输出目录
         actual_output_dir = output_path or str(self.output_dir)
-        
+
         # 复用智能管理器实例，仅在输出目录不同时更新
         if self._smart_manager.output_dir != actual_output_dir:
             self._smart_manager.output_dir = actual_output_dir
-        
+
         logger.info(f"Downloading video: {url}, quality: {quality}")
         return await self._smart_manager.download_with_fallback(
             url=url,

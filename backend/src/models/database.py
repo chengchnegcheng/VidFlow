@@ -27,7 +27,7 @@ def get_data_dir() -> Path:
     else:
         # 开发环境
         base_dir = Path(__file__).parent.parent.parent
-    
+
     data_dir = base_dir / "data"
     data_dir.mkdir(parents=True, exist_ok=True)
     return data_dir
@@ -69,7 +69,7 @@ async def init_database():
         async with engine.begin() as conn:
             # 设置 UTF-8 编码（确保中文路径正确存储）
             await conn.execute(text("PRAGMA encoding='UTF-8'"))
-            
+
             # 启用 WAL 模式（Write-Ahead Logging）
             # 允许多个读操作和一个写操作同时进行
             await conn.execute(text("PRAGMA journal_mode=WAL"))
@@ -78,7 +78,7 @@ async def init_database():
             await conn.execute(text("PRAGMA cache_size=-32000"))  # 32MB 缓存
             await conn.execute(text("PRAGMA temp_store=MEMORY"))  # 临时表存储在内存
             await conn.execute(text("PRAGMA mmap_size=268435456"))  # 256MB 内存映射
-            
+
             # 创建所有表
             await conn.run_sync(Base.metadata.create_all)
 
@@ -103,7 +103,7 @@ async def init_database():
                     logger.info("Migrated burn_subtitle_tasks: added column 'cancelled'")
             except Exception as migrate_err:
                 logger.warning(f"Schema migration skipped/failed: {migrate_err}")
-        
+
         logger.info("Database initialized successfully with WAL mode and UTF-8 encoding")
     except Exception as e:
         logger.error(f"Failed to initialize database: {e}")

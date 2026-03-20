@@ -71,19 +71,19 @@ export function useChannelsSniffer() {
   const [captureStatistics, setCaptureStatistics] = useState<CaptureStatistics | null>(null);
   const [captureState, setCaptureState] = useState<CaptureState>('stopped');
   const [captureStartedAt, setCaptureStartedAt] = useState<string | null>(null);
-  
+
   // 深度优化相关状态（Task 19.1）
   const [proxyInfo, setProxyInfo] = useState<ProxyInfo | null>(null);
   const [diagnostics, setDiagnostics] = useState<DiagnosticInfo | null>(null);
   const [captureModes, setCaptureModes] = useState<CaptureModesResponse | null>(null);
   const [quicStatus, setQuicStatus] = useState<QUICStatusResponse | null>(null);
   const [multiModeConfig, setMultiModeConfig] = useState<MultiModeConfigResponse | null>(null);
-  
+
   const statusPollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const videosPollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isMountedRef = useRef(true);
   const fetchVideosRef = useRef<() => Promise<void>>(async () => {});
-  
+
   // 熔断器状态
   const statusFailureCountRef = useRef(0);
   const videosFailureCountRef = useRef(0);
@@ -139,23 +139,23 @@ export function useChannelsSniffer() {
     if (statusCircuitOpenRef.current) {
       return;
     }
-    
+
     try {
       const response = await invoke('channels_get_status', {}) as SnifferStatusResponse;
       if (!isMountedRef.current) return;
-      
+
       // 请求成功，重置失败计数
       statusFailureCountRef.current = 0;
-      
+
       safeSetState({ status: response, error: null });
-      
+
       // 更新捕获统计
       if (response.statistics) {
         setCaptureStatistics(response.statistics);
       }
       setCaptureState(response.capture_state);
       setCaptureStartedAt(response.capture_started_at || null);
-      
+
       // If sniffer is running, make sure videos polling is active.
       if (response.state === 'running' && !videosPollingRef.current) {
         clearVideosPolling();
@@ -169,16 +169,16 @@ export function useChannelsSniffer() {
     } catch (error: any) {
       if (!isMountedRef.current) return;
       console.error('Failed to fetch sniffer status:', error);
-      
+
       // 增加失败计数
       statusFailureCountRef.current++;
-      
+
       // 达到熔断阈值，打开熔断器
       if (statusFailureCountRef.current >= MAX_CONSECUTIVE_FAILURES) {
         console.warn(`Status polling circuit breaker opened after ${MAX_CONSECUTIVE_FAILURES} failures`);
         statusCircuitOpenRef.current = true;
         safeSetState({ error: '后端连接失败，正在重试...' });
-        
+
         // 冷却后重置熔断器
         setTimeout(() => {
           if (isMountedRef.current) {
@@ -201,14 +201,14 @@ export function useChannelsSniffer() {
     if (videosCircuitOpenRef.current) {
       return;
     }
-    
+
     try {
       const videos = await invoke('channels_get_videos', {}) as DetectedVideo[];
       if (!isMountedRef.current) return;
-      
+
       // 请求成功，重置失败计数
       videosFailureCountRef.current = 0;
-      
+
       // 调试：打印视频信息
       if (videos.length > 0) {
         console.log('[Channels] Fetched videos:', videos.map(v => ({
@@ -218,20 +218,20 @@ export function useChannelsSniffer() {
           url: v.url.substring(0, 50) + '...'
         })));
       }
-      
+
       safeSetState({ videos });
     } catch (error: any) {
       if (!isMountedRef.current) return;
       console.error('Failed to fetch videos:', error);
-      
+
       // 增加失败计数
       videosFailureCountRef.current++;
-      
+
       // 达到熔断阈值，打开熔断器
       if (videosFailureCountRef.current >= MAX_CONSECUTIVE_FAILURES) {
         console.warn(`Videos polling circuit breaker opened after ${MAX_CONSECUTIVE_FAILURES} failures`);
         videosCircuitOpenRef.current = true;
-        
+
         // 冷却后重置熔断器
         setTimeout(() => {
           if (isMountedRef.current) {
@@ -268,34 +268,34 @@ export function useChannelsSniffer() {
    */
   const startSniffer = useCallback(async (port?: number, captureMode?: CaptureMode): Promise<SnifferStartResponse> => {
     safeSetState({ isLoading: true, error: null });
-    
+
     try {
-      const response = await invoke('channels_start_sniffer', { 
+      const response = await invoke('channels_start_sniffer', {
         port,
         capture_mode: captureMode,
       }) as SnifferStartResponse;
-      
+
       if (!isMountedRef.current) return response;
 
       if (response.proxy_info !== undefined) {
         setProxyInfo(response.proxy_info ?? null);
       }
-      
+
       if (response.success) {
         // 启动成功，开始轮询
         startStatusPolling();
         startVideosPolling();
       } else {
-        safeSetState({ 
-          error: response.error_message || getErrorMessage(response.error_code) 
+        safeSetState({
+          error: response.error_message || getErrorMessage(response.error_code)
         });
       }
-      
+
       safeSetState({ isLoading: false });
       return response;
     } catch (error: any) {
       if (!isMountedRef.current) throw error;
-      
+
       const errorMessage = error.message || '启动嗅探器失败';
       safeSetState({ isLoading: false, error: errorMessage });
       throw error;
@@ -307,22 +307,22 @@ export function useChannelsSniffer() {
    */
   const stopSniffer = useCallback(async (): Promise<SnifferStopResponse> => {
     safeSetState({ isLoading: true, error: null });
-    
+
     try {
       const response = await invoke('channels_stop_sniffer', {}) as SnifferStopResponse;
-      
+
       if (!isMountedRef.current) return response;
-      
+
       if (response.success) {
         clearVideosPolling();
       }
-      
+
       safeSetState({ isLoading: false });
       await fetchStatus();
       return response;
     } catch (error: any) {
       if (!isMountedRef.current) throw error;
-      
+
       const errorMessage = error.message || '停止嗅探器失败';
       safeSetState({ isLoading: false, error: errorMessage });
       throw error;
@@ -352,12 +352,12 @@ export function useChannelsSniffer() {
         video: DetectedVideo | null;
         error_message: string | null;
       };
-      
+
       if (response.success && response.video) {
         // 刷新视频列表
         await fetchVideos();
       }
-      
+
       return response;
     } catch (error: any) {
       console.error('Failed to add video manually:', error);
@@ -397,7 +397,7 @@ export function useChannelsSniffer() {
     try {
       const certInfo = await invoke('channels_get_cert_info', {}) as CertInfoResponse;
       if (!isMountedRef.current) return;
-      
+
       safeSetState({ certInfo });
     } catch (error: any) {
       console.error('Failed to fetch cert info:', error);
@@ -409,21 +409,21 @@ export function useChannelsSniffer() {
    */
   const generateCert = useCallback(async (): Promise<CertGenerateResponse> => {
     safeSetState({ isLoading: true });
-    
+
     try {
       const response = await invoke('channels_generate_cert', {}) as CertGenerateResponse;
-      
+
       if (!isMountedRef.current) return response;
-      
+
       if (response.success) {
         await fetchCertInfo();
       }
-      
+
       safeSetState({ isLoading: false });
       return response;
     } catch (error: any) {
       if (!isMountedRef.current) throw error;
-      
+
       safeSetState({ isLoading: false, error: error.message || '生成证书失败' });
       throw error;
     }
@@ -448,13 +448,13 @@ export function useChannelsSniffer() {
   const downloadCert = useCallback(async (format: 'cer' | 'p12' = 'p12') => {
     try {
       const apiBaseUrl = getApiBaseUrl();
-      
+
       // 检查 API_BASE 是否已初始化
       if (!apiBaseUrl) {
         safeSetState({ error: '后端未就绪，请稍后重试' });
         throw new Error('后端未就绪，请稍后重试');
       }
-      
+
       window.open(`${apiBaseUrl}/api/channels/certificate/download?format=${format}`, '_blank');
     } catch (error: any) {
       console.error('Failed to download cert:', error);
@@ -520,7 +520,7 @@ export function useChannelsSniffer() {
     try {
       const config = await invoke('channels_get_config', {}) as ChannelsConfigResponse;
       if (!isMountedRef.current) return;
-      
+
       safeSetState({ config });
     } catch (error: any) {
       console.error('Failed to fetch config:', error);
@@ -549,7 +549,7 @@ export function useChannelsSniffer() {
     try {
       const status = await invoke('channels_get_driver_status', {}) as DriverStatusResponse;
       if (!isMountedRef.current) return;
-      
+
       setDriverStatus(status);
     } catch (error: any) {
       console.error('Failed to fetch driver status:', error);
@@ -561,21 +561,21 @@ export function useChannelsSniffer() {
    */
   const installDriver = useCallback(async (): Promise<DriverInstallResponse> => {
     safeSetState({ isLoading: true });
-    
+
     try {
       const response = await invoke('channels_install_driver', {}) as DriverInstallResponse;
-      
+
       if (!isMountedRef.current) return response;
-      
+
       if (response.success) {
         await fetchDriverStatus();
       }
-      
+
       safeSetState({ isLoading: false });
       return response;
     } catch (error: any) {
       if (!isMountedRef.current) throw error;
-      
+
       safeSetState({ isLoading: false, error: error.message || '安装驱动失败' });
       throw error;
     }
@@ -600,7 +600,7 @@ export function useChannelsSniffer() {
     try {
       const config = await invoke('channels_get_capture_config', {}) as CaptureConfigResponse;
       if (!isMountedRef.current) return;
-      
+
       setCaptureConfig(config);
     } catch (error: any) {
       console.error('Failed to fetch capture config:', error);
@@ -631,7 +631,7 @@ export function useChannelsSniffer() {
         started_at: string | null;
       };
       if (!isMountedRef.current) return;
-      
+
       setCaptureStatistics(response.statistics);
       setCaptureState(response.state);
       setCaptureStartedAt(response.started_at);
@@ -649,7 +649,7 @@ export function useChannelsSniffer() {
     try {
       const info = await invoke('channels_detect_proxy', {}) as ProxyInfo;
       if (!isMountedRef.current) return info;
-      
+
       setProxyInfo(info);
       return info;
     } catch (error: any) {
@@ -665,7 +665,7 @@ export function useChannelsSniffer() {
     try {
       const info = await invoke('channels_get_diagnostics', {}) as DiagnosticInfo;
       if (!isMountedRef.current) return info;
-      
+
       setDiagnostics(info);
       return info;
     } catch (error: any) {
@@ -681,7 +681,7 @@ export function useChannelsSniffer() {
     try {
       const modes = await invoke('channels_get_modes', {}) as CaptureModesResponse;
       if (!isMountedRef.current) return modes;
-      
+
       setCaptureModes(modes);
       return modes;
     } catch (error: any) {
@@ -697,12 +697,12 @@ export function useChannelsSniffer() {
     try {
       const response = await invoke('channels_switch_mode', { mode }) as SwitchModeResponse;
       if (!isMountedRef.current) return response;
-      
+
       if (response.success) {
         // 刷新模式列表
         await fetchCaptureModes();
       }
-      
+
       return response;
     } catch (error: any) {
       console.error('Failed to switch capture mode:', error);
@@ -717,7 +717,7 @@ export function useChannelsSniffer() {
     try {
       const status = await invoke('channels_get_quic_status', {}) as QUICStatusResponse;
       if (!isMountedRef.current) return status;
-      
+
       setQuicStatus(status);
       return status;
     } catch (error: any) {
@@ -733,7 +733,7 @@ export function useChannelsSniffer() {
     try {
       const status = await invoke('channels_toggle_quic', { enabled }) as QUICStatusResponse;
       if (!isMountedRef.current) return status;
-      
+
       setQuicStatus(status);
       return status;
     } catch (error: any) {
@@ -749,7 +749,7 @@ export function useChannelsSniffer() {
     try {
       const config = await invoke('channels_get_multi_mode_config', {}) as MultiModeConfigResponse;
       if (!isMountedRef.current) return config;
-      
+
       setMultiModeConfig(config);
       return config;
     } catch (error: any) {
@@ -765,7 +765,7 @@ export function useChannelsSniffer() {
     try {
       const config = await invoke('channels_update_multi_mode_config', updates) as MultiModeConfigResponse;
       if (!isMountedRef.current) return config;
-      
+
       setMultiModeConfig(config);
       return config;
     } catch (error: any) {
@@ -781,11 +781,11 @@ export function useChannelsSniffer() {
     try {
       const response = await invoke('channels_reset_multi_mode_config', {}) as { success: boolean };
       if (!isMountedRef.current) return response.success;
-      
+
       if (response.success) {
         await fetchMultiModeConfig();
       }
-      
+
       return response.success;
     } catch (error: any) {
       console.error('Failed to reset multi-mode config:', error);
@@ -813,11 +813,11 @@ export function useChannelsSniffer() {
     try {
       const response = await invoke('channels_import_multi_mode_config', { import_path: importPath }) as { success: boolean };
       if (!isMountedRef.current) return response.success;
-      
+
       if (response.success) {
         await fetchMultiModeConfig();
       }
-      
+
       return response.success;
     } catch (error: any) {
       console.error('Failed to import multi-mode config:', error);
@@ -830,7 +830,7 @@ export function useChannelsSniffer() {
    */
   const initialize = useCallback(async () => {
     safeSetState({ isLoading: true });
-    
+
     try {
       await Promise.all([
         fetchStatus(),
@@ -858,14 +858,14 @@ export function useChannelsSniffer() {
    */
   useEffect(() => {
     isMountedRef.current = true;
-    
+
     // 先初始化，完成后再启动状态轮询
     initialize().then(() => {
       if (isMountedRef.current) {
         startStatusPolling();
       }
     });
-    
+
     return () => {
       isMountedRef.current = false;
       clearAllPolling();
@@ -880,19 +880,19 @@ export function useChannelsSniffer() {
     isStarting: state.status?.state === 'starting',
     isStopping: state.status?.state === 'stopping',
     hasError: state.status?.state === 'error',
-    
+
     // 嗅探器操作
     startSniffer,
     stopSniffer,
     fetchStatus,
-    
+
     // 视频操作
     fetchVideos,
     clearVideos,
     addVideoManually,
     downloadVideo,
     cancelDownload,
-    
+
     // 证书操作
     fetchCertInfo,
     generateCert,
@@ -901,11 +901,11 @@ export function useChannelsSniffer() {
     installRootCert,
     installWechatP12,
     getCertInstructions,
-    
+
     // 配置操作
     fetchConfig,
     updateConfig,
-    
+
     // 透明捕获相关
     driverStatus,
     captureConfig,
@@ -918,7 +918,7 @@ export function useChannelsSniffer() {
     fetchCaptureConfig,
     updateCaptureConfig,
     fetchCaptureStatistics,
-    
+
     // 深度优化相关（Task 19.1）
     proxyInfo,
     diagnostics,
@@ -936,7 +936,7 @@ export function useChannelsSniffer() {
     resetMultiModeConfig,
     exportMultiModeConfig,
     importMultiModeConfig,
-    
+
     // 初始化
     initialize,
   };

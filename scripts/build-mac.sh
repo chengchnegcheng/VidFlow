@@ -122,13 +122,13 @@ if [ ! -f "$TOOLS_BIN_DIR/ffmpeg" ]; then
     log_info "下载 ffmpeg (macOS x86_64)..."
     FFMPEG_URL="https://evermeet.cx/ffmpeg/ffmpeg-7.1.zip"
     FFMPEG_ZIP="$TOOLS_BIN_DIR/ffmpeg.zip"
-    
+
     if curl -L -o "$FFMPEG_ZIP" "$FFMPEG_URL"; then
         unzip -o "$FFMPEG_ZIP" -d "$TOOLS_BIN_DIR"
         rm -f "$FFMPEG_ZIP"
         chmod +x "$TOOLS_BIN_DIR/ffmpeg"
         log_success "ffmpeg 下载完成"
-        
+
         # 检查架构
         if [ "$(uname -m)" = "arm64" ]; then
             log_warning "注意: 下载的 ffmpeg 是 Intel 版本，将通过 Rosetta 2 运行"
@@ -146,7 +146,7 @@ if [ ! -f "$TOOLS_BIN_DIR/ffprobe" ]; then
     log_info "下载 ffprobe (macOS)..."
     FFPROBE_URL="https://evermeet.cx/ffmpeg/ffprobe-7.1.zip"
     FFPROBE_ZIP="$TOOLS_BIN_DIR/ffprobe.zip"
-    
+
     if curl -L -o "$FFPROBE_ZIP" "$FFPROBE_URL"; then
         unzip -o "$FFPROBE_ZIP" -d "$TOOLS_BIN_DIR"
         rm -f "$FFPROBE_ZIP"
@@ -164,7 +164,7 @@ fi
 if [ ! -f "$TOOLS_BIN_DIR/yt-dlp" ]; then
     log_info "下载 yt-dlp (macOS Universal Binary)..."
     YTDLP_URL="https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos"
-    
+
     if curl -L -o "$TOOLS_BIN_DIR/yt-dlp" "$YTDLP_URL"; then
         chmod +x "$TOOLS_BIN_DIR/yt-dlp"
         # 验证下载的文件

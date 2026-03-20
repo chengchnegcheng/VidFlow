@@ -18,7 +18,7 @@ echo [7] 清理构建缓存
 echo [0] 退出
 echo.
 
-set /p choice=请输入选项 [0-7]: 
+set /p choice=请输入选项 [0-7]:
 
 if "%choice%"=="1" goto build_all
 if "%choice%"=="2" goto build_backend
@@ -40,7 +40,7 @@ echo.
 echo [1/4] 检查版本号...
 powershell -Command "Get-Content package.json | Select-String -Pattern '\"version\"' | Select-Object -First 1"
 echo.
-set /p confirm=确认版本号正确吗？(Y/N): 
+set /p confirm=确认版本号正确吗？(Y/N):
 if /i not "%confirm%"=="Y" goto menu
 
 echo.

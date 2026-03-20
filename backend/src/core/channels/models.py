@@ -102,7 +102,7 @@ class VideoMetadata:
 @dataclass
 class ProxyInfo:
     """代理信息
-    
+
     存储检测到的代理软件信息，包括类型、模式、API地址等。
     Validates: Requirements 1.2, 1.4, 1.5
     """
@@ -388,11 +388,11 @@ ERROR_MESSAGES: Dict[str, str] = {
 
 def get_error_message(error_code: str, **kwargs) -> str:
     """获取本地化错误消息
-    
+
     Args:
         error_code: 错误码
         **kwargs: 消息模板参数
-        
+
     Returns:
         本地化的错误消息
     """
@@ -446,7 +446,7 @@ class DriverInstallResult:
 @dataclass
 class CaptureStatistics:
     """捕获统计
-    
+
     记录捕获过程中的各项统计数据。
     Validates: Requirements 7.1
     """
@@ -499,7 +499,7 @@ class CaptureStatistics:
 @dataclass
 class CaptureStatus:
     """捕获状态详情
-    
+
     包含当前捕获的完整状态信息。
     Validates: Requirements 2.4, 7.1
     """
@@ -658,7 +658,7 @@ class CaptureConfig:
 @dataclass
 class WeChatProcess:
     """微信进程信息
-    
+
     存储微信相关进程的详细信息。
     Validates: Requirements 8.1, 8.2
     """
@@ -696,7 +696,7 @@ class WeChatProcess:
 @dataclass
 class RecoveryAttempt:
     """恢复尝试记录
-    
+
     记录组件恢复尝试的详细信息。
     Validates: Requirements 9.1, 9.2, 9.4
     """
@@ -737,7 +737,7 @@ class RecoveryAttempt:
 @dataclass
 class DiagnosticInfo:
     """诊断信息
-    
+
     包含用于调试和诊断的详细信息。
     Validates: Requirements 7.1, 7.2, 7.4
     """
@@ -780,37 +780,37 @@ class DiagnosticInfo:
 @dataclass
 class MultiModeCaptureConfig:
     """多模式捕获配置
-    
+
     扩展的捕获配置，支持多种捕获模式和代理设置。
     Validates: Requirements 10.1, 10.2, 10.3, 10.4
     """
     # 模式设置
     preferred_mode: CaptureMode = CaptureMode.HYBRID
     auto_fallback: bool = True
-    
+
     # 代理设置
     clash_api_address: str = "127.0.0.1:9090"
     clash_api_secret: str = ""
     custom_proxy_address: str = ""
-    
+
     # QUIC设置
     quic_blocking_enabled: bool = False
-    
+
     # 进程设置
     target_processes: List[str] = field(default_factory=resolve_local_capture_processes)
-    
+
     # 诊断设置
     diagnostic_mode: bool = False
     log_all_traffic: bool = False
-    
+
     # 高级设置
     windivert_filter: str = ""
     ip_database_url: str = ""
-    
+
     # 超时设置
     no_detection_timeout: int = 60  # 秒
     api_timeout: int = 10  # API请求超时（秒）
-    
+
     # 恢复设置
     max_recovery_attempts: int = 3
     recovery_backoff_base: float = 1.0  # 秒
@@ -873,12 +873,12 @@ class MultiModeCaptureConfig:
 
     def validate(self) -> List[str]:
         """验证配置，返回错误列表
-        
+
         Returns:
             错误消息列表，空列表表示配置有效
         """
         errors = []
-        
+
         # 验证端口格式
         if self.clash_api_address:
             parts = self.clash_api_address.split(":")
@@ -891,13 +891,13 @@ class MultiModeCaptureConfig:
                         errors.append("Clash API端口必须在1-65535范围内")
                 except ValueError:
                     errors.append("Clash API端口必须是数字")
-        
+
         # 验证超时设置
         if self.no_detection_timeout < 0:
             errors.append("检测超时不能为负数")
         if self.api_timeout < 0:
             errors.append("API超时不能为负数")
-        
+
         # 验证恢复设置
         if self.max_recovery_attempts < 0:
             errors.append("最大恢复尝试次数不能为负数")
@@ -905,11 +905,11 @@ class MultiModeCaptureConfig:
             errors.append("恢复退避基数不能为负数")
         if self.recovery_backoff_max < self.recovery_backoff_base:
             errors.append("恢复退避最大值不能小于基数")
-        
+
         # 验证进程列表
         if not self.target_processes:
             errors.append("目标进程列表不能为空")
-        
+
         return errors
 
     @classmethod
@@ -937,7 +937,7 @@ class MultiModeCaptureConfig:
 # 更新错误码定义
 class ExtendedErrorCode(ErrorCode):
     """扩展错误码常量
-    
+
     包含深度优化功能的错误码。
     """
     # 代理相关（新增）
@@ -976,11 +976,11 @@ EXTENDED_ERROR_MESSAGES: Dict[str, str] = {
 
 def get_extended_error_message(error_code: str, **kwargs) -> str:
     """获取扩展的本地化错误消息
-    
+
     Args:
         error_code: 错误码
         **kwargs: 消息模板参数
-        
+
     Returns:
         本地化的错误消息
     """

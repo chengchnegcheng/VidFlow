@@ -26,18 +26,18 @@ async def find_backend_port():
 async def main():
     port = await find_backend_port()
     base_url = f"http://127.0.0.1:{port}"
-    
+
     print("=" * 60)
     print("嗅探器状态检查")
     print("=" * 60)
-    
+
     async with httpx.AsyncClient(timeout=30) as client:
         # 1. 嗅探器状态
         print("\n1. 嗅探器状态:")
         resp = await client.get(f"{base_url}/api/channels/sniffer/status")
         status = resp.json()
         print(json.dumps(status, indent=2, ensure_ascii=False))
-        
+
         # 2. QUIC 状态
         print("\n2. QUIC 屏蔽状态:")
         try:
@@ -46,7 +46,7 @@ async def main():
             print(json.dumps(quic_status, indent=2, ensure_ascii=False))
         except Exception as e:
             print(f"获取失败: {e}")
-        
+
         # 3. 捕获配置
         print("\n3. 捕获配置:")
         try:
@@ -55,7 +55,7 @@ async def main():
             print(json.dumps(config, indent=2, ensure_ascii=False))
         except Exception as e:
             print(f"获取失败: {e}")
-        
+
         # 4. 检测到的视频
         print("\n4. 检测到的视频:")
         resp = await client.get(f"{base_url}/api/channels/videos")
@@ -65,7 +65,7 @@ async def main():
             for video in videos:
                 print(f"\n  - {video['title']}")
                 print(f"    URL: {video['url'][:80]}...")
-        
+
         # 5. 诊断信息
         print("\n5. 诊断信息:")
         try:
@@ -74,18 +74,18 @@ async def main():
             print(f"  检测到的 SNI: {len(diag.get('detected_snis', []))}")
             print(f"  检测到的 IP: {len(diag.get('detected_ips', []))}")
             print(f"  微信进程: {len(diag.get('wechat_processes', []))}")
-            
+
             if diag.get('detected_snis'):
                 print(f"\n  最近的 SNI:")
                 for sni in diag['detected_snis'][:5]:
                     print(f"    - {sni}")
         except Exception as e:
             print(f"获取失败: {e}")
-        
+
         print("\n" + "=" * 60)
         print("建议:")
         print("=" * 60)
-        
+
         if status['state'] != 'running':
             print("❌ 嗅探器未运行，请启动嗅探器")
         elif len(videos) == 0:

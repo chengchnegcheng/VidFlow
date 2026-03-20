@@ -57,7 +57,7 @@ def check_wechat_processes():
         import psutil
         wechat_names = ['wechat', 'wechatapp', 'wechatappex', 'weixin']
         found_processes = []
-        
+
         for proc in psutil.process_iter(['pid', 'name', 'exe']):
             try:
                 name = proc.info['name'].lower()
@@ -71,7 +71,7 @@ def check_wechat_processes():
                         break
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 continue
-        
+
         if found_processes:
             print(f"   [✓] 检测到 {len(found_processes)} 个微信相关进程:")
             for p in found_processes:
@@ -81,7 +81,7 @@ def check_wechat_processes():
             print("   [✗] 未检测到微信进程")
             print("       请先启动微信！")
             return False
-            
+
     except ImportError:
         print("   [?] psutil 未安装，无法检测进程")
         return None
@@ -93,18 +93,18 @@ def check_system_proxy():
     try:
         if platform.system() == 'Windows':
             import winreg
-            
+
             # 读取代理设置
-            key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, 
+            key = winreg.OpenKey(winreg.HKEY_CURRENT_USER,
                 r"Software\Microsoft\Windows\CurrentVersion\Internet Settings")
-            
+
             proxy_enable, _ = winreg.QueryValueEx(key, "ProxyEnable")
-            
+
             if proxy_enable:
                 try:
                     proxy_server, _ = winreg.QueryValueEx(key, "ProxyServer")
                     print(f"   [✓] 系统代理已启用: {proxy_server}")
-                    
+
                     if '8888' in proxy_server:
                         print("       代理端口为 8888 (VidFlow 默认端口)")
                         return True
@@ -118,12 +118,12 @@ def check_system_proxy():
                 print("   [✗] 系统代理未启用")
                 print("       VidFlow 需要设置系统代理才能捕获微信流量")
                 return False
-                
+
             winreg.CloseKey(key)
         else:
             print("   [?] 非 Windows 系统，跳过代理检查")
             return None
-            
+
     except Exception as e:
         print(f"   [?] 无法检查代理设置: {e}")
         return None
@@ -137,7 +137,7 @@ def check_port_8888():
         sock.settimeout(1)
         result = sock.connect_ex(('127.0.0.1', 8888))
         sock.close()
-        
+
         if result == 0:
             print("   [✓] 端口 8888 已被占用（VidFlow 嗅探器可能正在运行）")
             return True
@@ -152,14 +152,14 @@ def check_port_8888():
 def check_mitmproxy_cert():
     """检查 mitmproxy 证书"""
     print("\n5. 检查 mitmproxy CA 证书...")
-    
+
     # 检查 mitmproxy 证书目录
     mitmproxy_dir = Path.home() / ".mitmproxy"
     cert_file = mitmproxy_dir / "mitmproxy-ca-cert.pem"
-    
+
     if cert_file.exists():
         print(f"   [✓] mitmproxy 证书文件存在: {cert_file}")
-        
+
         # 检查证书是否安装到系统
         if platform.system() == 'Windows':
             try:
@@ -199,20 +199,20 @@ def check_mitmproxy_cert():
 def check_quic_blocking():
     """检查 QUIC 阻断规则"""
     print("\n6. 检查 QUIC 阻断规则...")
-    
+
     if platform.system() != 'Windows':
         print("   [?] 非 Windows 系统，跳过 QUIC 检查")
         return None
-    
+
     try:
         result = subprocess.run(
-            ['powershell', '-Command', 
+            ['powershell', '-Command',
              'Get-NetFirewallRule | Where-Object { $_.DisplayName -like "*QUIC*" -or $_.DisplayName -like "*UDP*443*" -or $_.DisplayName -like "*VidFlow*" } | Select-Object DisplayName,Enabled'],
             capture_output=True,
             text=True,
             timeout=10
         )
-        
+
         if result.returncode == 0 and result.stdout.strip():
             print("   [✓] QUIC 阻断规则存在:")
             for line in result.stdout.strip().split('\n'):
@@ -231,14 +231,14 @@ def check_quic_blocking():
 def check_domain_resolution():
     """检查视频号相关域名解析"""
     print("\n7. 检查视频号相关域名解析...")
-    
+
     domains = [
         "finder.video.qq.com",
         "wxapp.tc.qq.com",
         "findermp.video.qq.com",
         "channels.weixin.qq.com",
     ]
-    
+
     all_ok = True
     for domain in domains:
         try:
@@ -247,14 +247,14 @@ def check_domain_resolution():
         except socket.gaierror:
             print(f"   [✗] {domain} 解析失败")
             all_ok = False
-    
+
     return all_ok
 
 
 def check_vidflow_dependencies():
     """检查 VidFlow 依赖"""
     print("\n8. 检查关键依赖...")
-    
+
     dependencies = [
         ('mitmproxy', 'mitmproxy'),
         ('pydivert', 'WinDivert Python 绑定'),
@@ -262,7 +262,7 @@ def check_vidflow_dependencies():
         ('aiohttp', 'aiohttp'),
         ('cryptography', 'cryptography'),
     ]
-    
+
     all_ok = True
     for module, name in dependencies:
         try:
@@ -271,7 +271,7 @@ def check_vidflow_dependencies():
         except ImportError:
             print(f"   [✗] {name} 未安装")
             all_ok = False
-    
+
     return all_ok
 
 
@@ -298,7 +298,7 @@ def print_recommendations():
 def main():
     """主函数"""
     print_header()
-    
+
     results = {}
     results['admin'] = check_admin()
     results['wechat'] = check_wechat_processes()
@@ -308,9 +308,9 @@ def main():
     results['quic'] = check_quic_blocking()
     results['dns'] = check_domain_resolution()
     results['deps'] = check_vidflow_dependencies()
-    
+
     print_recommendations()
-    
+
     # 返回检查结果
     return results
 

@@ -40,7 +40,7 @@ export function useWebSocket(options: UseWebSocketOptions) {
   const reconnectAttemptsRef = useRef(0);
   // in browser, setTimeout returns number (not NodeJS.Timeout)
   const reconnectTimeoutRef = useRef<number>();
-  
+
   const [isConnected, setIsConnected] = useState(false);
   const [lastMessage, setLastMessage] = useState<WebSocketMessage | null>(null);
 

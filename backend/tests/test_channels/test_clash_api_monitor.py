@@ -33,7 +33,7 @@ def clash_connection_strategy(draw):
     """生成随机ClashConnection"""
     # 随机选择是否为视频域名
     is_video = draw(st.booleans())
-    
+
     if is_video:
         host = draw(st.sampled_from([
             "finder.video.qq.com",
@@ -52,7 +52,7 @@ def clash_connection_strategy(draw):
             "static.cloudflare.com",
             "images.unsplash.com",
         ]))
-    
+
     return ClashConnection(
         id=draw(st.text(min_size=8, max_size=16, alphabet="abcdef0123456789")),
         host=host,
@@ -76,13 +76,13 @@ def connection_list_strategy(draw):
     count = draw(st.integers(0, 20))
     connections = []
     video_count = 0
-    
+
     for _ in range(count):
         conn, is_video = draw(clash_connection_strategy())
         connections.append(conn)
         if is_video:
             video_count += 1
-    
+
     return connections, video_count
 
 
@@ -94,11 +94,11 @@ def connection_list_strategy(draw):
 class TestClashAPIConnectionMonitoring:
     """
     Property 7: Clash API Connection Monitoring
-    
+
     For any Clash API connection, the ClashAPIMonitor should correctly parse
     the /connections response and extract host/SNI information. Video-related
     connections should be identified by matching against known video domain patterns.
-    
+
     **Feature: weixin-channels-deep-research, Property 7: Clash API Connection Monitoring**
     **Validates: Requirements 5.2, 5.3**
     """
@@ -107,20 +107,20 @@ class TestClashAPIConnectionMonitoring:
     @settings(max_examples=100)
     def test_video_connection_filtering(self, data):
         """测试视频连接过滤正确性
-        
+
         Property: 对于任意连接列表，filter_video_connections应该只返回
         匹配视频域名模式的连接，且不遗漏任何视频连接。
         """
         connections, expected_video_count = data
         monitor = ClashAPIMonitor()
-        
+
         filtered = monitor.filter_video_connections(connections)
-        
+
         # 验证过滤结果
         for conn in filtered:
             assert monitor.is_video_connection(conn), \
                 f"Filtered connection {conn.host} should be a video connection"
-        
+
         # 验证没有遗漏
         actual_video_count = sum(1 for c in connections if monitor.is_video_connection(c))
         assert len(filtered) == actual_video_count, \
@@ -129,7 +129,7 @@ class TestClashAPIConnectionMonitoring:
     def test_known_video_domains_detected(self):
         """测试已知视频域名都能被检测"""
         monitor = ClashAPIMonitor()
-        
+
         video_domains = [
             "finder.video.qq.com",
             "findermp.video.qq.com",
@@ -141,7 +141,7 @@ class TestClashAPIConnectionMonitoring:
             "vd2.video.qq.com",
             "abc.tc.qq.com",
         ]
-        
+
         for domain in video_domains:
             conn = ClashConnection(
                 id="test", host=domain, dst_ip="1.2.3.4", dst_port=443,
@@ -154,7 +154,7 @@ class TestClashAPIConnectionMonitoring:
     def test_non_video_domains_not_detected(self):
         """测试非视频域名不会被误检测"""
         monitor = ClashAPIMonitor()
-        
+
         non_video_domains = [
             "www.google.com",
             "api.github.com",
@@ -163,7 +163,7 @@ class TestClashAPIConnectionMonitoring:
             "qq.com",  # 不是视频域名
             "weixin.qq.com",  # 不是视频子域名
         ]
-        
+
         for domain in non_video_domains:
             conn = ClashConnection(
                 id="test", host=domain, dst_ip="1.2.3.4", dst_port=443,
@@ -176,7 +176,7 @@ class TestClashAPIConnectionMonitoring:
     def test_empty_host_not_detected(self):
         """测试空host不会被检测为视频连接"""
         monitor = ClashAPIMonitor()
-        
+
         conn = ClashConnection(
             id="test", host="", dst_ip="", dst_port=443,
             src_ip="127.0.0.1", src_port=12345, network="tcp",
@@ -187,13 +187,13 @@ class TestClashAPIConnectionMonitoring:
     def test_case_insensitive_detection(self):
         """测试域名检测不区分大小写"""
         monitor = ClashAPIMonitor()
-        
+
         test_cases = [
             "FINDER.VIDEO.QQ.COM",
             "Finder.Video.QQ.Com",
             "finder.VIDEO.qq.COM",
         ]
-        
+
         for domain in test_cases:
             conn = ClashConnection(
                 id="test", host=domain, dst_ip="1.2.3.4", dst_port=443,
@@ -212,11 +212,11 @@ class TestClashAPIMonitorConnection:
         # 不带协议
         monitor = ClashAPIMonitor("127.0.0.1:9090")
         assert monitor.base_url == "http://127.0.0.1:9090"
-        
+
         # 带http协议
         monitor = ClashAPIMonitor("http://127.0.0.1:9090")
         assert monitor.base_url == "http://127.0.0.1:9090"
-        
+
         # 带https协议
         monitor = ClashAPIMonitor("https://127.0.0.1:9090")
         assert monitor.base_url == "https://127.0.0.1:9090"
@@ -225,7 +225,7 @@ class TestClashAPIMonitorConnection:
         """测试无密钥时的headers"""
         monitor = ClashAPIMonitor("127.0.0.1:9090")
         headers = monitor.headers
-        
+
         assert "Content-Type" in headers
         assert "Authorization" not in headers
 
@@ -233,7 +233,7 @@ class TestClashAPIMonitorConnection:
         """测试有密钥时的headers"""
         monitor = ClashAPIMonitor("127.0.0.1:9090", api_secret="test_secret")
         headers = monitor.headers
-        
+
         assert "Content-Type" in headers
         assert "Authorization" in headers
         assert headers["Authorization"] == "Bearer test_secret"
@@ -241,7 +241,7 @@ class TestClashAPIMonitorConnection:
     def test_initial_state(self):
         """测试初始状态"""
         monitor = ClashAPIMonitor()
-        
+
         assert not monitor.is_connected
         assert monitor._session is None
         assert monitor._polling_task is None
@@ -267,9 +267,9 @@ class TestClashConnectionDataclass:
             download=1000,
             upload=500,
         )
-        
+
         d = conn.to_dict()
-        
+
         assert d["id"] == "abc123"
         assert d["host"] == "finder.video.qq.com"
         assert d["dst_ip"] == "1.2.3.4"
@@ -293,7 +293,7 @@ class TestClashConnectionDataclass:
             rule="DIRECT",
             rule_payload="",
         )
-        
+
         assert conn.chains == []
         assert conn.download == 0
         assert conn.upload == 0

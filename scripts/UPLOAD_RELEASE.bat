@@ -57,7 +57,7 @@ echo [3] 复制到本地发布目录
 echo [0] 取消
 echo.
 
-set /p choice=请选择: 
+set /p choice=请选择:
 
 if "%choice%"=="1" goto upload_server
 if "%choice%"=="2" goto generate_json

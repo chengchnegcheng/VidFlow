@@ -44,7 +44,7 @@ export function AIToolsPrompt({
               <p>
                 生成字幕需要安装 <span className="font-medium">faster-whisper</span> AI 组件。
               </p>
-              
+
               <div className="bg-blue-50 border border-blue-200 rounded-md p-3 space-y-2">
                 <p className="font-medium text-blue-900 text-sm">AI 组件说明</p>
                 <ul className="text-sm text-blue-800 space-y-1">

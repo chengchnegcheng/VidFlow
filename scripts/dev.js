@@ -26,7 +26,7 @@ if (!fs.existsSync(venvPath)) {
 
 // 启动 Python 后端
 console.log('🐍 Starting Python backend...');
-const pythonPath = process.platform === 'win32' 
+const pythonPath = process.platform === 'win32'
   ? path.join(venvPath, 'Scripts', 'python.exe')
   : path.join(venvPath, 'bin', 'python');
 
@@ -38,7 +38,7 @@ const pythonProcess = spawn(pythonPath, ['src/main.py'], {
 // 等待 2 秒让后端启动
 setTimeout(() => {
   console.log('\n⚛️  Starting React frontend...');
-  
+
   // 启动前端开发服务器
   const frontendProcess = spawn('npm', ['run', 'dev'], {
     cwd: frontendDir,
@@ -49,7 +49,7 @@ setTimeout(() => {
   // 等待 3 秒后启动 Electron
   setTimeout(() => {
     console.log('\n🖥️  Starting Electron...');
-    
+
     const electronProcess = spawn('npm', ['run', 'electron:dev'], {
       cwd: rootDir,
       stdio: 'inherit',

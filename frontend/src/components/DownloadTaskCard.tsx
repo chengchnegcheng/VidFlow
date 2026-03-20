@@ -63,7 +63,7 @@ export function DownloadTaskCard({
           thumbnail={task.thumbnail}
           title={task.title || '视频缩略图'}
         />
-        
+
         {/* Content Section */}
         <div className="flex-1 min-w-0 space-y-2">
           <div className="flex items-start justify-between">
@@ -91,13 +91,13 @@ export function DownloadTaskCard({
               <Trash2 className="size-4 text-muted-foreground hover:text-destructive" />
             </Button>
           </div>
-          
+
           {(task.status === 'downloading' || task.status === 'pending') && (
             <div className="flex justify-end gap-2">
                {task.status === 'downloading' && (
-                 <Button 
-                   variant="outline" 
-                   size="sm" 
+                 <Button
+                   variant="outline"
+                   size="sm"
                    className="h-7 text-xs"
                    onClick={() => onPause(task.task_id)}
                  >
@@ -105,9 +105,9 @@ export function DownloadTaskCard({
                    暂停
                  </Button>
                )}
-               <Button 
-                 variant="outline" 
-                 size="sm" 
+               <Button
+                 variant="outline"
+                 size="sm"
                  className="h-7 text-xs"
                  onClick={() => onCancel(task.task_id)}
                >
@@ -115,21 +115,21 @@ export function DownloadTaskCard({
                </Button>
             </div>
           )}
-          
+
           {task.status === 'paused' && (
             <div className="flex justify-end gap-2">
-               <Button 
-                 variant="outline" 
-                 size="sm" 
+               <Button
+                 variant="outline"
+                 size="sm"
                  className="h-7 text-xs"
                  onClick={() => onResume(task.task_id)}
                >
                  <Play className="size-3 mr-1" />
                  继续下载
                </Button>
-               <Button 
-                 variant="outline" 
-                 size="sm" 
+               <Button
+                 variant="outline"
+                 size="sm"
                  className="h-7 text-xs"
                  onClick={() => onCancel(task.task_id)}
                >
@@ -137,7 +137,7 @@ export function DownloadTaskCard({
                </Button>
             </div>
           )}
-          
+
           {task.status === 'downloading' && (
             <div className="space-y-1">
               <div className="flex justify-between items-center text-sm text-muted-foreground">

@@ -466,7 +466,7 @@
         }
         if (looksLikeAssetTitle(normalized)) return null;
         if (normalized.length === 1 && /^[\x00-\x7F]+$/.test(normalized) && !/^[A-Za-z0-9]$/.test(normalized)) return null;
-        
+
         // 过滤对话框/无障碍/accessibility 噪声文本
         if (/^(?:beginning|end) of (?:dialog|modal)/i.test(lower)) return null;
         if (/escape will (?:cancel|close)/i.test(lower)) return null;

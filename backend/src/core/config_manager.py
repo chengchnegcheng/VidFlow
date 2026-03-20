@@ -36,13 +36,13 @@ def get_default_download_path() -> str:
         # macOS/Linux: ~/Downloads/VidFlow
         home = Path.home()
         downloads = home / "Downloads"
-        
+
         # 如果 Downloads 文件夹存在，使用它下面的 VidFlow 子目录
         if downloads.exists():
             vidflow_dir = downloads / "VidFlow"
             vidflow_dir.mkdir(parents=True, exist_ok=True)
             return str(vidflow_dir)
-        
+
         # 否则使用当前工作目录的 downloads 文件夹
         fallback = BASE_DIR / "data" / "downloads"
         fallback.mkdir(parents=True, exist_ok=True)
@@ -114,18 +114,18 @@ def migrate_config(old_config: Dict[str, Any], old_version: str) -> Dict[str, An
 
 class ConfigManager:
     """配置管理器"""
-    
+
     def __init__(self, config_file: Optional[Path] = None):
         """
         初始化配置管理器
-        
+
         Args:
             config_file: 配置文件路径，默认使用 CONFIG_FILE
         """
         self.config_file = config_file or CONFIG_FILE
         self.config: Dict[str, Any] = {}
         self.load_config()
-    
+
     def load_config(self) -> Dict[str, Any]:
         """加载配置文件"""
         try:
@@ -159,7 +159,7 @@ class ConfigManager:
             self.config = get_default_config()
 
         return self.config
-    
+
     def save_config(self):
         """保存配置到文件"""
         try:
@@ -168,85 +168,85 @@ class ConfigManager:
 
             if isinstance(self.config, dict) and self.config.get('_config_version') != CONFIG_VERSION:
                 self.config['_config_version'] = CONFIG_VERSION
-            
+
             with open(self.config_file, 'w', encoding='utf-8') as f:
                 json.dump(self.config, f, indent=2, ensure_ascii=False)
-            
+
             logger.info(f"Configuration saved to {self.config_file}")
         except Exception as e:
             logger.error(f"Failed to save config: {e}")
-    
+
     def get(self, key_path: str, default: Any = None) -> Any:
         """
         获取配置值
-        
+
         Args:
             key_path: 配置路径，如 "download.default_quality"
             default: 默认值
-        
+
         Returns:
             配置值
         """
         keys = key_path.split('.')
         value = self.config
-        
+
         for key in keys:
             if isinstance(value, dict) and key in value:
                 value = value[key]
             else:
                 return default
-        
+
         return value
-    
+
     def set(self, key_path: str, value: Any):
         """
         设置配置值
-        
+
         Args:
             key_path: 配置路径，如 "download.default_quality"
             value: 配置值
         """
         keys = key_path.split('.')
         config = self.config
-        
+
         # 遍历到倒数第二层
         for key in keys[:-1]:
             if key not in config or not isinstance(config[key], dict):
                 config[key] = {}
             config = config[key]
-        
+
         # 设置最后一层的值
         config[keys[-1]] = value
         self.save_config()
-    
+
     def update(self, updates: Dict[str, Any]):
         """
         批量更新配置
-        
+
         Args:
             updates: 配置更新字典
         """
         self.config = self._merge_config(self.config, updates)
         self.save_config()
-    
+
     def reset(self):
         """重置为默认配置"""
         self.config = get_default_config()
         self.save_config()
         logger.info("Configuration reset to default")
-    
+
     def _merge_config(self, base: Dict, updates: Dict) -> Dict:
         """深度合并配置字典"""
         result = base.copy()
-        
+
         for key, value in updates.items():
             if key in result and isinstance(result[key], dict) and isinstance(value, dict):
                 result[key] = self._merge_config(result[key], value)
             else:
                 result[key] = value
-        
+
         return result
-    
+
     def get_all(self) -> Dict[str, Any]:
         """获取所有配置（深拷贝）"""
         import copy

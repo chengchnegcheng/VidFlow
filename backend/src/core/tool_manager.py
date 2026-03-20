@@ -217,18 +217,18 @@ def _process_ai_cleanup_queue():
 def _cleanup_conflicting_ai_packages():
     """
     处理 AI 包目录中与打包环境可能冲突的包（如 numpy）
-    
+
     问题: ImportError: cannot load module more than once per process
-    
+
     原因: PyInstaller 打包的应用已经内置了 numpy，当 AI 包目录中
     又安装了另一个版本的 numpy 时，C 扩展模块会冲突。
-    
+
     新策略: 不删除 numpy，而是通过预先导入内置 numpy 来避免冲突。
     这样 AI 包中的 torch/faster-whisper 导入 numpy 时会使用已加载的版本。
     """
     if not getattr(sys, 'frozen', False):
         return  # 只在打包环境中执行
-    
+
     # 策略：预先导入内置的 numpy，这样后续 AI 包导入时会复用已加载的模块
     try:
         import numpy
@@ -288,7 +288,7 @@ class ToolManager:
     DOWNLOAD_TOTAL_TIMEOUT = 600
     DOWNLOAD_CONNECT_TIMEOUT = 30
     DOWNLOAD_SOCK_TIMEOUT = 60
-    
+
     def __init__(self):
         self.system = platform.system()
         self.ffmpeg_path = None
@@ -381,11 +381,11 @@ class ToolManager:
 
         except Exception as e:
             logger.warning(f"[Tools] Cleanup of temporary files failed: {e}")
-    
+
     def set_progress_callback(self, callback: Optional[Callable[[str, int, str], Awaitable[None]]]):
         """设置进度回调函数"""
         self.progress_callback = callback
-    
+
     async def _notify_progress(self, tool_id: str, progress: int, message: str):
         """通知进度"""
         if self.progress_callback:
@@ -542,7 +542,7 @@ class ToolManager:
     async def setup_all_tools(self) -> dict:
         """设置所有工具"""
         results = {}
-        
+
         # 设置 FFmpeg
         try:
             self.ffmpeg_path = await self.setup_ffmpeg()
@@ -556,7 +556,7 @@ class ToolManager:
                 'success': False,
                 'error': str(e)
             }
-        
+
         # 设置 yt-dlp
         try:
             self.ytdlp_path = await self.setup_ytdlp()
@@ -570,7 +570,7 @@ class ToolManager:
                 'success': False,
                 'error': str(e)
             }
-        
+
         return results
 
     async def run_auto_update_loop(self, interval_hours: int = 24):
@@ -737,42 +737,42 @@ class ToolManager:
                 logger.info(f"[Tools] {tool_id} download completed, metadata saved: {meta}")
             finally:
                 self._updating_tools[display_id] = False
-    
+
     async def setup_ffmpeg(self) -> Path:
         """设置 FFmpeg - 优先使用已下载版本（便于自动更新），其次内置"""
         exe_name = "ffmpeg.exe" if self.system == "Windows" else "ffmpeg"
-        
+
         # 1. 检查已下载的版本（最高优先级，支持自动更新）
         builtin_path = BIN_DIR / exe_name
         if builtin_path.exists():
             logger.info(f"Using downloaded FFmpeg: {builtin_path}")
             return builtin_path
-        
+
         # 2. 检查打包的内置版本（备用）
         bundled_path = BUNDLED_BIN_DIR / exe_name
         if bundled_path.exists():
             logger.info(f"[OK] Using bundled FFmpeg: {bundled_path}")
             return bundled_path
-        
+
         # 3. 检查系统安装
         system_path = shutil.which("ffmpeg")
         if system_path:
             logger.info(f"Using system FFmpeg: {system_path}")
             return Path(system_path)
-        
+
         # 4. 最后才自动下载（开发模式）
         logger.info("No FFmpeg found, downloading...")
         await self.download_ffmpeg()
-        
+
         if builtin_path.exists():
             return builtin_path
-        
+
         raise RuntimeError("Failed to setup FFmpeg")
-    
+
     async def setup_ytdlp(self) -> Path:
         """设置 yt-dlp - 优先使用用户下载的版本（支持更新）"""
         exe_name = "yt-dlp.exe" if self.system == "Windows" else "yt-dlp"
-        
+
         # 1. 检查已下载的版本（最高优先级 - 用户主动更新的）
         builtin_path = BIN_DIR / exe_name
         if builtin_path.exists():
@@ -781,7 +781,7 @@ class ToolManager:
             if self.system != "Windows":
                 os.chmod(builtin_path, 0o755)
             return builtin_path
-        
+
         # 2. 检查打包的内置版本（备用版本）
         bundled_path = BUNDLED_BIN_DIR / exe_name
         if bundled_path.exists():
@@ -790,25 +790,25 @@ class ToolManager:
             if self.system != "Windows":
                 os.chmod(bundled_path, 0o755)
             return bundled_path
-        
+
         # 3. 检查系统安装
         system_path = shutil.which("yt-dlp")
         if system_path:
             logger.info(f"Using system yt-dlp: {system_path}")
             return Path(system_path)
-        
+
         # 4. 最后才自动下载（开发模式）
         logger.info("No yt-dlp found, downloading...")
         await self.download_ytdlp()
-        
+
         if builtin_path.exists():
             # 确保可执行
             if self.system != "Windows":
                 os.chmod(builtin_path, 0o755)
             return builtin_path
-        
+
         raise RuntimeError("Failed to setup yt-dlp")
-    
+
     async def _download_with_progress(self, url: str, target_path: Path, tool_id: str, progress_max: int = None):
         """通用下载器，带进度与代理回退。"""
         progress_max = progress_max or self.DOWNLOAD_PROGRESS_MAX
@@ -995,7 +995,7 @@ class ToolManager:
                         logger.warning(f"[Tools] Deferred cleanup for busy temporary file: {deferred_path}")
                     else:
                         logger.warning(f"Failed to remove temporary file (will be cleaned up later): {temp_path}")
-    
+
     async def extract_ffmpeg(self, archive_path: Path):
         """解压 FFmpeg"""
         try:
@@ -1077,7 +1077,7 @@ class ToolManager:
                         import gc
                         gc.collect()
                         await asyncio.sleep(1.0)  # 给 Windows 足够时间释放文件句柄
-            
+
             elif archive_path.suffix in ['.tar', '.xz', '.gz']:
                 mode = 'r:xz' if archive_path.suffix == '.xz' else 'r:gz'
                 with tarfile.open(archive_path, mode) as tar_ref:
@@ -1113,7 +1113,7 @@ class ToolManager:
                         # Windows/Linux 要求同时找到 ffmpeg 和 ffprobe
                         if not ffmpeg_found or not ffprobe_found:
                             raise RuntimeError("FFmpeg package missing ffmpeg/ffprobe executable")
-            
+
             # 清理临时目录
             for item in TOOLS_DIR.iterdir():
                 if item.is_dir() and item != BIN_DIR and item != MODELS_DIR:
@@ -1135,7 +1135,7 @@ class ToolManager:
                     except Exception as restore_err:
                         logger.error(f"[Tools] Failed to restore backup: {restore_err}")
             raise
-    
+
     async def download_ytdlp(self):
         """下载 yt-dlp"""
         url = TOOL_URLS["yt-dlp"].get(self.system)
@@ -1198,34 +1198,34 @@ class ToolManager:
         # 如果已经设置，直接返回
         if self.ffmpeg_path:
             return self.ffmpeg_path
-        
+
         # 否则尝试查找（同步版本，用于快速检测）
         exe_name = "ffmpeg.exe" if self.system == "Windows" else "ffmpeg"
-        
+
         # 1. 检查打包的内置版本
         bundled_path = BUNDLED_BIN_DIR / exe_name
         if bundled_path.exists():
             self.ffmpeg_path = bundled_path
             return bundled_path
-        
+
         # 2. 检查已下载的版本
         builtin_path = BIN_DIR / exe_name
         if builtin_path.exists():
             self.ffmpeg_path = builtin_path
             return builtin_path
-        
+
         # 3. 检查系统安装
         system_path = shutil.which("ffmpeg")
         if system_path:
             self.ffmpeg_path = Path(system_path)
             return Path(system_path)
-        
+
         return None
 
     def get_ffmpeg_path(self) -> Optional[str]:
         ffmpeg_path = self._resolve_ffmpeg_path()
         return str(ffmpeg_path) if ffmpeg_path else None
-    
+
     def _resolve_ytdlp_path(self) -> Optional[Path]:
         """获取 yt-dlp 路径"""
         # 如果已经设置，直接返回
@@ -1262,7 +1262,7 @@ class ToolManager:
             self.ytdlp_path = builtin_path
             logger.info(f"[yt-dlp] ✓ Found downloaded version: {builtin_path}")
             return builtin_path
-        
+
         # 3. 检查系统安装
         system_path = shutil.which("yt-dlp")
         logger.info(f"[yt-dlp] Checking system PATH: {system_path}")
@@ -1270,14 +1270,14 @@ class ToolManager:
             self.ytdlp_path = Path(system_path)
             logger.info(f"[yt-dlp] ✓ Found system version: {system_path}")
             return Path(system_path)
-        
+
         logger.warning("[yt-dlp] ✗ Not found in any location")
         return None
 
     def get_ytdlp_path(self) -> Optional[str]:
         ytdlp_path = self._resolve_ytdlp_path()
         return str(ytdlp_path) if ytdlp_path else None
-    
+
     async def check_ai_tools_status(self) -> dict:
         """检查 AI 工具状态（faster-whisper + PyTorch）"""
         async with AI_TOOLS_LOCK:
@@ -1383,15 +1383,15 @@ else:
                 result["error"] = str(e)
 
             return result
-    
+
     async def install_ai_tools(self, version: str = "cpu", progress_callback=None) -> dict:
         """
         安装 AI 工具（faster-whisper + PyTorch）
-        
+
         Args:
             version: "cpu" 或 "cuda"
             progress_callback: 进度回调函数 callback(percent, message)
-        
+
         Returns:
             {"success": bool, "message": str, "error": str}
         """
@@ -1508,7 +1508,7 @@ else:
                         '--retries', '5',
                         '--no-cache-dir',  # 强制从源下载，避免使用缓存的旧版本
                     ]
-            
+
                 process = await asyncio.create_subprocess_exec(
                     *torch_cmd,
                     stdout=asyncio.subprocess.PIPE,
@@ -1667,7 +1667,7 @@ else:
                         "success": False,
                         "error": f"PyTorch 安装超时（超过{timeout_minutes}分钟）\n\n可能原因：\n1. 网络速度太慢（{'CUDA版本约2-3GB' if version == 'cuda' else 'CPU版本约300MB'}）\n2. PyPI 或清华镜像服务器响应慢\n3. 防火墙或代理拦截\n\n建议：\n- 检查网络连接速度\n- 关闭 VPN 或代理重试\n- 更换时间段重试" + ("\n- 如果网络条件不好，可以尝试 CPU 版本（体积更小）" if version == "cuda" else "")
                     }
-            
+
                 if process.returncode != 0:
                     error_output = '\n'.join(output_lines[-20:])  # 最后 20 行
                     _enqueue_ai_cleanup(staging_dir)
@@ -1676,7 +1676,7 @@ else:
                         "success": False,
                         "error": f"PyTorch 安装失败\n\n{error_output[:300]}"
                     }
-            
+
                 if progress_callback:
                     await progress_callback(65, "开始安装 faster-whisper...")
 
@@ -1748,7 +1748,7 @@ else:
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.STDOUT
                 )
-            
+
                 # 实时读取输出
                 output_lines = []
                 current_progress = 65
@@ -1804,7 +1804,7 @@ else:
                         "success": False,
                         "error": "faster-whisper 安装超时\n请检查网络连接后重试"
                     }
-            
+
                 if process.returncode != 0:
                     error_output = '\n'.join(output_lines[-20:])
                     _enqueue_ai_cleanup(staging_dir)
@@ -1827,7 +1827,7 @@ else:
                         "success": False,
                         "error": f"faster-whisper 安装失败\n\n{error_output[:300]}"
                     }
-            
+
                 _set_ai_packages_dir(staging_dir)
                 if str(staging_dir) not in sys.path:
                     sys.path.insert(0, str(staging_dir))
@@ -1859,7 +1859,7 @@ else:
                     "success": False,
                     "error": f"安装出错: {str(e)}"
                 }
-    
+
     async def uninstall_ai_tools(self, progress_callback=None) -> dict:
         """卸载 AI 工具"""
         async with AI_TOOLS_LOCK:
@@ -1905,7 +1905,7 @@ else:
                     "success": False,
                     "error": str(e)
                 }
-    
+
     def get_ai_tool_info(self, version: str = "cpu") -> dict:
         """获取 AI 工具下载信息"""
         if version == "cpu":
@@ -1924,13 +1924,13 @@ else:
                 "install_time": "5-10 分钟",
                 "compatible": "需要 NVIDIA 显卡"
             }
-    
+
     # ==================== Playwright 安装支持 ====================
-    
+
     async def check_playwright_status(self) -> dict:
         """
         检查 Playwright 和 Chromium 浏览器的安装状态
-        
+
         Returns:
             dict: {
                 "installed": bool,  # 是否完全安装（包+浏览器）
@@ -1949,14 +1949,14 @@ else:
             "browser_path": None,
             "error": None
         }
-        
+
         try:
             # 检查 playwright 包是否安装
             try:
                 from importlib.metadata import version as get_version, PackageNotFoundError
             except ImportError:
                 from importlib_metadata import version as get_version, PackageNotFoundError
-            
+
             try:
                 pw_version = get_version("playwright")
                 result["package_installed"] = True
@@ -1966,13 +1966,13 @@ else:
                 result["package_installed"] = False
                 logger.info("[Playwright] Package not installed")
                 return result
-            
+
             # 检查 Chromium 浏览器是否安装
             # 需要检查多个可能的位置
             try:
                 # 可能的浏览器路径列表
                 possible_browser_paths = []
-                
+
                 # 1. 用户目录（标准安装位置）
                 if sys.platform == 'win32':
                     user_pw_path = Path.home() / 'AppData' / 'Local' / 'ms-playwright'
@@ -1981,24 +1981,24 @@ else:
                 else:
                     user_pw_path = Path.home() / '.cache' / 'ms-playwright'
                 possible_browser_paths.append(user_pw_path)
-                
+
                 # 2. 打包环境中 Playwright 的 .local-browsers 目录
                 if getattr(sys, 'frozen', False):
                     if hasattr(sys, '_MEIPASS'):
                         internal_path = Path(sys._MEIPASS)
                     else:
                         internal_path = Path(sys.executable).parent / '_internal'
-                    
+
                     playwright_local = internal_path / 'playwright' / 'driver' / 'package' / '.local-browsers'
                     possible_browser_paths.append(playwright_local)
-                
+
                 logger.info(f"[Playwright] Checking browser paths: {possible_browser_paths}")
-                
+
                 # 检查每个可能的路径
                 for pw_browsers_path in possible_browser_paths:
                     if not pw_browsers_path.exists():
                         continue
-                    
+
                     # 查找 chromium_headless_shell 或 chromium 目录
                     # 优先检查 chromium_headless_shell，因为这是我们默认安装的（更小）
                     chromium_patterns = ['chromium_headless_shell-*', 'chromium-*']
@@ -2006,7 +2006,7 @@ else:
                         chromium_dirs = list(pw_browsers_path.glob(pattern))
                         if chromium_dirs:
                             chromium_dir = sorted(chromium_dirs, reverse=True)[0]
-                            
+
                             # 查找可执行文件 - 支持多种目录结构
                             chrome_exe = None
                             if sys.platform == 'win32':
@@ -2029,41 +2029,41 @@ else:
                                     chromium_dir / 'chrome-linux64' / 'chrome',
                                     chromium_dir / 'chrome-linux' / 'chrome',
                                 ]
-                            
+
                             for exe_path in possible_exes:
                                 if exe_path.exists():
                                     chrome_exe = exe_path
                                     break
-                            
+
                             if chrome_exe:
                                 result["browser_installed"] = True
                                 result["browser_path"] = str(chrome_exe)
                                 result["installed"] = True
                                 logger.info(f"[Playwright] Chromium installed: {chrome_exe}")
                                 return result
-                
+
                 # 没有找到浏览器
                 result["browser_installed"] = False
                 logger.info("[Playwright] No chromium browser found in any location")
-                    
+
             except Exception as e:
                 result["browser_installed"] = False
                 result["error"] = f"浏览器检查失败: {str(e)}"
                 logger.warning(f"[Playwright] Browser check failed: {e}")
-                
+
         except Exception as e:
             result["error"] = str(e)
             logger.error(f"[Playwright] Status check failed: {e}")
-        
+
         return result
-    
+
     def _get_python_executable_for_pip(self) -> str:
         """
         获取用于 pip 安装的 Python 可执行文件路径
-        
+
         Returns:
             str: Python 可执行文件路径
-        
+
         Raises:
             RuntimeError: 如果在打包环境中找不到嵌入式 Python
         """
@@ -2074,28 +2074,28 @@ else:
             # - _internal/ (sys._MEIPASS 指向这里)
             #   - python/
             #     - python.exe
-            
+
             python_name = 'python.exe' if sys.platform == 'win32' else 'python'
-            
+
             # 可能的嵌入式 Python 路径
             possible_paths = []
-            
+
             # 1. _MEIPASS/python (PyInstaller 解压目录)
             if hasattr(sys, '_MEIPASS'):
                 possible_paths.append(Path(sys._MEIPASS) / 'python' / python_name)
-            
+
             # 2. exe 同级目录的 _internal/python
             exe_dir = Path(sys.executable).parent
             possible_paths.append(exe_dir / '_internal' / 'python' / python_name)
-            
+
             # 3. exe 同级目录的 python
             possible_paths.append(exe_dir / 'python' / python_name)
-            
+
             for path in possible_paths:
                 if path.exists():
                     logger.info(f"[Playwright] Using embedded Python: {path}")
                     return str(path)
-            
+
             # 如果都找不到，抛出错误
             searched_paths = '\n'.join(str(p) for p in possible_paths)
             error_msg = f"未找到嵌入式 Python\n\n已搜索路径:\n{searched_paths}\n\n请确保 python_embedded 目录已正确打包"
@@ -2104,7 +2104,7 @@ else:
         else:
             # 开发环境
             return sys.executable
-    
+
     async def _call_progress_callback(self, callback, percent: int, message: str):
         """调用进度回调，支持同步和异步回调函数"""
         if callback is None:
@@ -2116,14 +2116,14 @@ else:
                 await result
         except Exception as e:
             logger.warning(f"[Playwright] Progress callback error: {e}")
-    
+
     async def install_playwright(self, progress_callback=None) -> dict:
         """
         安装 Playwright 和 Chromium 浏览器
-        
+
         Args:
             progress_callback: 进度回调函数 callback(percent, message)，支持同步或异步函数
-        
+
         Returns:
             dict: {
                 "success": bool,
@@ -2143,7 +2143,7 @@ else:
                     "version": status["version"],
                     "already_installed": True
                 }
-            
+
             try:
                 python_exe = self._get_python_executable_for_pip()
             except RuntimeError as e:
@@ -2151,9 +2151,9 @@ else:
                     "success": False,
                     "error": f"无法安装 Playwright: {str(e)}\n\n请重新安装应用程序"
                 }
-            
+
             logger.info(f"[Playwright] Using Python: {python_exe}")
-            
+
             # 确定安装目标目录
             if getattr(sys, 'frozen', False):
                 target_dir = AI_PACKAGES_DIR
@@ -2163,13 +2163,13 @@ else:
                 target_dir = None
                 pip_target_args = []
                 logger.info("[Playwright] Installing to system Python")
-            
+
             # 步骤 1: 安装 playwright 包 (0% - 50%)
             await self._call_progress_callback(progress_callback, 0, "开始安装 Playwright...")
-            
+
             if not status["package_installed"]:
                 await self._call_progress_callback(progress_callback, 5, "下载 Playwright 包...")
-                
+
                 pip_cmd = [
                     python_exe, '-m', 'pip', 'install',
                     *pip_target_args,
@@ -2179,28 +2179,28 @@ else:
                     '-i', 'https://mirrors.aliyun.com/pypi/simple/',
                     '--default-timeout=300',
                 ]
-                
+
                 logger.info(f"[Playwright] Running: {' '.join(pip_cmd)}")
-                
+
                 process = await asyncio.create_subprocess_exec(
                     *pip_cmd,
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.STDOUT
                 )
-                
+
                 output_lines = []
                 current_progress = 5
-                
+
                 while True:
                     line = await process.stdout.readline()
                     if not line:
                         break
-                    
+
                     line_text = line.decode('utf-8', errors='ignore').strip()
                     if line_text:
                         output_lines.append(line_text)
                         logger.info(f"[Playwright pip] {line_text}")
-                        
+
                         # 更新进度
                         lower_text = line_text.lower()
                         if 'downloading' in lower_text or 'collecting' in lower_text:
@@ -2209,11 +2209,11 @@ else:
                             current_progress = min(current_progress + 5, 45)
                         elif 'successfully installed' in lower_text:
                             current_progress = 50
-                        
+
                         await self._call_progress_callback(progress_callback, current_progress, "安装 Playwright 包...")
-                
+
                 await process.wait()
-                
+
                 if process.returncode != 0:
                     error_output = '\n'.join(output_lines[-10:])
                     logger.error(f"[Playwright] pip install failed: {error_output}")
@@ -2221,15 +2221,15 @@ else:
                         "success": False,
                         "error": f"Playwright 包安装失败\n\n{error_output[:300]}"
                     }
-                
+
                 logger.info("[Playwright] Package installed successfully")
             else:
                 logger.info("[Playwright] Package already installed, skipping pip install")
                 await self._call_progress_callback(progress_callback, 50, "Playwright 包已安装")
-            
+
             # 步骤 2: 安装 Chromium 浏览器 (50% - 100%)
             await self._call_progress_callback(progress_callback, 50, "开始下载 Chromium 浏览器...")
-            
+
             # 构建 playwright install 命令
             # 注意：Playwright 1.49+ 默认使用 chromium-headless-shell 进行 headless 模式
             # 我们安装 chromium-headless-shell 因为它更小（~50MB vs ~200MB）且足够用于抓取
@@ -2241,29 +2241,29 @@ else:
             else:
                 env = None
                 playwright_cmd = [python_exe, '-m', 'playwright', 'install', 'chromium-headless-shell']
-            
+
             logger.info(f"[Playwright] Running: {' '.join(playwright_cmd)}")
-            
+
             process = await asyncio.create_subprocess_exec(
                 *playwright_cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.STDOUT,
                 env=env
             )
-            
+
             output_lines = []
             current_progress = 50
-            
+
             while True:
                 line = await process.stdout.readline()
                 if not line:
                     break
-                
+
                 line_text = line.decode('utf-8', errors='ignore').strip()
                 if line_text:
                     output_lines.append(line_text)
                     logger.info(f"[Playwright browser] {line_text}")
-                    
+
                     # 解析下载进度
                     lower_text = line_text.lower()
                     if 'downloading' in lower_text or '%' in line_text:
@@ -2278,15 +2278,15 @@ else:
                             current_progress = min(current_progress + 2, 90)
                     elif 'chromium' in lower_text and ('installed' in lower_text or 'downloaded' in lower_text):
                         current_progress = 95
-                    
+
                     await self._call_progress_callback(progress_callback, current_progress, "下载 Chromium 浏览器...")
-            
+
             await process.wait()
-            
+
             if process.returncode != 0:
                 error_output = '\n'.join(output_lines[-10:])
                 logger.error(f"[Playwright] Browser install failed: {error_output}")
-                
+
                 # 检查常见错误
                 error_lower = error_output.lower()
                 if 'disk' in error_lower or 'space' in error_lower:
@@ -2299,14 +2299,14 @@ else:
                         "success": False,
                         "error": "网络连接超时，请检查网络后重试"
                     }
-                
+
                 return {
                     "success": False,
                     "error": f"Chromium 浏览器安装失败\n\n{error_output[:300]}"
                 }
-            
+
             await self._call_progress_callback(progress_callback, 100, "Playwright 安装完成！")
-            
+
             # 验证安装
             final_status = await self.check_playwright_status()
             if final_status["installed"]:
@@ -2322,25 +2322,25 @@ else:
                     "success": False,
                     "error": "安装验证失败，请重试"
                 }
-                
+
         except Exception as e:
             logger.error(f"[Playwright] Installation error: {e}", exc_info=True)
             return {
                 "success": False,
                 "error": f"安装出错: {str(e)}"
             }
-    
+
     # 保留旧方法以兼容现有代码
     async def check_faster_whisper(self) -> bool:
         """检查 faster-whisper 是否可用（兼容旧代码）"""
         status = await self.check_ai_tools_status()
         return status.get("installed", False)
-    
+
     async def install_faster_whisper(self) -> bool:
         """安装 faster-whisper（兼容旧代码）"""
         result = await self.install_ai_tools(version="cpu")
         return result.get("success", False)
-    
+
     async def download_whisper_model(self, model_name: str = "base") -> Path:
         """下载 Whisper 模型（首次使用时自动下载）"""
         # faster-whisper 会自动下载模型到缓存目录
@@ -2386,7 +2386,7 @@ async def initialize_tools():
             logger.error(f"[Tools] Failed to start auto-update loop: {e}")
     else:
         logger.info("[Tools] Auto-update disabled by TOOLS_AUTO_UPDATE_ENABLED")
-    
+
     return results
 
 def get_tool_manager() -> ToolManager:

@@ -175,7 +175,7 @@ class DeltaUpdater extends EventEmitter {
    */
   async applyPendingUpdate() {
     const updateInfoPath = path.join(this.customUpdater.downloadPath, 'pending_update.json');
-    
+
     if (!fs.existsSync(updateInfoPath)) {
       return false;
     }
@@ -212,7 +212,7 @@ class DeltaUpdater extends EventEmitter {
         fs.rmSync(backupDir, { recursive: true });
         fs.rmSync(pendingDir, { recursive: true });
         fs.unlinkSync(updateInfoPath);
-        
+
         // 清理旧的 delta 包
         if (updateInfo.deltaPath && fs.existsSync(updateInfo.deltaPath)) {
           try {
@@ -224,25 +224,25 @@ class DeltaUpdater extends EventEmitter {
         }
 
         console.log('[DeltaUpdater] Pending update applied successfully');
-        
+
         // 上报更新成功
         await this.reportPendingUpdateResult(updateInfo, true);
-        
+
         return true;
 
       } catch (error) {
         console.error('[DeltaUpdater] Apply pending update failed, rolling back...', error);
         await this.rollback(backupDir, targetDir);
-        
+
         // 清理失败的更新
         if (fs.existsSync(pendingDir)) {
           fs.rmSync(pendingDir, { recursive: true });
         }
         fs.unlinkSync(updateInfoPath);
-        
+
         // 上报更新失败
         await this.reportPendingUpdateResult(updateInfo, false, error.message);
-        
+
         throw error;
       }
 
@@ -333,7 +333,7 @@ class DeltaUpdater extends EventEmitter {
   async updatePackageVersion(targetDir, newVersion) {
     // package.json 位于 resources/app/package.json
     const packageJsonPath = path.join(targetDir, 'app', 'package.json');
-    
+
     if (!fs.existsSync(packageJsonPath)) {
       console.warn('[DeltaUpdater] package.json not found at:', packageJsonPath);
       return false;
@@ -343,7 +343,7 @@ class DeltaUpdater extends EventEmitter {
       const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
       const oldVersion = packageJson.version;
       packageJson.version = newVersion;
-      
+
       fs.writeFileSync(packageJsonPath, JSON.stringify(packageJson, null, 4), 'utf8');
       console.log(`[DeltaUpdater] Updated package.json version: ${oldVersion} -> ${newVersion}`);
       return true;
@@ -356,7 +356,7 @@ class DeltaUpdater extends EventEmitter {
   /**
    * 将差异包路径映射到实际安装路径
    * 差异包路径格式: backend/xxx 或 frontend/dist/xxx
-   * 安装目录结构 (asar: false): 
+   * 安装目录结构 (asar: false):
    *   - resources/backend/xxx (后端)
    *   - resources/app/frontend/dist/xxx (前端)
    */

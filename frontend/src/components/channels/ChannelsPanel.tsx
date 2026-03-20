@@ -18,9 +18,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../ui/select';
-import { 
-  Video, 
-  Settings, 
+import {
+  Video,
+  Settings,
   Loader2,
   RefreshCw,
   Monitor,
@@ -34,7 +34,7 @@ import { CertificateDialog } from './CertificateDialog';
 import { ProcessSelector } from './ProcessSelector';
 import { CaptureStatus } from './CaptureStatus';
 import { DiagnosticPanel } from './DiagnosticPanel';
-import { 
+import {
   ChannelsConfigUpdateRequest,
   CaptureMode,
   CaptureConfigUpdateRequest,
@@ -171,7 +171,7 @@ export const ChannelsPanel: React.FC = () => {
       console.log('[Channels] Starting download:', request);
       const result = await downloadVideo(request);
       console.log('[Channels] Download result:', result);
-      
+
       if (!result.success) {
         toast.error('下载失败', { description: result.error });
       } else {

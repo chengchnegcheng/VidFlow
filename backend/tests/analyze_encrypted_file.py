@@ -22,7 +22,7 @@ for marker in markers:
         print(f'  前4字节: {" ".join(f"{b:02X}" for b in data[pos-4:pos])}')
         print(f'  标记: {marker.decode()}')
         print(f'  后8字节: {" ".join(f"{b:02X}" for b in data[pos+4:pos+12])}')
-        
+
         # 如果找到 ftyp，这可能是真正的文件开始
         if marker == b'ftyp' and pos < 1000:
             print(f'\n  *** 可能的文件开始位置: {pos}')

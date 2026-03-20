@@ -71,7 +71,7 @@ export function useQRLogin(onSuccess?: (platformId: string) => void) {
   const checkStatus = useCallback(async (platformId: string, platformNameZh: string) => {
     try {
       const response = await invoke('qr_login_check_status', { platformId }) as QRStatusResponse;
-      
+
       if (!isMountedRef.current) return;
 
       const newStatus = response.status;
@@ -85,7 +85,7 @@ export function useQRLogin(onSuccess?: (platformId: string) => void) {
       // 如果到达终止状态，停止轮询
       if (TERMINAL_STATUSES.includes(newStatus)) {
         clearPolling();
-        
+
         // 登录成功回调
         if (newStatus === 'success' && onSuccess) {
           onSuccess(platformId);
@@ -93,7 +93,7 @@ export function useQRLogin(onSuccess?: (platformId: string) => void) {
       }
     } catch (error: any) {
       if (!isMountedRef.current) return;
-      
+
       console.error('Failed to check QR login status:', error);
       safeSetState({
         status: 'error',
@@ -108,10 +108,10 @@ export function useQRLogin(onSuccess?: (platformId: string) => void) {
    */
   const startPolling = useCallback((platformId: string, platformNameZh: string) => {
     clearPolling();
-    
+
     // 立即检查一次
     checkStatus(platformId, platformNameZh);
-    
+
     // 设置定时轮询
     pollingRef.current = setInterval(() => {
       checkStatus(platformId, platformNameZh);
@@ -131,7 +131,7 @@ export function useQRLogin(onSuccess?: (platformId: string) => void) {
 
     try {
       const response = await invoke('qr_login_get_qrcode', { platformId }) as QRCodeResponse;
-      
+
       if (!isMountedRef.current) return;
 
       safeSetState({
@@ -146,7 +146,7 @@ export function useQRLogin(onSuccess?: (platformId: string) => void) {
       startPolling(platformId, platformNameZh);
     } catch (error: any) {
       if (!isMountedRef.current) return;
-      
+
       console.error('Failed to get QR code:', error);
       safeSetState({
         status: 'error',
@@ -179,7 +179,7 @@ export function useQRLogin(onSuccess?: (platformId: string) => void) {
    */
   const closeQRLogin = useCallback(async () => {
     clearPolling();
-    
+
     // 如果有正在进行的登录，取消它
     if (state.platform) {
       try {
@@ -219,7 +219,7 @@ export function useQRLogin(onSuccess?: (platformId: string) => void) {
    */
   useEffect(() => {
     isMountedRef.current = true;
-    
+
     return () => {
       isMountedRef.current = false;
       clearPolling();

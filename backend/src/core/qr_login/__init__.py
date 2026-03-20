@@ -52,11 +52,11 @@ __all__ = [
 
 def register_default_providers() -> None:
     """注册默认的平台Provider
-    
+
     在应用启动时调用此函数来注册所有支持的平台。
     """
     registry = get_qr_registry()
-    
+
     # 标准API平台（默认启用）
     registry.register(BilibiliQRProvider(), enabled=True)
     registry.register(KuaishouQRProvider(), enabled=True)
@@ -64,7 +64,7 @@ def register_default_providers() -> None:
     registry.register(IqiyiQRProvider(), enabled=True)
     registry.register(MangoQRProvider(), enabled=True)
     registry.register(TencentQRProvider(), enabled=True)
-    
+
     # Playwright平台（默认启用，但需要Playwright依赖）
     registry.register(DouyinQRProvider(), enabled=True)
     registry.register(XiaohongshuQRProvider(), enabled=True)
