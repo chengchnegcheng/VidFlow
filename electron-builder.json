@@ -2,6 +2,7 @@
   "appId": "com.vidflow.desktop",
   "productName": "VidFlow",
   "asar": false,
+  "compression": "maximum",
   "directories": {
     "output": "dist-output",
     "buildResources": "resources"

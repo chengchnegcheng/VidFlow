@@ -6,6 +6,15 @@ from PyInstaller.utils.hooks import collect_data_files, collect_submodules, coll
 
 block_cipher = None
 
+
+def env_flag(name, default='1'):
+    value = os.environ.get(name, default)
+    return str(value).strip().lower() not in ('0', 'false', 'no', 'off', '')
+
+
+BUNDLE_TOOLS = env_flag('VIDFLOW_BUNDLE_TOOLS', '1')
+BUNDLE_PLAYWRIGHT = env_flag('VIDFLOW_BUNDLE_PLAYWRIGHT', '1')
+
 # 收集数据文件
 import glob
 inject_script_datas = []
@@ -31,25 +40,28 @@ project_root = os.path.dirname(os.path.dirname(os.path.abspath(SPEC)))
 resources_tools_bin = os.path.join(project_root, 'resources', 'tools', 'bin')
 backend_tools_bin = os.path.join(os.path.dirname(os.path.abspath(SPEC)), 'tools', 'bin')
 
-# 优先使用 resources/tools/bin
-if os.path.exists(resources_tools_bin) and os.listdir(resources_tools_bin):
-    tools_bin = resources_tools_bin
-    dest_path = 'resources/tools/bin'  # 保持与运行时代码一致的路径
-elif os.path.exists(backend_tools_bin) and os.listdir(backend_tools_bin):
-    tools_bin = backend_tools_bin
-    dest_path = 'tools/bin'
-else:
-    tools_bin = None
-    dest_path = None
+if BUNDLE_TOOLS:
+    # 优先使用 resources/tools/bin
+    if os.path.exists(resources_tools_bin) and os.listdir(resources_tools_bin):
+        tools_bin = resources_tools_bin
+        dest_path = 'resources/tools/bin'  # 保持与运行时代码一致的路径
+    elif os.path.exists(backend_tools_bin) and os.listdir(backend_tools_bin):
+        tools_bin = backend_tools_bin
+        dest_path = 'tools/bin'
+    else:
+        tools_bin = None
+        dest_path = None
 
-if tools_bin:
-    # 打包所有工具文件
-    for tool_file in glob.glob(os.path.join(tools_bin, '*')):
-        if os.path.isfile(tool_file):
-            datas.append((tool_file, dest_path))
-    print(f"已打包工具目录: {tools_bin} -> {dest_path}")
+    if tools_bin:
+        # 打包所有工具文件
+        for tool_file in glob.glob(os.path.join(tools_bin, '*')):
+            if os.path.isfile(tool_file):
+                datas.append((tool_file, dest_path))
+        print(f"已打包工具目录: {tools_bin} -> {dest_path}")
+    else:
+        print("警告: tools/bin 目录为空，工具将在首次运行时自动下载")
 else:
-    print("警告: tools/bin 目录为空，工具将在首次运行时自动下载")
+    print("已跳过预打包 FFmpeg/yt-dlp，工具将在首次运行或手动安装时下载")
 
 # 打包嵌入式 Python 3.11
 python_embedded = os.path.join(os.path.dirname(os.path.abspath(SPEC)), 'python_embedded')
@@ -129,23 +141,27 @@ hiddenimports = [
     'webdriver_manager.drivers.chrome',
     'webdriver_manager.drivers.edge',
     'webdriver_manager.drivers.firefox',
-    # Playwright（抖音下载，浏览器需要用户单独安装）
-    'playwright',
-    'playwright.sync_api',
-    'playwright.async_api',
-    'playwright._impl',
-    'playwright._impl._api_types',
-    'playwright._impl._browser',
-    'playwright._impl._browser_context',
-    'playwright._impl._browser_type',
-    'playwright._impl._connection',
-    'playwright._impl._driver',
-    'playwright._impl._element_handle',
-    'playwright._impl._frame',
-    'playwright._impl._helper',
-    'playwright._impl._page',
-    'playwright._impl._transport',
 ]
+
+if BUNDLE_PLAYWRIGHT:
+    hiddenimports += [
+        # Playwright（抖音下载，浏览器需要用户单独安装）
+        'playwright',
+        'playwright.sync_api',
+        'playwright.async_api',
+        'playwright._impl',
+        'playwright._impl._api_types',
+        'playwright._impl._browser',
+        'playwright._impl._browser_context',
+        'playwright._impl._browser_type',
+        'playwright._impl._connection',
+        'playwright._impl._driver',
+        'playwright._impl._element_handle',
+        'playwright._impl._frame',
+        'playwright._impl._helper',
+        'playwright._impl._page',
+        'playwright._impl._transport',
+    ]
 
 # 收集 pip 的所有内容（用于 -m pip 模式）
 pip_datas, pip_binaries, pip_hiddenimports = collect_all('pip')
@@ -198,17 +214,20 @@ except Exception as e:
     print(f"警告: 收集 webdriver-manager 失败 - {e}")
 
 # 收集 Playwright 的数据文件（不包含浏览器，浏览器需要用户单独安装）
-try:
-    playwright_datas, playwright_binaries, playwright_hiddenimports = collect_all('playwright')
-    # 过滤掉浏览器二进制文件（太大，用户需要单独安装）
-    playwright_datas = [(src, dst) for src, dst in playwright_datas if 'chromium' not in src.lower() and 'firefox' not in src.lower() and 'webkit' not in src.lower()]
-    playwright_binaries = [(src, dst) for src, dst in playwright_binaries if 'chromium' not in src.lower() and 'firefox' not in src.lower() and 'webkit' not in src.lower()]
-    datas += playwright_datas
-    binaries += playwright_binaries
-    hiddenimports += playwright_hiddenimports
-    print(f"已收集 Playwright 数据文件和模块（不含浏览器）")
-except Exception as e:
-    print(f"警告: 收集 Playwright 失败 - {e}")
+if BUNDLE_PLAYWRIGHT:
+    try:
+        playwright_datas, playwright_binaries, playwright_hiddenimports = collect_all('playwright')
+        # 过滤掉浏览器二进制文件（太大，用户需要单独安装）
+        playwright_datas = [(src, dst) for src, dst in playwright_datas if 'chromium' not in src.lower() and 'firefox' not in src.lower() and 'webkit' not in src.lower()]
+        playwright_binaries = [(src, dst) for src, dst in playwright_binaries if 'chromium' not in src.lower() and 'firefox' not in src.lower() and 'webkit' not in src.lower()]
+        datas += playwright_datas
+        binaries += playwright_binaries
+        hiddenimports += playwright_hiddenimports
+        print(f"已收集 Playwright 数据文件和模块（不含浏览器）")
+    except Exception as e:
+        print(f"警告: 收集 Playwright 失败 - {e}")
+else:
+    print("已跳过预打包 Playwright 包，相关功能将按需安装")
 
 # 排除 AI 组件（作为可选工具，用户按需安装）
 excludes = [
@@ -243,6 +262,14 @@ excludes = [
 ]
 
 excludes = [name for name in excludes if name not in ('xml.dom', 'xml.sax')]
+
+if not BUNDLE_PLAYWRIGHT:
+    excludes += [
+        'playwright',
+        'playwright.sync_api',
+        'playwright.async_api',
+        'playwright._impl',
+    ]
 
 a = Analysis(
     ['src/main.py'],
