@@ -7,70 +7,68 @@
 
 ## ✨ 特性
 
-- 🎥 **多平台支持**：YouTube、Bilibili、抖音、小红书、TikTok等主流平台
-- 🍪 **自动Cookie获取**：内置Selenium，一键自动登录并提取Cookie（安全便捷）
-- 🤖 **AI字幕生成**：基于 faster-whisper 的高质量语音识别（可选安装）
+- 🎥 **多平台支持**：YouTube、Bilibili、抖音、小红书、TikTok 等主流平台
+- 🍪 **自动 Cookie 获取**：内置 Selenium，一键登录并提取 Cookie
+- 🤖 **AI 字幕生成**：基于 `faster-whisper`，按需安装
 - 🌍 **字幕翻译**：支持多语言字幕翻译
-- ⚡ **高性能**：Python 后端 + Electron 前端，性能优异
+- 🧰 **统一工具管理**：FFmpeg、yt-dlp、AI 工具集中管理
+- ⚡ **体积优化**：Windows 优化安装包实测约 `151.71 MB`，首次使用再按需下载工具
 - 🖥️ **跨平台**：支持 Windows、macOS、Linux
-- 📦 **体积优化**：基础包仅 500 MB（AI 功能可选）
 
-## 🆕 1.0.0 新特性
+## 🆕 1.0.0 重点更新
 
-### 🍪 自动Cookie获取功能 ⭐ NEW!
-- ✅ **半自动化提取**：一键启动浏览器，用户登录后自动提取Cookie
-- ✅ **完全安全**：密码只在真实浏览器中输入，不经过应用
-- ✅ **7大平台支持**：小红书、抖音、TikTok、B站、YouTube、Twitter、Instagram
-- ✅ **内置Selenium**：安装时自动包含，开箱即用
-- ✅ **UI界面配置**：无需手动操作文件，全程图形化操作
+### 🍪 自动 Cookie 获取
+- ✅ 一键启动浏览器，登录后自动提取 Cookie
+- ✅ 密码只在真实浏览器中输入，不经过应用
+- ✅ 支持小红书、抖音、TikTok、B 站、YouTube、Twitter、Instagram
+- ✅ UI 全程图形化配置，无需手动改文件
 
-详见 [自动Cookie获取指南](Docs/AUTO_COOKIE_GUIDE.md)
+详见 [自动 Cookie 获取指南](Docs/AUTO_COOKIE_GUIDE.md)
 
-### AI 工具按需安装
-- ✅ **基础包体积减少 75%**：从 2 GB 降到 500 MB
-- ✅ **AI 功能可选安装**：在应用内一键安装/卸载
-- ✅ **支持 CPU/GPU 版本**：根据硬件灵活选择
-- ✅ **统一工具管理**：FFmpeg、yt-dlp、AI 工具集中管理
+### 📦 工具按需安装
+- ✅ FFmpeg、yt-dlp、Playwright、AI 工具按需下载
+- ✅ 减少基础安装包体积，降低首包下载成本
+- ✅ 支持在“系统设置 -> 工具管理”中统一安装和维护
 
 详见 [AI 工具指南](Docs/AI_TOOLS_GUIDE.md)
 
 ## 🏗️ 技术栈
 
 ### 前端
-- **Electron** 27 - 桌面应用框架
-- **React** 18 - UI 框架
-- **TypeScript** - 类型安全
-- **Vite** - 快速构建工具
+- **Electron** 28
+- **React** 18
+- **TypeScript**
+- **Vite**
 
 ### 后端
-- **Python** 3.8+ - 编程语言
-- **FastAPI** - 现代化 Web 框架
-- **yt-dlp** - 视频下载引擎
-- **Selenium** - 自动Cookie提取（内置）
-- **faster-whisper** - AI 字幕生成（可选）
-- **SQLite** - 数据持久化
+- **Python** 3.8-3.11（推荐 3.11）
+- **FastAPI**
+- **yt-dlp**
+- **Selenium**
+- **faster-whisper**（可选）
+- **SQLite**
 
 ## 🚀 快速开始
 
-### 方式 1：使用自动化脚本（推荐）⭐
+### 方式 1：使用脚本（推荐）
 
 ```bash
 # Windows
-scripts\SETUP.bat      # 一键安装所有依赖
-scripts\START.bat      # 启动开发服务器
+scripts\SETUP.bat              # 安装 Node / Python 依赖并创建 venv
+scripts\START.bat              # 启动开发环境
 
 # 打包
-scripts\PREPARE_PACKAGE.bat   # 准备打包
-scripts\BUILD_AUTO.bat        # 自动打包
+scripts\BUILD_OPTIMIZED.bat    # 推荐：精简构建，产物更小
+scripts\BUILD_RELEASE.bat      # 交互式发布构建菜单
 ```
 
 ### 方式 2：手动安装
 
 #### 环境要求
 
-- Node.js >= 18.0.0
+- Node.js >= 18
 - Python 3.8-3.11（推荐 3.11）
-- ⚠️ **不支持 Python 3.12+**（AI 功能限制）
+- ⚠️ 不支持 Python 3.12+ 的 AI 字幕能力
 
 #### 安装步骤
 
@@ -79,10 +77,10 @@ scripts\BUILD_AUTO.bat        # 自动打包
 npm install
 cd frontend && npm install && cd ..
 
-# 2. 设置 Python 环境
+# 2. 创建 Python 虚拟环境
 cd backend
 python -m venv venv
-venv\Scripts\activate  # Windows
+venv\Scripts\activate
 pip install -r requirements.txt
 cd ..
 
@@ -92,29 +90,52 @@ npm run dev
 
 ## 📦 打包应用
 
-### 一键打包（推荐）
+### 推荐：Windows 优化构建
 
 ```bash
-scripts\BUILD_AUTO.bat
+scripts\BUILD_OPTIMIZED.bat
 ```
 
-输出：`dist-output/VidFlow Desktop Setup 1.0.0.exe` (~500 MB)
+这个脚本会自动完成：
+
+- 清理旧的构建输出和 Python 缓存
+- 构建前端生产包
+- 以精简模式打包后端
+- 用 `electron-builder` 生成 Windows 安装包
+- 将详细日志写入 `build-logs/optimized/`
+
+优化构建当前实测产物（2026-03-21）：
+
+- 安装包：`dist-output/VidFlow Setup 1.0.0.exe`，约 `151.71 MB`
+- 解包目录：`dist-output/win-unpacked`，约 `431.44 MB`
+- 后端包：`backend/dist/VidFlow-Backend`，约 `158.69 MB`
+
+说明：
+
+- 默认启用 `VIDFLOW_BUNDLE_TOOLS=0`
+- 默认启用 `VIDFLOW_BUNDLE_PLAYWRIGHT=0`
+- FFmpeg、yt-dlp、Playwright 会在首次使用相关功能时再安装
+
+### 交互式发布构建
+
+```bash
+scripts\BUILD_RELEASE.bat
+```
+
+适合需要手动选择“仅构建后端 / 仅构建前端 / 仅打包 Electron”的场景。
 
 ### 手动打包
 
 ```bash
-# 1. 清理
-scripts\CLEAN.bat
-
-# 2. 构建前端
+# 1. 构建前端
 cd frontend && npm run build && cd ..
 
-# 3. 打包后端
-cd backend
-venv\Scripts\python -m PyInstaller backend.spec --clean
-cd ..
+# 2. 精简打包后端
+set VIDFLOW_BUNDLE_TOOLS=0
+set VIDFLOW_BUNDLE_PLAYWRIGHT=0
+npm run build:backend
 
-# 4. 打包 Electron
+# 3. 打包 Electron
 npm run build:electron
 ```
 
@@ -122,68 +143,71 @@ npm run build:electron
 
 ## 📁 项目结构
 
-```
-VidFlow-Desktop/
+```text
+VidFlow/
 ├── electron/          # Electron 主进程
-│   ├── main.js       # 主进程入口
-│   └── preload.js    # 预加载脚本
-├── frontend/         # React 前端
-│   ├── src/
-│   └── package.json
-├── backend/          # Python 后端
-│   ├── src/
-│   │   ├── main.py
-│   │   └── api/
-│   └── requirements.txt
-├── scripts/          # 构建脚本
+├── frontend/          # React 前端
+├── backend/           # Python FastAPI 后端
+├── scripts/           # Windows / macOS 构建与开发脚本
+├── resources/         # 图标等资源
 └── package.json
 ```
 
-## 🔧 开发命令
+## 🔧 常用命令
 
 ```bash
-npm run dev              # 启动开发模式
+npm run dev              # 启动完整开发环境
 npm run frontend:dev     # 仅启动前端
 npm run backend:dev      # 仅启动后端
 npm run electron:dev     # 仅启动 Electron
-npm run build            # 构建整个应用
-npm run package          # 打包应用
+npm run build:backend    # 打包后端
+npm run build:frontend   # 构建前端
+npm run build:electron   # 仅打包 Electron
 ```
 
 ## 📚 文档
 
 ### API 文档
+
 后端启动后访问：
+
 - Swagger UI: http://localhost:8000/docs
 - ReDoc: http://localhost:8000/redoc
 
 ### 项目文档
-- [快速开始](QUICK_START.md) - 一页式快速参考
-- [打包准备](PACKAGE_READY.md) - 打包前检查清单
-- [AI 工具指南](Docs/AI_TOOLS_GUIDE.md) - AI 功能完整说明
-- [前端实施](Docs/FRONTEND_IMPLEMENTATION.md) - 前端开发文档
-- [变更日志](Docs/CHANGELOG_AI_TOOLS.md) - 1.0.0 详细变更
+
+- [快速开始](QUICK_START.md)
+- [打包准备](PACKAGE_READY.md)
+- [AI 工具指南](Docs/AI_TOOLS_GUIDE.md)
+- [前端实施](Docs/FRONTEND_IMPLEMENTATION.md)
+- [脚本说明](scripts/README.md)
+- [变更日志](Docs/CHANGELOG_AI_TOOLS.md)
 
 ## 🐛 故障排除
 
 ### Python 后端无法启动
 
-1. 确认已创建并激活虚拟环境
-2. 确认已安装所有依赖：`pip install -r requirements.txt`
-3. 检查端口 8000 是否被占用
+1. 确认 `backend/venv` 已创建并可激活
+2. 确认已安装依赖：`pip install -r backend/requirements.txt`
+3. 如果用了 Python 3.12+，请切回 Python 3.11
 
 ### Electron 无法连接后端
 
-1. 确认 Python 后端已启动
-2. 检查控制台是否有错误信息
-3. 确认防火墙允许 localhost:8000
+1. 先运行 `scripts\START.bat`
+2. 检查 `backend\data\backend_port.json` 是否生成
+3. 查看 Electron 或后端控制台日志
 
-### FFmpeg 相关错误
+### 优化构建失败
 
-确保系统已安装 FFmpeg：
-- Windows: 从 https://ffmpeg.org/ 下载并添加到 PATH
-- macOS: `brew install ffmpeg`
-- Linux: `sudo apt install ffmpeg`
+1. 查看 `build-logs/optimized/frontend-build.log`
+2. 查看 `build-logs/optimized/backend-build.log`
+3. 查看 `build-logs/optimized/electron-build.log`
+
+### FFmpeg / yt-dlp 相关错误
+
+- 默认会在首次使用相关功能时自动下载
+- 如果网络受限，可手动放入 `backend\tools\bin\`
+- 也可以通过应用内“系统设置 -> 工具管理”重新安装
 
 ## 📄 许可证
 
