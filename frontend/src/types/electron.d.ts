@@ -52,6 +52,8 @@ interface ElectronAPI {
     port: number | null;
     ready: boolean;
     host: string;
+    error?: string | null;
+    status?: 'starting' | 'ready' | 'failed' | 'disconnected';
   }>;
 
   // 桌面通知
@@ -66,6 +68,7 @@ interface ElectronAPI {
   minimize: () => Promise<void>;
   maximize: () => Promise<void>;
   close: () => Promise<void>;
+  restartAsAdmin: () => Promise<{ success: boolean; error?: string }>;
 
   // 更新相关
   on: (channel: string, callback: (...args: any[]) => void) => void;

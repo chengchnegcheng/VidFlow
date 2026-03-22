@@ -25,53 +25,61 @@ const VALID_INVOKE_CHANNELS = [
   'restart-as-admin'
 ];
 
+const VALID_EVENT_CHANNELS = [
+  'update-checking',
+  'update-available',
+  'update-not-available',
+  'download-progress',
+  'update-downloaded',
+  'update-error',
+  'delta-fallback',
+  'delta-apply-start',
+  'delta-apply-complete',
+  'window-state-changed',
+  'backend-ready',
+  'backend-error',
+  'backend-disconnected',
+  'show-about'
+];
+
+const listenerWrappers = new Map();
+
+function getWrappedListener(channel, callback) {
+  let channelListeners = listenerWrappers.get(channel);
+  if (!channelListeners) {
+    channelListeners = new WeakMap();
+    listenerWrappers.set(channel, channelListeners);
+  }
+
+  let wrapped = channelListeners.get(callback);
+  if (!wrapped) {
+    wrapped = (_event, ...args) => callback(...args);
+    channelListeners.set(callback, wrapped);
+  }
+
+  return wrapped;
+}
+
 // 安全地暴露 API 到渲染进程
 contextBridge.exposeInMainWorld('electron', {
   // 事件监听
   on: (channel, callback) => {
-    const validChannels = [
-      'update-checking',
-      'update-available',
-      'update-not-available',
-      'download-progress',
-      'update-downloaded',
-      'update-error',
-      'delta-fallback',
-      'delta-apply-start',
-      'delta-apply-complete',
-      'window-state-changed',
-      'backend-ready',
-      'backend-error',
-      'backend-disconnected',
-      'show-about'
-    ];
-
-    if (validChannels.includes(channel)) {
-      ipcRenderer.on(channel, (_event, ...args) => callback(...args));
+    if (VALID_EVENT_CHANNELS.includes(channel) && typeof callback === 'function') {
+      const wrapped = getWrappedListener(channel, callback);
+      ipcRenderer.removeListener(channel, wrapped);
+      ipcRenderer.on(channel, wrapped);
     }
   },
 
   // 移除事件监听
   off: (channel, callback) => {
-    const validChannels = [
-      'update-checking',
-      'update-available',
-      'update-not-available',
-      'download-progress',
-      'update-downloaded',
-      'update-error',
-      'delta-fallback',
-      'delta-apply-start',
-      'delta-apply-complete',
-      'window-state-changed',
-      'backend-ready',
-      'backend-error',
-      'backend-disconnected',
-      'show-about'
-    ];
-
-    if (validChannels.includes(channel)) {
-      ipcRenderer.removeListener(channel, callback);
+    if (VALID_EVENT_CHANNELS.includes(channel) && typeof callback === 'function') {
+      const channelListeners = listenerWrappers.get(channel);
+      const wrapped = channelListeners?.get(callback);
+      if (wrapped) {
+        ipcRenderer.removeListener(channel, wrapped);
+        channelListeners.delete(callback);
+      }
     }
   },
 

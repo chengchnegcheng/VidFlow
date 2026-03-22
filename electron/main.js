@@ -58,6 +58,20 @@ let updater = null;
 let updaterError = null;
 let backendShutdownPromise = null;
 let backendQuitCleanupDone = false;
+let backendShutdownExpected = false;
+let backendShutdownReason = null;
+
+function formatBackendExitDetails(code, signal) {
+  if (code !== null && code !== undefined) {
+    return `退出码: ${code}`;
+  }
+
+  if (signal) {
+    return `信号: ${signal}`;
+  }
+
+  return '退出码: null';
+}
 
 // 获取应用图标路径的辅助函数
 function getIconPath() {
@@ -255,6 +269,9 @@ async function stopBackendServicesForQuit(reason = 'app_quit') {
     return backendShutdownPromise;
   }
 
+  backendShutdownExpected = true;
+  backendShutdownReason = reason;
+
   backendShutdownPromise = (async () => {
     let resolvedPort = backendPort;
     if (!resolvedPort) {
@@ -344,6 +361,11 @@ function startPythonBackend() {
   return new Promise((resolve, reject) => {
     let settled = false;
     const startupToken = crypto.randomUUID();
+
+    backendShutdownExpected = false;
+    backendShutdownReason = null;
+    backendShutdownPromise = null;
+    backendQuitCleanupDone = false;
 
     const safeResolve = (port) => {
       if (!settled) {
@@ -497,25 +519,42 @@ function startPythonBackend() {
       }
     });
 
-    pythonProcess.on('close', (code) => {
+    pythonProcess.on('close', (code, signal) => {
+      const exitDetails = formatBackendExitDetails(code, signal);
+      const expectedExit = backendShutdownExpected || app.isQuitting || backendQuitCleanupDone;
+
       console.log(`========================================`);
-      console.log(`❌ Python process exited with code ${code}`);
+      console.log(`${expectedExit ? 'ℹ️' : '❌'} Python process exited (${exitDetails})`);
       console.log(`========================================`);
+
+      pythonProcess = null;
       backendReady = false;
       backendPort = null; // 清空端口
-      backendError = `后端进程退出 (退出码: ${code})`; // 记录错误
+
+      if (expectedExit) {
+        console.log(`[Backend] Expected shutdown detected (${backendShutdownReason || 'app_quit'})`);
+        backendError = null;
+      } else {
+        backendError = `后端进程退出 (${exitDetails})`; // 记录错误
+        backendShutdownPromise = null;
+      }
 
       // 通知前端后端已断开
-      if (mainWindow && mainWindow.webContents) {
-        mainWindow.webContents.send('backend-disconnected', { code });
+      if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
+        mainWindow.webContents.send('backend-disconnected', {
+          code,
+          signal: signal || null,
+          expected: expectedExit,
+          message: expectedExit ? null : backendError,
+        });
       }
 
       // 如果后端意外退出，通知用户
-      if (code !== 0 && mainWindow) {
+      if (!expectedExit && code !== 0 && mainWindow && !mainWindow.isDestroyed()) {
         dialog.showMessageBoxSync(mainWindow, {
           type: 'error',
           title: '后端进程异常退出',
-          message: `后端进程异常退出 (退出码: ${code})\n应用可能无法正常工作，建议重启应用。`,
+          message: `后端进程异常退出 (${exitDetails})\n应用可能无法正常工作，建议重启应用。`,
           buttons: ['确定']
         });
       }

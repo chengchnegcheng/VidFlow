@@ -23,12 +23,55 @@ let portInitialized = false;
 let initializationInProgress = false; // Prevent concurrent initialization attempts
 let initializationAttempts = 0;
 const MAX_INIT_ATTEMPTS = 10;
+let backendPortListenersRegistered = false;
 
 const api = axios.create({
   baseURL: API_BASE,
   timeout: 60000,
   withCredentials: true,
 });
+
+function setBackendApiBase(host: string, port: number) {
+  API_BASE = `http://${host}:${port}`;
+  api.defaults.baseURL = API_BASE;
+  portInitialized = true;
+}
+
+function clearBackendApiBase() {
+  API_BASE = '';
+  api.defaults.baseURL = '';
+  portInitialized = false;
+}
+
+function registerBackendPortListeners() {
+  if (
+    backendPortListenersRegistered ||
+    typeof window === 'undefined' ||
+    !window.electron ||
+    typeof window.electron.on !== 'function'
+  ) {
+    return;
+  }
+
+  backendPortListenersRegistered = true;
+
+  window.electron.on('backend-ready', (data: { port: number }) => {
+    if (typeof data?.port === 'number' && data.port > 0) {
+      setBackendApiBase('127.0.0.1', data.port);
+      console.log('[Backend] Port updated from backend-ready event:', API_BASE);
+    }
+  });
+
+  window.electron.on('backend-error', () => {
+    clearBackendApiBase();
+    console.warn('[Backend] Cleared API base after backend-error event');
+  });
+
+  window.electron.on('backend-disconnected', () => {
+    clearBackendApiBase();
+    console.warn('[Backend] Cleared API base after backend-disconnected event');
+  });
+}
 
 const DEFAULT_SNIFFER_STATUS: SnifferStatusResponse = {
   state: 'stopped',
@@ -65,8 +108,7 @@ async function initializeBackendPort(): Promise<boolean> {
       console.log('📡 Backend config received:', config);
 
       if (config && config.port && config.ready) {
-        API_BASE = `http://${config.host}:${config.port}`;
-        api.defaults.baseURL = API_BASE;
+        setBackendApiBase(config.host || '127.0.0.1', config.port);
 
         // 验证后端真的可以响应
         console.log('🔍 Verifying backend health...');
@@ -126,6 +168,7 @@ async function startPortInitialization() {
 console.log('🚀 TauriIntegration.tsx loaded, starting port initialization...');
 console.log('🔍 window.electron exists:', !!window.electron);
 console.log('🔍 window.electron.invoke exists:', !!(window.electron && window.electron.invoke));
+registerBackendPortListeners();
 startPortInitialization();
 
 // Request interceptor: always use the latest resolved backend port.

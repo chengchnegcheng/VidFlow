@@ -97,7 +97,6 @@ class BackendConfigManager {
               this.initialized = true;
               this.initializing = false;
               console.log('✅ Backend initialization successful');
-              this.notifyListeners();
               return true;
             }
           } catch (healthError: any) {
@@ -151,7 +150,6 @@ class BackendConfigManager {
           error: null,
         });
         this.initialized = true;
-        this.notifyListeners();
       });
 
       window.electron.on('backend-error', (data: { message: string }) => {
@@ -161,18 +159,21 @@ class BackendConfigManager {
           status: 'failed',
           error: data.message,
         });
-        this.notifyListeners();
       });
 
-      window.electron.on('backend-disconnected', (data: { code: number; message: string }) => {
+      window.electron.on('backend-disconnected', (data: {
+        code: number | null;
+        signal?: string | null;
+        message?: string | null;
+        expected?: boolean;
+      }) => {
         console.warn('📢 Received backend-disconnected event:', data);
         this.updateConfig({
           ready: false,
           status: 'disconnected',
-          error: data.message,
+          error: data.expected ? null : (data.message ?? '后端连接已断开'),
         });
         this.initialized = false;
-        this.notifyListeners();
       });
     }
 

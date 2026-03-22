@@ -40,8 +40,8 @@ import {
 /** 状态轮询间隔（毫秒） */
 const STATUS_POLLING_INTERVAL_MS = 2000;
 
-/** 视频列表轮询间隔（毫秒）- 从 1s 调整到 2s */
-const VIDEOS_POLLING_INTERVAL_MS = 2000;
+/** 视频列表轮询间隔（毫秒） */
+const VIDEOS_POLLING_INTERVAL_MS = 1000;
 
 /** 连续失败熔断阈值 */
 const MAX_CONSECUTIVE_FAILURES = 5;

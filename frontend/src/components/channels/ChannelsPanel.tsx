@@ -43,6 +43,30 @@ import {
 import { invoke } from '../TauriIntegration';
 import { toast } from 'sonner';
 
+const areStringArraysEqual = (left: string[] = [], right: string[] = []) =>
+  left.length === right.length && left.every((value, index) => value === right[index]);
+
+const isSameConfigDraft = (
+  left: ChannelsConfigUpdateRequest,
+  right: ChannelsConfigUpdateRequest,
+) =>
+  left.proxy_port === right.proxy_port &&
+  left.download_dir === right.download_dir &&
+  left.auto_decrypt === right.auto_decrypt &&
+  left.auto_clean_wechat_cache === right.auto_clean_wechat_cache &&
+  left.quality_preference === right.quality_preference &&
+  left.clear_on_exit === right.clear_on_exit;
+
+const isSameCaptureConfigDraft = (
+  left: CaptureConfigUpdateRequest,
+  right: CaptureConfigUpdateRequest,
+) =>
+  left.capture_mode === right.capture_mode &&
+  left.quic_blocking_enabled === right.quic_blocking_enabled &&
+  left.no_detection_timeout === right.no_detection_timeout &&
+  left.log_unrecognized_domains === right.log_unrecognized_domains &&
+  areStringArraysEqual(left.target_processes, right.target_processes);
+
 /**
  * 视频号面板组件
  */
@@ -120,14 +144,17 @@ export const ChannelsPanel: React.FC = () => {
    */
   React.useEffect(() => {
     if (state.config) {
-      setConfigDraft({
+      const nextDraft = {
         proxy_port: state.config.proxy_port,
         download_dir: state.config.download_dir,
         auto_decrypt: state.config.auto_decrypt,
         auto_clean_wechat_cache: state.config.auto_clean_wechat_cache,
         quality_preference: state.config.quality_preference,
         clear_on_exit: state.config.clear_on_exit,
-      });
+      };
+      setConfigDraft((previousDraft) => (
+        isSameConfigDraft(previousDraft, nextDraft) ? previousDraft : nextDraft
+      ));
     }
   }, [state.config]);
 
@@ -136,13 +163,16 @@ export const ChannelsPanel: React.FC = () => {
    */
   React.useEffect(() => {
     if (captureConfig) {
-      setCaptureConfigDraft({
+      const nextDraft = {
         capture_mode: captureConfig.capture_mode || defaultCaptureMode,
         quic_blocking_enabled: captureConfig.quic_blocking_enabled,
         target_processes: captureConfig.target_processes,
         no_detection_timeout: captureConfig.no_detection_timeout,
         log_unrecognized_domains: captureConfig.log_unrecognized_domains,
-      });
+      };
+      setCaptureConfigDraft((previousDraft) => (
+        isSameCaptureConfigDraft(previousDraft, nextDraft) ? previousDraft : nextDraft
+      ));
     }
   }, [captureConfig, defaultCaptureMode]);
 

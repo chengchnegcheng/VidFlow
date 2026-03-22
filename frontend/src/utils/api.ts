@@ -8,6 +8,7 @@ let API_BASE_URL = ''; // 将由 initializeBackendPort 动态设置
 let backendPort: number | null = null;
 let portInitialized = false;
 let initializationInProgress = false;
+let backendPortListenersRegistered = false;
 
 // 初始化后端端口配置
 async function initializeBackendPort() {
@@ -27,10 +28,7 @@ async function initializeBackendPort() {
     try {
       const config = await window.electron.invoke('get-backend-port');
       if (config && config.port) {
-        backendPort = config.port;
-        API_BASE_URL = `http://${config.host}:${config.port}`;
-        api.defaults.baseURL = API_BASE_URL;
-        portInitialized = true;
+        setBackendApiBase(config.host || '127.0.0.1', config.port);
         console.log('✅ Backend API URL initialized:', API_BASE_URL);
         initializationInProgress = false;
         return true;
@@ -45,6 +43,50 @@ async function initializeBackendPort() {
 }
 
 // 创建 axios 实例
+function setBackendApiBase(host: string, port: number) {
+  backendPort = port;
+  API_BASE_URL = `http://${host}:${port}`;
+  api.defaults.baseURL = API_BASE_URL;
+  portInitialized = true;
+}
+
+function clearBackendApiBase() {
+  backendPort = null;
+  API_BASE_URL = '';
+  api.defaults.baseURL = '';
+  portInitialized = false;
+}
+
+function registerBackendPortListeners() {
+  if (
+    backendPortListenersRegistered ||
+    typeof window === 'undefined' ||
+    !window.electron ||
+    typeof window.electron.on !== 'function'
+  ) {
+    return;
+  }
+
+  backendPortListenersRegistered = true;
+
+  window.electron.on('backend-ready', (data: { port: number }) => {
+    if (typeof data?.port === 'number' && data.port > 0) {
+      setBackendApiBase('127.0.0.1', data.port);
+      console.log('✅ Backend API URL updated from event:', API_BASE_URL);
+    }
+  });
+
+  window.electron.on('backend-error', () => {
+    clearBackendApiBase();
+    console.warn('⚠️ Cleared backend API URL after backend-error event');
+  });
+
+  window.electron.on('backend-disconnected', () => {
+    clearBackendApiBase();
+    console.warn('⚠️ Cleared backend API URL after backend-disconnected event');
+  });
+}
+
 const api = axios.create({
   baseURL: API_BASE_URL,
   timeout: 30000,
@@ -56,6 +98,7 @@ const api = axios.create({
 });
 
 // 后台异步初始化端口
+registerBackendPortListeners();
 initializeBackendPort();
 
 // 请求拦截器 - 确保使用最新的端口
