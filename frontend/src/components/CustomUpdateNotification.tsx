@@ -26,145 +26,133 @@ interface UpdateInfo {
   recommended_update_type?: 'delta' | 'full';
 }
 
-interface DownloadProgress {
-  percent: number;
-  bytesPerSecond: number;
-  transferred: number;
-  total: number;
+interface UpdateDownloadedInfo {
+  version?: string;
+  type?: 'delta' | 'full';
+  requiresRestart?: boolean;
 }
 
 export function CustomUpdateNotification() {
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
-  const [downloading, setDownloading] = useState(false);
-  const [downloadProgress, setDownloadProgress] = useState<DownloadProgress | null>(null);
-  const [showModal, setShowModal] = useState(false);
+  const [showCard, setShowCard] = useState(false);
   const [updateDownloaded, setUpdateDownloaded] = useState(false);
   const [applyingDelta, setApplyingDelta] = useState(false);
+  const [downloadedUpdateType, setDownloadedUpdateType] = useState<'delta' | 'full'>('full');
 
   useEffect(() => {
-    // 监听更新事件
-    if (window.electron) {
-      const handleUpdateChecking = () => {
-        console.log('Checking for updates...');
-      };
-
-      const handleUpdateAvailable = (info: UpdateInfo) => {
-        console.log('Update available:', info);
-        setUpdateInfo(info);
-
-        if (info.rollout_blocked) {
-          toast.info('新版本发布中', {
-            description: info.rollout_message || '您的设备暂未进入更新名单，请稍后再试'
-          });
-        } else {
-          setShowModal(true);
-          toast.info(`发现新版本 ${info.latest_version}`);
-        }
-      };
-
-      const handleUpdateNotAvailable = () => {
-        console.log('No update available');
-      };
-
-      const handleDownloadProgress = (progress: DownloadProgress) => {
-        setDownloadProgress(progress);
-      };
-
-      const handleUpdateDownloaded = () => {
-        setDownloading(false);
-        setUpdateDownloaded(true);
-        toast.success('更新下载完成', {
-          description: '准备安装新版本',
-          action: {
-            label: '立即安装',
-            onClick: handleInstall
-          }
-        });
-      };
-
-      const handleUpdateError = (error: string) => {
-        setDownloading(false);
-        setApplyingDelta(false);
-        toast.error('更新失败', {
-          description: error
-        });
-      };
-
-      const handleDeltaFallback = (info: { reason: string }) => {
-        toast.warning('增量更新失败，正在下载完整包', {
-          description: info.reason
-        });
-      };
-
-      const handleDeltaApplyStart = () => {
-        setApplyingDelta(true);
-        toast.info('正在应用增量更新...');
-      };
-
-      const handleDeltaApplyComplete = () => {
-        setApplyingDelta(false);
-        setDownloading(false);
-        setUpdateDownloaded(true);
-        toast.success('增量更新已应用', {
-          description: '重启应用即可完成更新'
-        });
-      };
-
-      window.electron.on('update-checking', handleUpdateChecking);
-      window.electron.on('update-available', handleUpdateAvailable);
-      window.electron.on('update-not-available', handleUpdateNotAvailable);
-      window.electron.on('download-progress', handleDownloadProgress);
-      window.electron.on('update-downloaded', handleUpdateDownloaded);
-      window.electron.on('update-error', handleUpdateError);
-      window.electron.on('delta-fallback', handleDeltaFallback);
-      window.electron.on('delta-apply-start', handleDeltaApplyStart);
-      window.electron.on('delta-apply-complete', handleDeltaApplyComplete);
-
-      return () => {
-        if (window.electron) {
-          window.electron.off('update-checking', handleUpdateChecking);
-          window.electron.off('update-available', handleUpdateAvailable);
-          window.electron.off('update-not-available', handleUpdateNotAvailable);
-          window.electron.off('download-progress', handleDownloadProgress);
-          window.electron.off('update-downloaded', handleUpdateDownloaded);
-          window.electron.off('update-error', handleUpdateError);
-          window.electron.off('delta-fallback', handleDeltaFallback);
-          window.electron.off('delta-apply-start', handleDeltaApplyStart);
-          window.electron.off('delta-apply-complete', handleDeltaApplyComplete);
-        }
-      };
-    }
-  }, []);
-
-  const handleDownload = async () => {
-    if (!updateInfo || updateInfo.rollout_blocked) {
+    if (!window.electron) {
       return;
     }
 
-    setDownloading(true);
-    try {
-      const result = await window.electron?.downloadUpdate();
-      if (result && !result.success) {
-        toast.error('下载失败', { description: result.error });
-        setDownloading(false);
+    const handleUpdateChecking = () => {
+      console.log('Checking for updates...');
+    };
+
+    const handleUpdateAvailable = (info: UpdateInfo) => {
+      console.log('Update available:', info);
+      setUpdateInfo(info);
+      setShowCard(false);
+      setUpdateDownloaded(false);
+      setApplyingDelta(false);
+      setDownloadedUpdateType('full');
+
+      if (info.rollout_blocked) {
+        toast.info('新版本发布中', {
+          description: info.rollout_message || '您的设备暂未进入更新名单，请稍后再试'
+        });
+        return;
       }
-    } catch (error) {
-      toast.error('下载失败', { description: String(error) });
-      setDownloading(false);
-    }
-  };
+
+      const backgroundMessage = info.delta_available && info.delta_info
+        ? `发现新版本 ${info.latest_version}，正在后台下载增量更新`
+        : `发现新版本 ${info.latest_version}，正在后台下载更新包`;
+
+      toast.info(backgroundMessage, {
+        description: '下载完成后会提示你重启应用，无需手动安装'
+      });
+    };
+
+    const handleUpdateNotAvailable = () => {
+      console.log('No update available');
+    };
+
+    const handleUpdateDownloaded = (info?: UpdateDownloadedInfo) => {
+      setApplyingDelta(false);
+      setUpdateDownloaded(true);
+      setShowCard(true);
+      setDownloadedUpdateType(info?.type === 'delta' ? 'delta' : 'full');
+
+      toast.success('更新已准备就绪', {
+        description: info?.type === 'delta'
+          ? '重启应用即可完成更新'
+          : '重启应用后会静默完成安装',
+        action: {
+          label: '立即重启',
+          onClick: handleInstall
+        }
+      });
+    };
+
+    const handleUpdateError = (error: string) => {
+      setApplyingDelta(false);
+      toast.error('更新失败', {
+        description: error
+      });
+    };
+
+    const handleDeltaFallback = (info: { reason: string }) => {
+      toast.warning('增量更新失败，已自动切换为完整更新', {
+        description: info.reason
+      });
+    };
+
+    const handleDeltaApplyStart = () => {
+      setApplyingDelta(true);
+      toast.info('已下载更新，正在后台准备重启补丁...');
+    };
+
+    const handleDeltaApplyComplete = () => {
+      setApplyingDelta(false);
+    };
+
+    window.electron.on('update-checking', handleUpdateChecking);
+    window.electron.on('update-available', handleUpdateAvailable);
+    window.electron.on('update-not-available', handleUpdateNotAvailable);
+    window.electron.on('update-downloaded', handleUpdateDownloaded);
+    window.electron.on('update-error', handleUpdateError);
+    window.electron.on('delta-fallback', handleDeltaFallback);
+    window.electron.on('delta-apply-start', handleDeltaApplyStart);
+    window.electron.on('delta-apply-complete', handleDeltaApplyComplete);
+
+    return () => {
+      if (!window.electron) {
+        return;
+      }
+
+      window.electron.off('update-checking', handleUpdateChecking);
+      window.electron.off('update-available', handleUpdateAvailable);
+      window.electron.off('update-not-available', handleUpdateNotAvailable);
+      window.electron.off('update-downloaded', handleUpdateDownloaded);
+      window.electron.off('update-error', handleUpdateError);
+      window.electron.off('delta-fallback', handleDeltaFallback);
+      window.electron.off('delta-apply-start', handleDeltaApplyStart);
+      window.electron.off('delta-apply-complete', handleDeltaApplyComplete);
+    };
+  }, []);
 
   const handleInstall = async () => {
     try {
+      setShowCard(false);
       await window.electron?.installUpdate();
     } catch (error) {
-      toast.error('安装失败', { description: String(error) });
+      setShowCard(true);
+      toast.error('重启更新失败', { description: String(error) });
     }
   };
 
   const handleClose = () => {
     if (!updateInfo?.is_mandatory) {
-      setShowModal(false);
+      setShowCard(false);
     }
   };
 
@@ -173,163 +161,91 @@ export function CustomUpdateNotification() {
     const k = 1024;
     const sizes = ['B', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+    return `${Math.round((bytes / Math.pow(k, i)) * 100) / 100} ${sizes[i]}`;
   };
 
-  const formatSpeed = (bytesPerSecond: number) => {
-    return formatBytes(bytesPerSecond) + '/s';
+  const getPackageSummary = () => {
+    if (!updateInfo) {
+      return '';
+    }
+
+    if (downloadedUpdateType === 'delta' && updateInfo.delta_info) {
+      return `增量更新包 ${formatBytes(updateInfo.delta_info.delta_size)}，重启即可生效`;
+    }
+
+    return `完整更新包 ${formatBytes(updateInfo.file_size)}，重启后静默安装`;
   };
 
-  if (!showModal || !updateInfo) {
+  if (!showCard || !updateInfo || !updateDownloaded) {
     return null;
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full mx-4 overflow-hidden">
-        {/* 头部 */}
-        <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
-              发现新版本
-            </h2>
-            {!updateInfo.is_mandatory && !downloading && (
-              <button
-                onClick={handleClose}
-                className="text-gray-400 hover:text-gray-500 dark:hover:text-gray-300"
-              >
-                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                  <path
-                    fillRule="evenodd"
-                    d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
-                    clipRule="evenodd"
-                  />
-                </svg>
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* 内容 */}
-        <div className="px-6 py-4">
-          <div className="mb-4">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm text-gray-600 dark:text-gray-400">版本</span>
-              <span className="font-semibold text-gray-900 dark:text-white">
-                {updateInfo.latest_version}
-              </span>
-            </div>
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm text-gray-600 dark:text-gray-400">大小</span>
-              <span className="text-sm text-gray-900 dark:text-white">
-                {updateInfo.delta_available && updateInfo.delta_info ? (
-                  formatBytes(updateInfo.delta_info.delta_size)
-                ) : (
-                  formatBytes(updateInfo.file_size)
-                )}
-              </span>
-            </div>
-            {updateInfo.is_mandatory && (
-              <div className="flex items-center gap-2 p-2 bg-amber-50 dark:bg-amber-900/20 rounded-md">
-                <svg className="w-5 h-5 text-amber-600 dark:text-amber-400" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                </svg>
-                <span className="text-sm text-amber-800 dark:text-amber-200">
-                  这是一个强制更新
-                </span>
-              </div>
-            )}
-          </div>
-
-          {/* 更新说明 */}
-          {updateInfo.release_notes && (
-            <div className="mb-4">
-              <h3 className="text-sm font-medium text-gray-900 dark:text-white mb-2">
-                更新内容
-              </h3>
-              <div className="prose prose-sm dark:prose-invert max-h-48 overflow-y-auto bg-gray-50 dark:bg-gray-900 rounded-md p-3">
-                <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(updateInfo.release_notes) }} />
-              </div>
-            </div>
-          )}
-
-          {/* 下载进度 */}
-          {downloading && downloadProgress && (
-            <div className="mb-4">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm text-gray-600 dark:text-gray-400">下载进度</span>
-                <span className="text-sm text-gray-900 dark:text-white">
-                  {downloadProgress.percent}%
-                </span>
-              </div>
-              <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 overflow-hidden">
-                <div
-                  className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                  style={{ width: `${downloadProgress.percent}%` }}
-                />
-              </div>
-              <div className="flex items-center justify-between mt-1">
-                <span className="text-xs text-gray-500 dark:text-gray-400">
-                  {formatBytes(downloadProgress.transferred)} / {formatBytes(downloadProgress.total)}
-                </span>
-                <span className="text-xs text-gray-500 dark:text-gray-400">
-                  {formatSpeed(downloadProgress.bytesPerSecond)}
-                </span>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* 底部按钮 */}
-        <div className="px-6 py-4 bg-gray-50 dark:bg-gray-900 flex gap-3">
-          {!downloading && !updateDownloaded && !applyingDelta && (
-            <>
-              {!updateInfo.is_mandatory && (
-                <button
-                  onClick={handleClose}
-                  className="flex-1 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700"
-                >
-                  稍后提醒
-                </button>
-              )}
-              <button
-                onClick={handleDownload}
-                className="flex-1 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700"
-              >
-                立即下载
-              </button>
-            </>
-          )}
-
-          {downloading && !applyingDelta && (
-            <button
-              disabled
-              className="flex-1 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md opacity-75 cursor-not-allowed"
-            >
-              下载中...
-            </button>
-          )}
-
+    <div className="fixed bottom-6 right-6 z-50 w-[calc(100%-2rem)] max-w-md rounded-2xl border border-gray-200 bg-white/95 p-5 shadow-2xl backdrop-blur dark:border-gray-700 dark:bg-gray-900/95">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="text-sm font-medium text-blue-600 dark:text-blue-400">
+            更新已就绪
+          </p>
+          <h2 className="mt-1 text-lg font-semibold text-gray-900 dark:text-white">
+            VidFlow {updateInfo.latest_version}
+          </h2>
+          <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
+            {getPackageSummary()}
+          </p>
           {applyingDelta && (
-            <button
-              disabled
-              className="flex-1 px-4 py-2 text-sm font-medium text-white bg-purple-600 rounded-md opacity-75 cursor-not-allowed"
-            >
-              正在应用更新...
-            </button>
-          )}
-
-          {updateDownloaded && (
-            <button
-              onClick={handleInstall}
-              className="flex-1 px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-md hover:bg-green-700"
-            >
-              重启并安装
-            </button>
+            <p className="mt-2 text-xs text-amber-600 dark:text-amber-300">
+              正在准备增量补丁，请稍等片刻再重启。
+            </p>
           )}
         </div>
+
+        {!updateInfo.is_mandatory && (
+          <button
+            onClick={handleClose}
+            className="rounded-full p-1 text-gray-400 transition hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-800 dark:hover:text-gray-200"
+            aria-label="关闭更新提示"
+          >
+            <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
+              <path
+                fillRule="evenodd"
+                d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
+                clipRule="evenodd"
+              />
+            </svg>
+          </button>
+        )}
+      </div>
+
+      {updateInfo.release_notes && (
+        <div className="mt-4 rounded-xl bg-gray-50 p-3 dark:bg-gray-800">
+          <p className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+            更新内容
+          </p>
+          <div
+            className="prose prose-sm max-h-40 overflow-y-auto text-gray-700 dark:prose-invert dark:text-gray-200"
+            dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(updateInfo.release_notes) }}
+          />
+        </div>
+      )}
+
+      <div className="mt-4 flex gap-3">
+        {!updateInfo.is_mandatory && (
+          <button
+            onClick={handleClose}
+            className="flex-1 rounded-xl border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-800"
+          >
+            稍后重启
+          </button>
+        )}
+        <button
+          onClick={handleInstall}
+          disabled={applyingDelta}
+          className="flex-1 rounded-xl bg-green-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-70"
+        >
+          {applyingDelta ? '准备中...' : '立即重启'}
+        </button>
       </div>
     </div>
   );
 }
-

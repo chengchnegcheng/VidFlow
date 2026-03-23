@@ -118,6 +118,48 @@ function getPortFilePath() {
   return portFilePath;
 }
 
+function getConfigFilePath() {
+  const isDev = !app.isPackaged;
+
+  if (isDev) {
+    return path.join(__dirname, '../backend/data/config.json');
+  }
+
+  if (process.platform === 'win32') {
+    const appdata = process.env.APPDATA || path.join(require('os').homedir(), 'AppData', 'Roaming');
+    return path.join(appdata, 'VidFlow', 'data', 'config.json');
+  }
+
+  if (process.platform === 'darwin') {
+    return path.join(require('os').homedir(), 'Library', 'Application Support', 'VidFlow', 'data', 'config.json');
+  }
+
+  return path.join(require('os').homedir(), '.local', 'share', 'VidFlow', 'data', 'config.json');
+}
+
+function readUpdatePreferences() {
+  const defaultPreferences = {
+    autoUpdate: true
+  };
+
+  try {
+    const configFilePath = getConfigFilePath();
+    if (!fs.existsSync(configFilePath)) {
+      return defaultPreferences;
+    }
+
+    const raw = fs.readFileSync(configFilePath, 'utf8');
+    const config = JSON.parse(raw);
+
+    return {
+      autoUpdate: config?.advanced?.auto_update !== false
+    };
+  } catch (error) {
+    console.warn('[Update] Failed to read update preferences, using defaults:', error.message || error);
+    return defaultPreferences;
+  }
+}
+
 function removeBackendPortFile() {
   const portFilePath = getPortFilePath();
   if (!fs.existsSync(portFilePath)) {
@@ -1036,13 +1078,16 @@ function createWindow() {
 // 初始化更新器
 function initUpdater() {
   const configuredUpdateServerUrl = process.env.VIDFLOW_UPDATE_SERVER_URL || 'https://shcrystal.top:8321';
+  const configuredUpdateChannel = process.env.VIDFLOW_UPDATE_CHANNEL || 'stable';
+  const updatePreferences = readUpdatePreferences();
 
   try {
     // 创建更新器实例
     updater = new CustomUpdater({
       updateServerUrl: configuredUpdateServerUrl,
-      autoCheck: true,
-      autoDownload: false  // 不自动下载，等用户确认
+      channel: configuredUpdateChannel,
+      autoCheck: updatePreferences.autoUpdate,
+      autoDownload: updatePreferences.autoUpdate  // 后台静默下载，完成后提示重启
     });
     updaterError = null;
   } catch (error) {
@@ -1119,12 +1164,16 @@ function initUpdater() {
     }
   });
 
-  // 应用启动时检查更新（延迟5秒）
-  setTimeout(() => {
-    updater.checkForUpdates().catch(err => {
-      console.error('[Update] Check failed:', err);
-    });
-  }, 5000);
+  // 应用启动时自动检查更新（延迟5秒，可由配置关闭）
+  if (updater.autoCheck) {
+    setTimeout(() => {
+      updater.checkForUpdates().catch(err => {
+        console.error('[Update] Check failed:', err);
+      });
+    }, 5000);
+  } else {
+    console.log('[Update] Auto update is disabled by user preference');
+  }
 }
 
 // 创建系统托盘

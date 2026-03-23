@@ -42,6 +42,7 @@ export function SettingsPanel({ appVersion, targetCookiePlatform, onCookiePlatfo
   const [hasChanges, setHasChanges] = useState(false);
   const [storageInfo, setStorageInfo] = useState<any>(null);
   const [clearingCache, setClearingCache] = useState(false);
+  const [checkingAppUpdates, setCheckingAppUpdates] = useState(false);
   const [saving, setSaving] = useState(false);
   const [activeSettingsTab, setActiveSettingsTab] = useState('download');
 
@@ -167,6 +168,55 @@ export function SettingsPanel({ appVersion, targetCookiePlatform, onCookiePlatfo
     }
   };
 
+  const handleCheckForAppUpdates = async () => {
+    if (!window.electron?.checkForUpdates) {
+      toast.info('当前环境不支持应用更新检查', {
+        description: '请使用 Electron 客户端以检查并准备桌面应用更新'
+      });
+      return;
+    }
+
+    setCheckingAppUpdates(true);
+    toast.info('正在检查新版本...', {
+      description: '如发现新版本，会在后台自动准备更新'
+    });
+
+    try {
+      const result = await window.electron.checkForUpdates();
+      if (!result.success) {
+        toast.error('检查新版本失败', {
+          description: result.error || '未知错误'
+        });
+        return;
+      }
+
+      const updateInfo = result.data;
+      if (!updateInfo) {
+        toast.error('检查新版本失败', {
+          description: '更新服务没有返回有效结果'
+        });
+        return;
+      }
+
+      if (updateInfo.unavailable) {
+        toast.warning('更新服务暂时不可用', {
+          description: '稍后会自动重试，你也可以晚点再检查'
+        });
+        return;
+      }
+
+      if (!updateInfo.has_update) {
+        toast.success('当前已是最新版本');
+      }
+    } catch (error) {
+      toast.error('检查新版本失败', {
+        description: error instanceof Error ? error.message : '未知错误'
+      });
+    } finally {
+      setCheckingAppUpdates(false);
+    }
+  };
+
   // 加载存储信息
   useEffect(() => {
     fetchStorageInfo();
@@ -202,12 +252,15 @@ export function SettingsPanel({ appVersion, targetCookiePlatform, onCookiePlatfo
       if (localSettings.notifications !== settings.notifications) updates.notifications = localSettings.notifications;
       if (localSettings.autoUpdate !== settings.autoUpdate) updates.autoUpdate = localSettings.autoUpdate;
       if (localSettings.saveHistory !== settings.saveHistory) updates.saveHistory = localSettings.saveHistory;
+      const autoUpdateChanged = localSettings.autoUpdate !== settings.autoUpdate;
 
       setSaving(true);
       await updateSettings(updates);
       setHasChanges(false);
       toast.success('设置已保存', {
-        description: '您的配置已成功保存到后端并生效'
+        description: autoUpdateChanged
+          ? '配置已保存。自动更新偏好会在下次启动应用时生效'
+          : '您的配置已成功保存到后端并生效'
       });
     } catch (error) {
       setHasChanges(false);
@@ -530,7 +583,7 @@ export function SettingsPanel({ appVersion, targetCookiePlatform, onCookiePlatfo
                   <div className="space-y-0.5">
                     <Label>自动更新</Label>
                     <p className="text-sm text-muted-foreground">
-                      自动检查并安装应用更新
+                      启动后自动检查新版本，并在后台准备更新；修改后下次启动生效
                     </p>
                   </div>
                   <Switch
@@ -538,6 +591,36 @@ export function SettingsPanel({ appVersion, targetCookiePlatform, onCookiePlatfo
                     checked={localSettings.autoUpdate}
                     onCheckedChange={(checked) => updateSetting('autoUpdate', checked)}
                   />
+                </div>
+
+                <Separator />
+
+                <div className="rounded-lg border p-4 bg-muted/30">
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="space-y-1">
+                      <Label>应用更新</Label>
+                      <p className="text-sm text-muted-foreground">
+                        当前版本 v{appVersion}。支持后台静默下载，完成后只提示重启。
+                      </p>
+                    </div>
+                    <Button
+                      variant="outline"
+                      onClick={handleCheckForAppUpdates}
+                      disabled={checkingAppUpdates}
+                    >
+                      {checkingAppUpdates ? (
+                        <>
+                          <Loader2 className="size-4 mr-2 animate-spin" />
+                          检查中...
+                        </>
+                      ) : (
+                        <>
+                          <Download className="size-4 mr-2" />
+                          检查新版本
+                        </>
+                      )}
+                    </Button>
+                  </div>
                 </div>
 
                 <Separator />

@@ -36,6 +36,98 @@ class DeltaUpdater extends EventEmitter {
     return this.updateInfo.recommended_update_type || 'full';
   }
 
+  getHashAlgorithm(expectedHash, algorithmHint = null) {
+    const normalizedHint = String(algorithmHint || '').toLowerCase();
+    if (normalizedHint === 'sha256' || normalizedHint === 'sha512') {
+      return normalizedHint;
+    }
+
+    const normalizedHash = String(expectedHash || '').trim().toLowerCase();
+    if (normalizedHash.length === 128) {
+      return 'sha512';
+    }
+
+    return 'sha256';
+  }
+
+  normalizeManifestPath(relativePath) {
+    const rawPath = String(relativePath || '').replace(/\\/g, '/');
+    if (!rawPath) {
+      throw new Error('Delta manifest contains an empty path');
+    }
+
+    if (rawPath.startsWith('/')) {
+      throw new Error(`Delta manifest path is absolute: ${rawPath}`);
+    }
+
+    const normalizedPath = path.posix.normalize(rawPath);
+    if (normalizedPath === '..' || normalizedPath.startsWith('../')) {
+      throw new Error(`Delta manifest path escapes the update root: ${rawPath}`);
+    }
+
+    return normalizedPath;
+  }
+
+  getSafePath(baseDir, relativePath, purpose = 'Path') {
+    const normalizedPath = this.normalizeManifestPath(relativePath);
+    const resolvedBaseDir = path.resolve(baseDir);
+    const resolvedPath = path.resolve(resolvedBaseDir, normalizedPath);
+    const basePrefix = resolvedBaseDir.endsWith(path.sep) ? resolvedBaseDir : `${resolvedBaseDir}${path.sep}`;
+
+    if (resolvedPath !== resolvedBaseDir && !resolvedPath.startsWith(basePrefix)) {
+      throw new Error(`${purpose} escapes the base directory`);
+    }
+
+    return resolvedPath;
+  }
+
+  validateManifest(
+    manifest,
+    expectedSourceVersion = this.customUpdater.currentVersion,
+    expectedTargetVersion = this.deltaInfo?.target_version || this.updateInfo?.latest_version || null
+  ) {
+    if (!manifest || typeof manifest !== 'object') {
+      throw new Error('Delta manifest is invalid');
+    }
+
+    if (!manifest.version || !manifest.source_version || !Array.isArray(manifest.files)) {
+      throw new Error('Delta manifest is incomplete');
+    }
+
+    if (expectedSourceVersion && manifest.source_version !== expectedSourceVersion) {
+      throw new Error(`Delta package source version mismatch: expected ${expectedSourceVersion}, got ${manifest.source_version}`);
+    }
+
+    if (expectedTargetVersion && manifest.version !== expectedTargetVersion) {
+      throw new Error(`Delta package target version mismatch: expected ${expectedTargetVersion}, got ${manifest.version}`);
+    }
+
+    if (manifest.platform && manifest.platform !== this.customUpdater.platform) {
+      throw new Error(`Delta package platform mismatch: expected ${this.customUpdater.platform}, got ${manifest.platform}`);
+    }
+
+    if (manifest.arch && manifest.arch !== this.customUpdater.arch) {
+      throw new Error(`Delta package architecture mismatch: expected ${this.customUpdater.arch}, got ${manifest.arch}`);
+    }
+
+    manifest.files = manifest.files.map((fileChange) => {
+      if (!fileChange || typeof fileChange !== 'object') {
+        throw new Error('Delta manifest contains an invalid file entry');
+      }
+
+      if (!['add', 'replace', 'delete'].includes(fileChange.action)) {
+        throw new Error(`Delta manifest contains an unknown action: ${fileChange.action}`);
+      }
+
+      return {
+        ...fileChange,
+        path: this.normalizeManifestPath(fileChange.path)
+      };
+    });
+
+    return manifest;
+  }
+
   /**
    * 下载差异包
    */
@@ -61,7 +153,10 @@ class DeltaUpdater extends EventEmitter {
     try {
       // 检查是否已下载
       if (fs.existsSync(localFilePath)) {
-        const existingHash = await this.calculateFileHash(localFilePath);
+        const existingHash = await this.calculateFileHash(
+          localFilePath,
+          this.getHashAlgorithm(delta_hash, this.deltaInfo.delta_hash_algorithm || this.deltaInfo.hash_algorithm)
+        );
         if (existingHash === delta_hash) {
           console.log('[DeltaUpdater] Delta already downloaded');
           this.emit('delta-download-complete', { path: localFilePath });
@@ -95,7 +190,10 @@ class DeltaUpdater extends EventEmitter {
       });
 
       // 验证哈希
-      const downloadedHash = await this.calculateFileHash(localFilePath);
+      const downloadedHash = await this.calculateFileHash(
+        localFilePath,
+        this.getHashAlgorithm(delta_hash, this.deltaInfo.delta_hash_algorithm || this.deltaInfo.hash_algorithm)
+      );
       if (downloadedHash !== delta_hash) {
         fs.unlinkSync(localFilePath);
         throw new Error('Delta hash verification failed');
@@ -138,7 +236,7 @@ class DeltaUpdater extends EventEmitter {
 
       // 读取清单
       const manifestPath = path.join(pendingDir, 'manifest.json');
-      const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+      const manifest = this.validateManifest(JSON.parse(fs.readFileSync(manifestPath, 'utf8')));
 
       console.log('[DeltaUpdater] Manifest loaded:', manifest.files.length, 'files');
       console.log('[DeltaUpdater] Source version:', manifest.source_version);
@@ -151,6 +249,8 @@ class DeltaUpdater extends EventEmitter {
         targetDir,
         manifest,
         deltaPath,
+        expectedSourceVersion: this.customUpdater.currentVersion,
+        expectedTargetVersion: this.deltaInfo?.target_version || this.updateInfo?.latest_version || manifest.version,
         createdAt: new Date().toISOString()
       }, null, 2));
 
@@ -184,9 +284,15 @@ class DeltaUpdater extends EventEmitter {
     console.log('[DeltaUpdater] Found pending update, applying...');
 
     let updateInfo;
+    let resultReported = false;
     try {
       updateInfo = JSON.parse(fs.readFileSync(updateInfoPath, 'utf8'));
-      const { pendingDir, targetDir, manifest } = updateInfo;
+      const { pendingDir, targetDir, expectedSourceVersion, expectedTargetVersion } = updateInfo;
+      const manifest = this.validateManifest(
+        updateInfo.manifest,
+        expectedSourceVersion || this.customUpdater.currentVersion,
+        expectedTargetVersion || null
+      );
 
       if (!fs.existsSync(pendingDir)) {
         console.log('[DeltaUpdater] Pending directory not found, skipping');
@@ -206,8 +312,11 @@ class DeltaUpdater extends EventEmitter {
         // 更新 package.json 中的版本号（关键步骤！）
         await this.updatePackageVersion(targetDir, manifest.version);
 
-        // 验证完整性（可选，因为文件可能还没被加载）
-        // const valid = await this.verifyTargetFiles(manifest, targetDir);
+        // 在启动早期应用增量包，此时可以直接验证补丁后的文件完整性。
+        const valid = await this.verifyTargetFiles(manifest, targetDir);
+        if (!valid) {
+          throw new Error('Target files verification failed');
+        }
 
         // 清理
         fs.rmSync(backupDir, { recursive: true });
@@ -228,12 +337,13 @@ class DeltaUpdater extends EventEmitter {
 
         // 上报更新成功
         await this.reportPendingUpdateResult(updateInfo, true);
+        resultReported = true;
 
         return true;
 
       } catch (error) {
         console.error('[DeltaUpdater] Apply pending update failed, rolling back...', error);
-        await this.rollback(backupDir, targetDir);
+        await this.rollback(backupDir, targetDir, manifest.files);
 
         // 清理失败的更新
         if (fs.existsSync(pendingDir)) {
@@ -243,12 +353,16 @@ class DeltaUpdater extends EventEmitter {
 
         // 上报更新失败
         await this.reportPendingUpdateResult(updateInfo, false, error.message);
+        resultReported = true;
 
         throw error;
       }
 
     } catch (error) {
       console.error('[DeltaUpdater] Failed to apply pending update:', error);
+      if (updateInfo?.manifest && !resultReported) {
+        await this.reportPendingUpdateResult(updateInfo, false, error.message);
+      }
       // 清理更新信息文件
       try {
         fs.unlinkSync(updateInfoPath);
@@ -279,7 +393,7 @@ class DeltaUpdater extends EventEmitter {
 
       // 读取清单
       const manifestPath = path.join(tempDir, 'manifest.json');
-      const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+      const manifest = this.validateManifest(JSON.parse(fs.readFileSync(manifestPath, 'utf8')));
 
       console.log('[DeltaUpdater] Manifest loaded:', manifest.files.length, 'files');
       console.log('[DeltaUpdater] Source version:', manifest.source_version);
@@ -315,7 +429,7 @@ class DeltaUpdater extends EventEmitter {
       } catch (error) {
         // 回滚
         console.error('[DeltaUpdater] Apply failed, rolling back...', error);
-        await this.rollback(backupDir, targetDir);
+        await this.rollback(backupDir, targetDir, manifest.files);
         await this.reportUpdateResult(false, error.message);
         throw error;
       }
@@ -365,14 +479,14 @@ class DeltaUpdater extends EventEmitter {
     if (deltaPath.startsWith('backend/')) {
       // backend/xxx -> resources/backend/xxx
       // targetDir 已经是 resources 目录
-      return path.join(targetDir, deltaPath);
+      return this.getSafePath(targetDir, deltaPath, 'Install target');
     } else if (deltaPath.startsWith('frontend/')) {
       // frontend/dist/xxx -> resources/app/frontend/dist/xxx
       // 禁用 asar 后，前端文件在 resources/app/ 目录下
-      return path.join(targetDir, 'app', deltaPath);
+      return this.getSafePath(path.join(targetDir, 'app'), deltaPath, 'Install target');
     }
     // 其他路径直接使用
-    return path.join(targetDir, deltaPath);
+    return this.getSafePath(targetDir, deltaPath, 'Install target');
   }
 
   /**
@@ -386,7 +500,7 @@ class DeltaUpdater extends EventEmitter {
       case 'add':
       case 'replace':
         // 添加或替换文件（新格式统一放在 files/ 目录）
-        const filePath = path.join(tempDir, 'files', fileChange.path);
+        const filePath = this.getSafePath(path.join(tempDir, 'files'), fileChange.path, 'Delta file');
         if (fs.existsSync(filePath)) {
           fs.mkdirSync(path.dirname(targetPath), { recursive: true });
           fs.copyFileSync(filePath, targetPath);
@@ -421,7 +535,7 @@ class DeltaUpdater extends EventEmitter {
 
       const sourcePath = this.mapToInstallPath(fileChange.path, targetDir);
       if (fs.existsSync(sourcePath)) {
-        const backupPath = path.join(backupDir, fileChange.path);
+        const backupPath = this.getSafePath(backupDir, fileChange.path, 'Backup path');
         fs.mkdirSync(path.dirname(backupPath), { recursive: true });
         fs.copyFileSync(sourcePath, backupPath);
       }
@@ -433,8 +547,19 @@ class DeltaUpdater extends EventEmitter {
   /**
    * 回滚
    */
-  async rollback(backupDir, targetDir) {
+  async rollback(backupDir, targetDir, fileChanges = []) {
     console.log('[DeltaUpdater] Rolling back...');
+
+    for (const fileChange of fileChanges) {
+      if (fileChange.action !== 'add') {
+        continue;
+      }
+
+      const targetPath = this.mapToInstallPath(fileChange.path, targetDir);
+      if (fs.existsSync(targetPath)) {
+        fs.rmSync(targetPath, { force: true });
+      }
+    }
 
     const files = this.getAllFiles(backupDir);
     for (const file of files) {
@@ -461,8 +586,10 @@ class DeltaUpdater extends EventEmitter {
       }
 
       if (fileChange.target_hash) {
-        // manifest 中的 target_hash 是 SHA-256（由 delta_generator.py 生成）
-        const hash = await this.calculateFileSha256(targetPath);
+        const hash = await this.calculateFileHash(
+          targetPath,
+          this.getHashAlgorithm(fileChange.target_hash, fileChange.target_hash_algorithm)
+        );
         if (hash !== fileChange.target_hash) {
           console.error('[DeltaUpdater] Hash mismatch:', fileChange.path);
           return false;
@@ -498,9 +625,9 @@ class DeltaUpdater extends EventEmitter {
    * 计算文件哈希 (SHA-256，与 delta_generator.py 保持一致)
    * 用于验证下载的差异包完整性
    */
-  async calculateFileHash(filePath) {
+  async calculateFileHash(filePath, algorithm = 'sha256') {
     return new Promise((resolve, reject) => {
-      const hash = crypto.createHash('sha256');
+      const hash = crypto.createHash(algorithm);
       const stream = fs.createReadStream(filePath);
 
       stream.on('data', (data) => hash.update(data));
@@ -514,7 +641,7 @@ class DeltaUpdater extends EventEmitter {
    * 用于验证 manifest 中的文件哈希
    */
   async calculateFileSha256(filePath) {
-    return this.calculateFileHash(filePath);
+    return this.calculateFileHash(filePath, 'sha256');
   }
 
   /**
@@ -522,14 +649,18 @@ class DeltaUpdater extends EventEmitter {
    */
   async reportUpdateResult(success, error = null) {
     try {
+      const targetVersion = this.deltaInfo?.target_version || this.updateInfo?.latest_version;
       await axios.post(
         `${this.customUpdater.updateServerUrl}/api/v1/updates/deltas/report`,
         {
+          user_id: this.customUpdater.userId,
           source_version: this.customUpdater.currentVersion,
-          target_version: this.updateInfo.latest_version,
+          target_version: targetVersion,
           platform: this.customUpdater.platform,
           arch: this.customUpdater.arch,
           update_type: 'delta',
+          channel: this.customUpdater.channel,
+          phase: 'prepare',
           success,
           error
         },
@@ -549,11 +680,14 @@ class DeltaUpdater extends EventEmitter {
       await axios.post(
         `${this.customUpdater.updateServerUrl}/api/v1/updates/deltas/report`,
         {
+          user_id: this.customUpdater.userId,
           source_version: manifest.source_version,
           target_version: manifest.version,
           platform: this.customUpdater.platform,
           arch: this.customUpdater.arch,
-          update_type: 'delta_apply',
+          update_type: 'delta',
+          channel: this.customUpdater.channel,
+          phase: 'apply',
           success,
           error
         },

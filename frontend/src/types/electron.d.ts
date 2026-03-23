@@ -1,6 +1,16 @@
 // Electron API 类型定义
 
 // 更新相关类型
+interface DeltaInfo {
+  source_version: string;
+  target_version: string;
+  delta_size: number;
+  delta_hash: string;
+  delta_url: string;
+  full_size: number;
+  savings_percent: number;
+}
+
 interface UpdateInfo {
   has_update: boolean;
   latest_version: string;
@@ -12,6 +22,11 @@ interface UpdateInfo {
   file_hash: string;
   rollout_blocked?: boolean;
   rollout_message?: string;
+  unavailable?: boolean;
+  reason?: string;
+  delta_available?: boolean;
+  delta_info?: DeltaInfo | null;
+  recommended_update_type?: 'delta' | 'full';
 }
 
 interface DownloadProgress {
@@ -74,7 +89,7 @@ interface ElectronAPI {
   on: (channel: string, callback: (...args: any[]) => void) => void;
   off: (channel: string, callback: (...args: any[]) => void) => void;
   checkForUpdates: () => Promise<{ success: boolean; data?: UpdateInfo; error?: string }>;
-  downloadUpdate: () => Promise<{ success: boolean; error?: string }>;
+  downloadUpdate: () => Promise<{ success: boolean; type?: 'delta' | 'full'; error?: string }>;
   installUpdate: () => Promise<{ success: boolean; error?: string }>;
   cleanUpdateFiles: () => Promise<{ success: boolean; message?: string; count?: number; size?: number; error?: string }>;
 

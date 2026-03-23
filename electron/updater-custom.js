@@ -17,10 +17,12 @@ class CustomUpdater extends EventEmitter {
     this.currentVersion = app.getVersion();
     this.platform = process.platform;
     this.arch = process.arch;
+    this.channel = String(options.channel || process.env.VIDFLOW_UPDATE_CHANNEL || 'stable');
     this.userId = this.getUserId();
 
     // 更新文件下载路径：使用用户的 Downloads 文件夹
     this.downloadPath = path.join(app.getPath('downloads'), 'VidFlow', 'updates');
+    this.pendingInstallPath = path.join(app.getPath('userData'), 'pending_install.json');
     this.autoCheck = options.autoCheck !== false;
     this.autoDownload = options.autoDownload !== false;
 
@@ -155,8 +157,18 @@ class CustomUpdater extends EventEmitter {
     updateInfo.download_url = this.assertTrustedUpdateUrl(updateInfo.download_url, 'Update download URL');
     this.getSafeDownloadPath(updateInfo.file_name, 'Update file');
 
-    if (updateInfo.delta_available && updateInfo.delta_info?.delta_url) {
-      updateInfo.delta_info.delta_url = this.assertTrustedUpdateUrl(updateInfo.delta_info.delta_url, 'Delta update URL');
+    if (updateInfo.delta_available) {
+      const deltaInfo = updateInfo.delta_info;
+      if (!deltaInfo?.delta_url || !deltaInfo?.delta_hash) {
+        console.warn('[CustomUpdater] Delta update metadata is incomplete, falling back to full package');
+        updateInfo.delta_available = false;
+        updateInfo.delta_info = null;
+      } else {
+        deltaInfo.delta_url = this.assertTrustedUpdateUrl(deltaInfo.delta_url, 'Delta update URL');
+        if (deltaInfo.target_version && deltaInfo.target_version !== updateInfo.latest_version) {
+          throw new Error('Delta update metadata does not match the target version');
+        }
+      }
     }
 
     return updateInfo;
@@ -359,6 +371,8 @@ class CustomUpdater extends EventEmitter {
     this.emit('checking-for-update');
 
     try {
+      await this.reportPendingInstallSuccessIfNeeded();
+
       const response = await axios.post(
         `${this.updateServerUrl}/api/v1/updates/check`,
         {
@@ -366,7 +380,7 @@ class CustomUpdater extends EventEmitter {
           platform: this.platform,
           arch: this.arch,
           user_id: this.userId,
-          channel: 'stable'
+          channel: this.channel
         },
         {
           timeout: 10000,
@@ -570,6 +584,79 @@ class CustomUpdater extends EventEmitter {
     });
   }
 
+  writePendingInstallMarker() {
+    if (!this.updateInfo?.latest_version) {
+      throw new Error('No update metadata available');
+    }
+
+    const payload = {
+      user_id: this.userId,
+      from_version: this.currentVersion,
+      to_version: this.updateInfo.latest_version,
+      platform: this.platform,
+      arch: this.arch,
+      channel: this.channel,
+      created_at: new Date().toISOString()
+    };
+
+    fs.writeFileSync(this.pendingInstallPath, JSON.stringify(payload, null, 2), 'utf8');
+  }
+
+  clearPendingInstallMarker() {
+    if (fs.existsSync(this.pendingInstallPath)) {
+      fs.unlinkSync(this.pendingInstallPath);
+    }
+  }
+
+  async reportPendingInstallSuccessIfNeeded() {
+    if (!fs.existsSync(this.pendingInstallPath)) {
+      return;
+    }
+
+    try {
+      const pendingInstall = JSON.parse(fs.readFileSync(this.pendingInstallPath, 'utf8'));
+      if (pendingInstall.to_version !== this.currentVersion) {
+        if (pendingInstall.from_version === this.currentVersion) {
+          await axios.post(
+            `${this.updateServerUrl}/api/v1/stats/install`,
+            {
+              user_id: pendingInstall.user_id || this.userId,
+              from_version: pendingInstall.from_version,
+              to_version: pendingInstall.to_version,
+              status: 'failed',
+              error_message: 'Installed version did not change after restart',
+              platform: pendingInstall.platform || this.platform,
+              arch: pendingInstall.arch || this.arch,
+              channel: pendingInstall.channel || this.channel
+            },
+            { timeout: 5000 }
+          );
+
+          this.clearPendingInstallMarker();
+        }
+        return;
+      }
+
+      await axios.post(
+        `${this.updateServerUrl}/api/v1/stats/install`,
+        {
+          user_id: pendingInstall.user_id || this.userId,
+          from_version: pendingInstall.from_version,
+          to_version: pendingInstall.to_version,
+          status: 'success',
+          platform: pendingInstall.platform || this.platform,
+          arch: pendingInstall.arch || this.arch,
+          channel: pendingInstall.channel || this.channel
+        },
+        { timeout: 5000 }
+      );
+
+      this.clearPendingInstallMarker();
+    } catch (error) {
+      console.error('[CustomUpdater] Failed to report pending install success:', error);
+    }
+  }
+
   /**
    * 退出并安装/重启
    */
@@ -592,6 +679,8 @@ class CustomUpdater extends EventEmitter {
     console.log('[CustomUpdater] Starting installation...');
 
     try {
+      this.writePendingInstallMarker();
+
       // 记录安装开始
       await this.reportInstallStarted();
 
@@ -622,6 +711,7 @@ class CustomUpdater extends EventEmitter {
       }
     } catch (error) {
       console.error('[CustomUpdater] Installation failed:', error);
+      this.clearPendingInstallMarker();
       await this.reportInstallFailed(error.message);
       throw error;
     }
@@ -671,7 +761,8 @@ class CustomUpdater extends EventEmitter {
           from_version: this.currentVersion,
           status: 'completed',
           platform: this.platform,
-          arch: this.arch
+          arch: this.arch,
+          channel: this.channel
         },
         { timeout: 5000 }
       );
@@ -693,7 +784,8 @@ class CustomUpdater extends EventEmitter {
           to_version: this.updateInfo.latest_version,
           status: 'started',
           platform: this.platform,
-          arch: this.arch
+          arch: this.arch,
+          channel: this.channel
         },
         { timeout: 5000 }
       );
@@ -716,7 +808,8 @@ class CustomUpdater extends EventEmitter {
           status: 'failed',
           error_message: errorMessage,
           platform: this.platform,
-          arch: this.arch
+          arch: this.arch,
+          channel: this.channel
         },
         { timeout: 5000 }
       );
