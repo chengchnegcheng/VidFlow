@@ -53,10 +53,13 @@ if BUNDLE_TOOLS:
         dest_path = None
 
     if tools_bin:
-        # 打包所有工具文件
-        for tool_file in glob.glob(os.path.join(tools_bin, '*')):
-            if os.path.isfile(tool_file):
-                datas.append((tool_file, dest_path))
+        # 打包所有工具文件（包括子目录，如 windivert/）
+        for root, dirs, files in os.walk(tools_bin):
+            rel_dir = os.path.relpath(root, tools_bin)
+            target = dest_path if rel_dir == '.' else os.path.join(dest_path, rel_dir)
+            for filename in files:
+                filepath = os.path.join(root, filename)
+                datas.append((filepath, target))
         print(f"已打包工具目录: {tools_bin} -> {dest_path}")
     else:
         print("警告: tools/bin 目录为空，工具将在首次运行时自动下载")

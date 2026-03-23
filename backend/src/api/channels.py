@@ -2299,12 +2299,13 @@ async def generate_cert():
         installer = get_cert_installer()
         success = await asyncio.to_thread(installer.ensure_cert_exists)
         info = await asyncio.to_thread(installer.get_cert_info)
+        error_detail = getattr(installer, 'last_error', None) or "证书生成失败"
         return {
             "success": success,
             "cert_path": str(installer.cert_file) if installer.cert_file.exists() else None,
             "wechat_p12_path": str(info.get("cert_p12_file")) if info.get("cert_p12_exists") else None,
             "wechat_p12_sources": info.get("wechat_p12_sources", []),
-            "error_message": None if success else "证书生成失败",
+            "error_message": None if success else error_detail,
         }
     except Exception as e:
         logger.error(f"Error generating cert: {e}")

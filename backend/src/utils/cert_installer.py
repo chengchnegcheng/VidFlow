@@ -111,21 +111,9 @@ class CertInstaller:
             logger.error("Failed to verify WeChat-compatible P12 import: %s", exc)
             return False
 
-    def ensure_cert_exists(self) -> bool:
-        """Ensure mitmproxy has generated its CA certificate files.
-
-        失败原因存入 self.last_error 供调用方读取。
-        """
-        self.last_error: Optional[str] = None
-
-        if self.cert_file.exists():
-            return True
-
-        logger.info("mitmproxy certificate file missing, attempting to generate it")
-
+    def _generate_via_dumpmaster(self) -> bool:
+        """通过 mitmproxy DumpMaster 生成证书（开发环境优先）。"""
         try:
-            self.cert_dir.mkdir(parents=True, exist_ok=True)
-
             from mitmproxy import options
             from mitmproxy.tools.dump import DumpMaster
 
@@ -137,17 +125,120 @@ class CertInstaller:
 
             master = DumpMaster(opts)
             master.shutdown()
+            return self.cert_file.exists()
         except Exception as exc:
-            self.last_error = f"证书生成失败: {exc}"
-            logger.error("Failed to generate mitmproxy certificate files: %s", exc)
+            logger.warning("DumpMaster 生成证书失败，将使用回退方案: %s", exc)
             return False
 
+    def _generate_via_cryptography(self) -> bool:
+        """使用 cryptography 库直接生成 mitmproxy 兼容的全套证书文件（打包环境回退）。"""
+        try:
+            from cryptography import x509
+            from cryptography.x509.oid import NameOID
+            from cryptography.hazmat.primitives import hashes, serialization
+            from cryptography.hazmat.primitives.asymmetric import rsa
+            from cryptography.hazmat.backends import default_backend
+            from datetime import datetime, timedelta, timezone
+
+            # 生成 RSA 2048 私钥
+            private_key = rsa.generate_private_key(
+                public_exponent=65537, key_size=2048, backend=default_backend()
+            )
+
+            subject = issuer = x509.Name([
+                x509.NameAttribute(NameOID.COMMON_NAME, "mitmproxy"),
+                x509.NameAttribute(NameOID.ORGANIZATION_NAME, "mitmproxy"),
+            ])
+
+            now = datetime.now(timezone.utc)
+            cert = (
+                x509.CertificateBuilder()
+                .subject_name(subject)
+                .issuer_name(issuer)
+                .public_key(private_key.public_key())
+                .serial_number(x509.random_serial_number())
+                .not_valid_before(now)
+                .not_valid_after(now + timedelta(days=365 * 3))
+                .add_extension(x509.BasicConstraints(ca=True, path_length=None), critical=True)
+                .add_extension(
+                    x509.KeyUsage(
+                        digital_signature=True, content_commitment=False,
+                        key_encipherment=False, data_encipherment=False,
+                        key_agreement=False, key_cert_sign=True, crl_sign=True,
+                        encipher_only=False, decipher_only=False,
+                    ),
+                    critical=True,
+                )
+                .sign(private_key, hashes.SHA256(), default_backend())
+            )
+
+            pem_key = private_key.private_bytes(
+                serialization.Encoding.PEM,
+                serialization.PrivateFormat.TraditionalOpenSSL,
+                serialization.NoEncryption(),
+            )
+            pem_cert = cert.public_bytes(serialization.Encoding.PEM)
+            der_cert = cert.public_bytes(serialization.Encoding.DER)
+
+            # mitmproxy-ca.pem（私钥 + 证书合并）
+            (self.cert_dir / "mitmproxy-ca.pem").write_bytes(pem_key + pem_cert)
+            # mitmproxy-ca-cert.pem
+            (self.cert_dir / "mitmproxy-ca-cert.pem").write_bytes(pem_cert)
+            # mitmproxy-ca-cert.cer（DER 格式）
+            self.cert_file.write_bytes(der_cert)
+
+            # mitmproxy-ca.p12（含私钥，微信兼容）
+            from cryptography.hazmat.primitives.serialization import pkcs12
+            p12_with_key = pkcs12.serialize_key_and_certificates(
+                name=b"mitmproxy",
+                key=private_key,
+                cert=cert,
+                cas=None,
+                encryption_algorithm=serialization.NoEncryption(),
+            )
+            self.ca_p12_file.write_bytes(p12_with_key)
+
+            # mitmproxy-ca-cert.p12（不含私钥）
+            p12_cert_only = pkcs12.serialize_key_and_certificates(
+                name=b"mitmproxy",
+                key=None,
+                cert=cert,
+                cas=None,
+                encryption_algorithm=serialization.NoEncryption(),
+            )
+            self.cert_p12_file.write_bytes(p12_cert_only)
+
+            logger.info("使用 cryptography 库生成了全套 mitmproxy 证书文件")
+            return True
+        except Exception as exc:
+            logger.error("cryptography 回退生成证书也失败: %s", exc)
+            return False
+
+    def ensure_cert_exists(self) -> bool:
+        """Ensure mitmproxy has generated its CA certificate files.
+
+        失败原因存入 self.last_error 供调用方读取。
+        """
+        self.last_error: Optional[str] = None
+
         if self.cert_file.exists():
-            logger.info("mitmproxy certificate file generated: %s", self.cert_file)
             return True
 
-        self.last_error = f"证书生成完成但文件未产生: {self.cert_file}"
-        logger.error("mitmproxy certificate generation finished without producing %s", self.cert_file)
+        logger.info("mitmproxy certificate file missing, attempting to generate it")
+        self.cert_dir.mkdir(parents=True, exist_ok=True)
+
+        # 方案 1: DumpMaster（开发环境可用）
+        if self._generate_via_dumpmaster():
+            logger.info("mitmproxy certificate file generated via DumpMaster: %s", self.cert_file)
+            return True
+
+        # 方案 2: cryptography 库直接生成（打包环境回退）
+        if self._generate_via_cryptography():
+            logger.info("mitmproxy certificate file generated via cryptography fallback: %s", self.cert_file)
+            return True
+
+        self.last_error = "证书生成失败: DumpMaster 和 cryptography 回退均失败"
+        logger.error("All certificate generation methods failed for %s", self.cert_file)
         return False
 
     def _install_cert_elevated(self) -> bool:
