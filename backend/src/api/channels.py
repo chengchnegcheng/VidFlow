@@ -2367,11 +2367,21 @@ async def install_root_cert():
     """安装 Windows 根证书。"""
     try:
         installer = get_cert_installer()
+        cert_exists = await asyncio.to_thread(installer.ensure_cert_exists)
+        if not cert_exists:
+            detail = getattr(installer, 'last_error', None) or "请先点击「生成证书」"
+            return {
+                "success": False,
+                "message": f"证书文件未生成: {detail}",
+                "root_installed": False,
+                "wechat_p12_installed": False,
+            }
         success = await asyncio.to_thread(installer.install_cert)
         info = await asyncio.to_thread(installer.get_cert_info)
+        fail_msg = getattr(installer, 'last_error', None) or "系统根证书安装失败，请在弹出的 UAC 窗口中点击「是」授权"
         return {
             "success": success,
-            "message": "系统根证书已安装" if success else "系统根证书安装失败",
+            "message": "系统根证书已安装" if success else fail_msg,
             "root_installed": info.get("cert_installed", False),
             "wechat_p12_installed": info.get("wechat_p12_installed", False),
         }
@@ -2385,6 +2395,15 @@ async def install_wechat_p12():
     """导入 WeChat 4.x 更兼容的 P12。"""
     try:
         installer = get_cert_installer()
+        cert_exists = await asyncio.to_thread(installer.ensure_cert_exists)
+        if not cert_exists:
+            detail = getattr(installer, 'last_error', None) or "请先点击「生成证书」"
+            return {
+                "success": False,
+                "message": f"证书文件未生成: {detail}",
+                "root_installed": False,
+                "wechat_p12_installed": False,
+            }
         success = await asyncio.to_thread(installer.install_wechat_p12)
         info = await asyncio.to_thread(installer.get_cert_info)
         return {

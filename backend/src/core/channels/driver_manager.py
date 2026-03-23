@@ -215,18 +215,29 @@ class DriverManager:
             # 如果提供了源目录，复制文件
             if source_dir:
                 source_dir = Path(source_dir)
-                for filename in self.driver_files:
-                    src = source_dir / filename
-                    dst = self.driver_dir / filename
-                    if src.exists():
-                        shutil.copy2(src, dst)
-                        logger.info(f"Copied driver file: {filename}")
-                    else:
-                        return DriverInstallResult(
-                            success=False,
-                            error_code=ErrorCode.DRIVER_MISSING,
-                            error_message=f"源文件不存在: {src}",
-                        )
+                copied: list[Path] = []
+                try:
+                    for filename in self.driver_files:
+                        src = source_dir / filename
+                        dst = self.driver_dir / filename
+                        if src.exists():
+                            shutil.copy2(src, dst)
+                            copied.append(dst)
+                            logger.info(f"Copied driver file: {filename}")
+                        else:
+                            raise FileNotFoundError(f"源文件不存在: {src}")
+                except Exception as copy_err:
+                    # 回滚已复制的文件
+                    for dst in copied:
+                        try:
+                            dst.unlink(missing_ok=True)
+                        except OSError:
+                            pass
+                    return DriverInstallResult(
+                        success=False,
+                        error_code=ErrorCode.DRIVER_MISSING,
+                        error_message=str(copy_err),
+                    )
 
             # 验证安装
             if not self.is_installed():
@@ -272,7 +283,7 @@ class DriverManager:
                 # PyInstaller 打包后的可执行文件
                 executable = sys.executable
                 working_dir = str(Path(executable).parent)
-                params = ' '.join(sys.argv[1:]) if len(sys.argv) > 1 else ''
+                params = subprocess.list2cmdline(sys.argv[1:]) if len(sys.argv) > 1 else ''
             else:
                 # 开发环境：重新以管理员身份运行当前 Python 脚本
                 executable = sys.executable

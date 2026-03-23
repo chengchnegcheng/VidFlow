@@ -244,7 +244,7 @@ export const CertificateDialog: React.FC<CertificateDialogProps> = ({
             <Button
               variant="secondary"
               onClick={handleInstallRoot}
-              disabled={busyAction !== null}
+              disabled={busyAction !== null || !certInfo?.exists}
               className="w-full"
             >
               {busyAction === 'install-root' ? (

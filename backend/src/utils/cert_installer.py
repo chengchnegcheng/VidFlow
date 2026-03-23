@@ -112,7 +112,12 @@ class CertInstaller:
             return False
 
     def ensure_cert_exists(self) -> bool:
-        """Ensure mitmproxy has generated its CA certificate files."""
+        """Ensure mitmproxy has generated its CA certificate files.
+
+        失败原因存入 self.last_error 供调用方读取。
+        """
+        self.last_error: Optional[str] = None
+
         if self.cert_file.exists():
             return True
 
@@ -133,6 +138,7 @@ class CertInstaller:
             master = DumpMaster(opts)
             master.shutdown()
         except Exception as exc:
+            self.last_error = f"证书生成失败: {exc}"
             logger.error("Failed to generate mitmproxy certificate files: %s", exc)
             return False
 
@@ -140,8 +146,21 @@ class CertInstaller:
             logger.info("mitmproxy certificate file generated: %s", self.cert_file)
             return True
 
+        self.last_error = f"证书生成完成但文件未产生: {self.cert_file}"
         logger.error("mitmproxy certificate generation finished without producing %s", self.cert_file)
         return False
+
+    def _install_cert_elevated(self) -> bool:
+        """通过 UAC 提权安装根证书（会弹出管理员授权窗口）。"""
+        cert_path = str(self.cert_file).replace("'", "''")
+        script = (
+            "$proc = Start-Process certutil "
+            f"-ArgumentList '-addstore','Root','{cert_path}' "
+            "-Verb RunAs -Wait -PassThru -WindowStyle Hidden; "
+            "exit $proc.ExitCode"
+        )
+        result = self._run_powershell(script, timeout=60)
+        return result.returncode == 0
 
     def install_cert(self) -> bool:
         """Import the mitmproxy root CA into Windows Root."""
@@ -155,12 +174,26 @@ class CertInstaller:
                 return True
 
             logger.info("Installing mitmproxy root certificate into Windows Root: %s", self.cert_file)
+
+            # 先尝试直接安装（已有管理员权限时）
             result = self._run_certutil("-addstore", "Root", str(self.cert_file), timeout=30)
             if result.returncode == 0:
                 logger.info("mitmproxy root certificate installed successfully")
                 return True
 
-            logger.error("Failed to install mitmproxy root certificate: %s", self._decode_output(result.stderr))
+            # 直接安装失败，通过 UAC 提权重试
+            stderr_hint = self._decode_output(result.stderr)
+            logger.info("直接安装失败 (returncode=%d, stderr=%s)，尝试通过 UAC 提权安装根证书",
+                        result.returncode, stderr_hint)
+            if self._install_cert_elevated():
+                # UAC 提权执行完毕，二次验证是否真正安装成功
+                if self.is_cert_installed():
+                    logger.info("mitmproxy root certificate installed successfully via UAC elevation")
+                    return True
+                logger.error("UAC 提权执行成功但证书验证未通过")
+
+            self.last_error = f"安装失败，请在 UAC 弹窗中点击「是」授权。(certutil: {stderr_hint})"
+            logger.error("Failed to install mitmproxy root certificate (UAC elevation also failed)")
             return False
         except subprocess.TimeoutExpired:
             logger.error("Installing mitmproxy root certificate timed out")
@@ -229,6 +262,17 @@ class CertInstaller:
             logger.error("Failed to import WeChat-compatible P12: %s", exc)
             return False
 
+    def _uninstall_cert_elevated(self) -> bool:
+        """通过 UAC 提权卸载根证书。"""
+        script = (
+            "$proc = Start-Process certutil "
+            "-ArgumentList '-delstore','Root','mitmproxy' "
+            "-Verb RunAs -Wait -PassThru -WindowStyle Hidden; "
+            "exit $proc.ExitCode"
+        )
+        result = self._run_powershell(script, timeout=60)
+        return result.returncode == 0
+
     def uninstall_cert(self) -> bool:
         """Remove the mitmproxy root CA from Windows Root."""
         try:
@@ -241,7 +285,16 @@ class CertInstaller:
                 logger.info("mitmproxy root certificate removed successfully")
                 return True
 
-            logger.error("Failed to remove mitmproxy root certificate: %s", self._decode_output(result.stderr))
+            # 直接卸载失败，通过 UAC 提权重试
+            logger.info("直接卸载失败，尝试通过 UAC 提权卸载根证书")
+            if self._uninstall_cert_elevated():
+                logger.info("mitmproxy root certificate removed successfully via UAC elevation")
+                return True
+
+            logger.error("Failed to remove mitmproxy root certificate (UAC elevation also failed)")
+            return False
+        except subprocess.TimeoutExpired:
+            logger.error("Removing mitmproxy root certificate timed out")
             return False
         except Exception as exc:
             logger.error("Failed to remove mitmproxy root certificate: %s", exc)
