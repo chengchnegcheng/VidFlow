@@ -112,7 +112,18 @@ class CertInstaller:
             return False
 
     def _generate_via_dumpmaster(self) -> bool:
-        """通过 mitmproxy DumpMaster 生成证书（开发环境优先）。"""
+        """通过 mitmproxy DumpMaster 生成证书（仅开发环境回退）。
+
+        注意: 在 PyInstaller 打包环境或 asyncio.to_thread 中调用时，
+        DumpMaster 会因缺少 event loop 而失败，且异常可能通过 asyncio 泄漏。
+        因此在打包环境下直接跳过。
+        """
+        import sys
+        if getattr(sys, 'frozen', False):
+            logger.debug("PyInstaller 打包环境，跳过 DumpMaster")
+            return False
+
+        master = None
         try:
             from mitmproxy import options
             from mitmproxy.tools.dump import DumpMaster
@@ -126,9 +137,17 @@ class CertInstaller:
             master = DumpMaster(opts)
             master.shutdown()
             return self.cert_file.exists()
-        except Exception as exc:
-            logger.warning("DumpMaster 生成证书失败，将使用回退方案: %s", exc)
+        except BaseException as exc:
+            logger.warning("DumpMaster 生成证书失败: %s", exc)
             return False
+        finally:
+            # 确保 DumpMaster 不会在 GC 时泄漏异常
+            try:
+                if master is not None:
+                    master.shutdown()
+            except BaseException:
+                pass
+            master = None
 
     def _generate_via_cryptography(self) -> bool:
         """使用 cryptography 库直接生成 mitmproxy 兼容的全套证书文件（打包环境回退）。"""
@@ -227,17 +246,17 @@ class CertInstaller:
         logger.info("mitmproxy certificate file missing, attempting to generate it")
         self.cert_dir.mkdir(parents=True, exist_ok=True)
 
-        # 方案 1: DumpMaster（开发环境可用）
+        # 方案 1: cryptography 库直接生成（稳定，不依赖事件循环）
+        if self._generate_via_cryptography():
+            logger.info("mitmproxy certificate file generated via cryptography: %s", self.cert_file)
+            return True
+
+        # 方案 2: DumpMaster（仅开发环境回退，打包环境下 event loop 冲突会导致失败）
         if self._generate_via_dumpmaster():
             logger.info("mitmproxy certificate file generated via DumpMaster: %s", self.cert_file)
             return True
 
-        # 方案 2: cryptography 库直接生成（打包环境回退）
-        if self._generate_via_cryptography():
-            logger.info("mitmproxy certificate file generated via cryptography fallback: %s", self.cert_file)
-            return True
-
-        self.last_error = "证书生成失败: DumpMaster 和 cryptography 回退均失败"
+        self.last_error = "证书生成失败: cryptography 和 DumpMaster 均失败"
         logger.error("All certificate generation methods failed for %s", self.cert_file)
         return False
 
