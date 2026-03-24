@@ -1,9 +1,9 @@
 @echo off
-chcp 65001 >nul
+chcp 936 >nul
 setlocal
 
 cd /d "%~dp0\..\.."
-title VidFlow - Generate Delta Update Package
+title VidFlow - 生成增量更新包
 color 0E
 
 node scripts\release\generate-delta.js %*
@@ -11,9 +11,9 @@ set "EXIT_CODE=%ERRORLEVEL%"
 
 echo.
 if not "%EXIT_CODE%"=="0" (
-    echo [ERROR] Delta package generation failed.
+    echo [错误] 增量更新包生成失败。
 ) else (
-    echo [OK] Delta package generation finished.
+    echo [完成] 增量更新包生成完成。
 )
 echo.
 pause

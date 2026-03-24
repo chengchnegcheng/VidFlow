@@ -18,7 +18,7 @@ function normalizeVersion(value) {
 }
 
 function printUsage() {
-  console.log('Usage:');
+  console.log('用法:');
   console.log('  node scripts/release/archive-release.js');
   console.log('  node scripts/release/archive-release.js --version=1.0.0');
 }
@@ -48,7 +48,7 @@ function parseArgs(argv) {
       continue;
     }
 
-    throw new Error(`Unknown argument: ${arg}`);
+    throw new Error(`未知参数: ${arg}`);
   }
 
   return options;
@@ -56,7 +56,7 @@ function parseArgs(argv) {
 
 function assertPathExists(targetPath, description) {
   if (!fs.existsSync(targetPath)) {
-    throw new Error(`${description} not found: ${targetPath}`);
+    throw new Error(`${description}不存在: ${targetPath}`);
   }
 }
 
@@ -73,7 +73,7 @@ function findInstaller(version) {
   }
 
   if (!fs.existsSync(distOutputDir)) {
-    throw new Error(`Installer output directory not found: ${distOutputDir}`);
+    throw new Error(`安装包输出目录不存在: ${distOutputDir}`);
   }
 
   const installers = fs
@@ -84,7 +84,7 @@ function findInstaller(version) {
     return path.join(distOutputDir, installers[0]);
   }
 
-  throw new Error(`Installer for version ${version} not found in ${distOutputDir}`);
+  throw new Error(`未在 ${distOutputDir} 中找到版本 ${version} 的安装包`);
 }
 
 function copyDirectory(sourceDir, targetDir) {
@@ -116,12 +116,12 @@ function main() {
   const version = normalizeVersion(options.version);
 
   if (!version) {
-    throw new Error('Version is required.');
+    throw new Error('必须提供版本号。');
   }
 
   const installerPath = findInstaller(version);
-  assertPathExists(backendOutputDir, 'Backend output directory');
-  assertPathExists(frontendOutputDir, 'Frontend output directory');
+  assertPathExists(backendOutputDir, '后端输出目录');
+  assertPathExists(frontendOutputDir, '前端输出目录');
 
   const releaseDir = path.join(releasesDir, `v${version}`);
   const targetBackendDir = path.join(releaseDir, 'VidFlow-Backend');
@@ -129,13 +129,12 @@ function main() {
 
   console.log('');
   console.log('========================================');
-  console.log('VidFlow Release Archive');
+  console.log('VidFlow 发布归档工具');
   console.log('========================================');
-  console.log(`Version: ${version}`);
-  console.log(`Target directory: ${releaseDir}`);
+  console.log(`版本: ${version}`);
+  console.log(`目标目录: ${releaseDir}`);
   console.log('');
 
-  // Always rebuild the release snapshot from scratch to avoid stale files.
   fs.rmSync(releaseDir, { recursive: true, force: true });
   fs.mkdirSync(releaseDir, { recursive: true });
 
@@ -146,19 +145,19 @@ function main() {
   copyDirectory(backendOutputDir, targetBackendDir);
   copyDirectory(frontendOutputDir, targetFrontendDir);
 
-  console.log(`[OK] Installer: ${targetInstallerPath}`);
-  console.log(`[OK] Backend: ${targetBackendDir}`);
-  console.log(`[OK] Frontend: ${targetFrontendDir}`);
+  console.log(`[完成] 安装包: ${targetInstallerPath}`);
+  console.log(`[完成] 后端: ${targetBackendDir}`);
+  console.log(`[完成] 前端: ${targetFrontendDir}`);
   console.log('');
-  console.log(`Installer size: ${formatBytes(fs.statSync(targetInstallerPath).size)}`);
-  console.log(`Backend size: ${formatBytes(getDirectorySize(targetBackendDir))}`);
-  console.log(`Frontend size: ${formatBytes(getDirectorySize(targetFrontendDir))}`);
+  console.log(`安装包大小: ${formatBytes(fs.statSync(targetInstallerPath).size)}`);
+  console.log(`后端大小: ${formatBytes(getDirectorySize(targetBackendDir))}`);
+  console.log(`前端大小: ${formatBytes(getDirectorySize(targetFrontendDir))}`);
 }
 
 try {
   main();
 } catch (error) {
   console.error('');
-  console.error(`[ERROR] ${error.message}`);
+  console.error(`[错误] ${error.message}`);
   process.exit(1);
 }

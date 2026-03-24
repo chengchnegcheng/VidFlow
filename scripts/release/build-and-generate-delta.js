@@ -14,22 +14,22 @@ function normalizeVersion(value) {
 function printHeader() {
   console.log('');
   console.log('========================================');
-  console.log('VidFlow Build And Delta');
+  console.log('VidFlow 构建并生成增量包');
   console.log('========================================');
   console.log('');
 }
 
 function printUsage() {
-  console.log('Usage:');
+  console.log('用法:');
   console.log('  node scripts/release/build-and-generate-delta.js --source=1.0.2');
   console.log('  npm run delta:build -- --source=1.0.2');
   console.log('');
-  console.log('Options:');
-  console.log('  --source=<version>    Source version for the delta package');
-  console.log('  --target=<version>    Target version (defaults to package.json version)');
-  console.log('  --platform=<name>     Platform (defaults to current platform)');
-  console.log('  --arch=<name>         Architecture (defaults to current arch)');
-  console.log('  --skip-build          Reuse existing build outputs instead of rebuilding');
+  console.log('参数:');
+  console.log('  --source=<version>    增量包的源版本号');
+  console.log('  --target=<version>    目标版本号，默认使用 package.json 中的版本');
+  console.log('  --platform=<name>     平台，默认使用当前平台');
+  console.log('  --arch=<name>         架构，默认使用当前架构');
+  console.log('  --skip-build          跳过重新构建，直接复用现有产物');
 }
 
 function parseArgs(argv) {
@@ -81,7 +81,7 @@ function parseArgs(argv) {
       continue;
     }
 
-    throw new Error(`Unknown argument: ${arg}`);
+    throw new Error(`未知参数: ${arg}`);
   }
 
   return options;
@@ -94,7 +94,7 @@ function promptSourceVersion() {
       output: process.stdout
     });
 
-    rl.question('Enter source version: ', (answer) => {
+    rl.question('请输入源版本号: ', (answer) => {
       rl.close();
       resolve(normalizeVersion(answer));
     });
@@ -113,7 +113,7 @@ function runCommand(command, args, description) {
     proc.on('error', reject);
     proc.on('close', (code) => {
       if (code !== 0) {
-        reject(new Error(`${description} failed with exit code ${code}`));
+        reject(new Error(`${description}失败，退出码: ${code}`));
         return;
       }
 
@@ -129,27 +129,27 @@ async function main() {
   let sourceVersion = normalizeVersion(options.sourceVersion);
   if (!sourceVersion) {
     if (!process.stdin.isTTY) {
-      throw new Error('Missing source version. Run "npm run delta:build -- --source=<version>".');
+      throw new Error('缺少源版本号。请运行 "npm run delta:build -- --source=<version>"。');
     }
 
     sourceVersion = await promptSourceVersion();
   }
 
   if (!sourceVersion) {
-    throw new Error('Source version is required.');
+    throw new Error('必须提供源版本号。');
   }
 
   if (!options.skipBuild) {
-    await runCommand(npmCommand, ['run', 'build'], 'Build current release');
+    await runCommand(npmCommand, ['run', 'build'], '构建当前版本');
   } else {
-    console.log('>>> Skip build and reuse existing artifacts');
+    console.log('>>> 跳过构建，直接复用现有产物');
   }
 
   const archiveArgs = ['scripts/release/archive-release.js'];
   if (options.targetVersion) {
     archiveArgs.push(`--version=${options.targetVersion}`);
   }
-  await runCommand(nodeCommand, archiveArgs, 'Archive current release artifacts');
+  await runCommand(nodeCommand, archiveArgs, '归档当前版本产物');
 
   const deltaArgs = ['scripts/release/generate-delta.js', `--source=${sourceVersion}`];
   if (options.targetVersion) {
@@ -161,11 +161,11 @@ async function main() {
   if (options.arch) {
     deltaArgs.push(`--arch=${options.arch}`);
   }
-  await runCommand(nodeCommand, deltaArgs, 'Generate delta package');
+  await runCommand(nodeCommand, deltaArgs, '生成增量更新包');
 }
 
 main().catch((error) => {
   console.error('');
-  console.error(`[ERROR] ${error.message}`);
+  console.error(`[错误] ${error.message}`);
   process.exit(1);
 });

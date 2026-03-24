@@ -42,30 +42,30 @@ function getAvailableVersions(targetVersion) {
 function printHeader(targetVersion) {
   console.log('');
   console.log('========================================');
-  console.log('VidFlow Delta Package Generator');
+  console.log('VidFlow 增量更新包生成工具');
   console.log('========================================');
-  console.log(`Target version: ${targetVersion}`);
+  console.log(`目标版本: ${targetVersion}`);
   console.log('');
 }
 
 function printUsage() {
-  console.log('Usage:');
+  console.log('用法:');
   console.log('  node scripts/release/generate-delta.js <sourceVersion>');
   console.log('  npm run delta -- <sourceVersion>');
   console.log('  npm run delta:list');
   console.log('');
-  console.log('Options:');
-  console.log('  --source=<version>    Source version');
-  console.log('  --target=<version>    Target version (defaults to package.json version)');
-  console.log('  --platform=<name>     Platform (defaults to current platform)');
-  console.log('  --arch=<name>         Architecture (defaults to current arch)');
-  console.log('  --list                List available source versions');
+  console.log('参数:');
+  console.log('  --source=<version>    源版本号');
+  console.log('  --target=<version>    目标版本号，默认使用 package.json 中的版本');
+  console.log('  --platform=<name>     平台，默认使用当前平台');
+  console.log('  --arch=<name>         架构，默认使用当前架构');
+  console.log('  --list                列出可用的源版本');
 }
 
 function printAvailableVersions(versions) {
-  console.log('Available source versions:');
+  console.log('可用的源版本:');
   if (versions.length === 0) {
-    console.log('  (none found under releases/)');
+    console.log('  （在 releases/ 下未找到可用版本）');
     return;
   }
 
@@ -123,7 +123,7 @@ function parseArgs(argv) {
       continue;
     }
 
-    throw new Error(`Unknown argument: ${arg}`);
+    throw new Error(`未知参数: ${arg}`);
   }
 
   return options;
@@ -131,7 +131,7 @@ function parseArgs(argv) {
 
 function assertFileExists(filePath, description) {
   if (!fs.existsSync(filePath)) {
-    throw new Error(`${description} not found: ${filePath}`);
+    throw new Error(`${description}不存在: ${filePath}`);
   }
 }
 
@@ -142,7 +142,7 @@ function promptSourceVersion(versions) {
       output: process.stdout
     });
 
-    rl.question('Enter source version: ', (answer) => {
+    rl.question('请输入源版本号: ', (answer) => {
       rl.close();
       const normalized = normalizeVersion(answer);
       if (!normalized) {
@@ -151,7 +151,7 @@ function promptSourceVersion(versions) {
       }
 
       if (versions.length > 0 && !versions.includes(normalized)) {
-        console.warn(`Warning: ${normalized} was not found in releases/, continuing anyway.`);
+        console.warn(`警告: 在 releases/ 中未找到 ${normalized}，仍将继续执行。`);
       }
 
       resolve(normalized);
@@ -164,9 +164,9 @@ function runGenerator({ sourceVersion, targetVersion, platform, arch }) {
   const targetDir = path.join(releasesDir, `v${targetVersion}`);
   const deltasDir = path.join(releasesDir, 'deltas');
 
-  assertFileExists(pythonPath, 'Python virtual environment');
-  assertFileExists(sourceDir, 'Source release directory');
-  assertFileExists(targetDir, 'Target release directory');
+  assertFileExists(pythonPath, 'Python 虚拟环境');
+  assertFileExists(sourceDir, '源版本目录');
+  assertFileExists(targetDir, '目标版本目录');
 
   fs.mkdirSync(deltasDir, { recursive: true });
 
@@ -196,7 +196,7 @@ function runGenerator({ sourceVersion, targetVersion, platform, arch }) {
     proc.on('error', reject);
     proc.on('close', (code) => {
       if (code !== 0) {
-        reject(new Error(`Delta generator exited with code ${code}`));
+        reject(new Error(`增量包生成器退出，返回码: ${code}`));
         return;
       }
 
@@ -223,23 +223,23 @@ async function main() {
     console.log('');
 
     if (!process.stdin.isTTY) {
-      throw new Error('Missing source version. Run "npm run delta -- <sourceVersion>".');
+      throw new Error('缺少源版本号。请运行 "npm run delta -- <sourceVersion>"。');
     }
 
     sourceVersion = await promptSourceVersion(versions);
   }
 
   if (!sourceVersion) {
-    throw new Error('Source version is required.');
+    throw new Error('必须提供源版本号。');
   }
 
   if (sourceVersion === targetVersion) {
-    throw new Error('Source version and target version must be different.');
+    throw new Error('源版本号和目标版本号不能相同。');
   }
 
-  console.log(`Source version: ${sourceVersion}`);
-  console.log(`Platform: ${options.platform}`);
-  console.log(`Architecture: ${options.arch}`);
+  console.log(`源版本: ${sourceVersion}`);
+  console.log(`平台: ${options.platform}`);
+  console.log(`架构: ${options.arch}`);
   console.log('');
 
   const deltaPath = await runGenerator({
@@ -250,12 +250,12 @@ async function main() {
   });
 
   console.log('');
-  console.log('[OK] Delta package generated successfully');
-  console.log(`Path: ${deltaPath}`);
+  console.log('[完成] 增量更新包生成成功。');
+  console.log(`路径: ${deltaPath}`);
 }
 
 main().catch((error) => {
   console.error('');
-  console.error(`[ERROR] ${error.message}`);
+  console.error(`[错误] ${error.message}`);
   process.exit(1);
 });

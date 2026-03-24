@@ -1,19 +1,19 @@
 @echo off
-chcp 65001 >nul
+chcp 936 >nul
 setlocal
 
 cd /d "%~dp0\..\.."
-title VidFlow - Upload Release
+title VidFlow - 发布上传
 color 0A
 
 for /f "delims=" %%v in ('powershell -NoProfile -ExecutionPolicy Bypass -Command "$json = Get-Content package.json -Raw -Encoding UTF8 | ConvertFrom-Json; Write-Host $json.version -NoNewline"') do set "VERSION=%%v"
 
 echo.
 echo ========================================
-echo   VidFlow - Release Upload Script
+echo   VidFlow - 发布上传脚本
 echo ========================================
 echo.
-echo [INFO] Current version: %VERSION%
+echo [信息] 当前版本: %VERSION%
 echo.
 
 set "INSTALLER_PATH=dist-output\VidFlow-Setup-%VERSION%.exe"
@@ -22,35 +22,35 @@ if not exist "%INSTALLER_PATH%" (
 )
 
 if not exist "%INSTALLER_PATH%" (
-    echo [ERROR] Installer not found.
-    echo [INFO] Build the release first with scripts\build\build-release.bat or npm run build.
+    echo [错误] 未找到安装包。
+    echo [信息] 请先运行 scripts\build\build-release.bat 或 npm run build 进行构建。
     echo.
     dir dist-output\*.exe 2>nul
     pause
     exit /b 1
 )
 
-echo [INFO] Installer: %INSTALLER_PATH%
+echo [信息] 安装包: %INSTALLER_PATH%
 for %%f in ("%INSTALLER_PATH%") do set "INSTALLER_FILE_NAME=%%~nxf"
 echo.
-echo [INFO] Calculating installer hash...
+echo [信息] 正在计算安装包哈希...
 for /f "delims=" %%h in ('powershell -NoProfile -ExecutionPolicy Bypass -Command "(Get-FileHash -Path '%INSTALLER_PATH%' -Algorithm SHA512).Hash.ToLower()"') do set "FILE_HASH=%%h"
 for /f "delims=" %%s in ('powershell -NoProfile -ExecutionPolicy Bypass -Command "(Get-Item '%INSTALLER_PATH%').Length"') do set "FILE_SIZE=%%s"
 
-echo [INFO] SHA-512: %FILE_HASH:~0,32%...
-echo [INFO] Size: %FILE_SIZE% bytes
+echo [信息] SHA-512: %FILE_HASH:~0,32%...
+echo [信息] 大小: %FILE_SIZE% bytes
 echo.
 echo ========================================
-echo Upload Options
+echo 上传选项
 echo ========================================
 echo.
-echo [1] Upload to update server (manual)
-echo [2] Generate release metadata JSON
-echo [3] Sync to local releases directory
-echo [0] Exit
+echo [1] 上传到更新服务器（手动）
+echo [2] 生成发布元数据 JSON
+echo [3] 同步到本地 releases 目录
+echo [0] 退出
 echo.
 
-set /p choice=Select an option:
+set /p choice=请选择操作: 
 
 if "%choice%"=="1" goto upload_server
 if "%choice%"=="2" goto generate_json
@@ -59,10 +59,10 @@ goto end
 
 :upload_server
 echo.
-echo [INFO] Upload to update server
+echo [信息] 上传到更新服务器
 echo.
-echo [INFO] Configure your server credentials, then upload the installer manually.
-echo [INFO] Example:
+echo [信息] 请先配置好服务器凭据，然后手动上传安装包。
+echo [信息] 示例:
 echo   scp "%INSTALLER_PATH%" user@shcrystal.top:/path/to/releases/v%VERSION%/
 echo.
 pause
@@ -70,7 +70,7 @@ goto end
 
 :generate_json
 echo.
-echo [INFO] Generating release metadata...
+echo [信息] 正在生成发布元数据...
 set "JSON_FILE=dist-output\release-%VERSION%.json"
 
 (
@@ -89,7 +89,7 @@ echo }
 ) > "%JSON_FILE%"
 
 echo.
-echo [OK] Metadata generated: %JSON_FILE%
+echo [完成] 元数据已生成: %JSON_FILE%
 echo.
 type "%JSON_FILE%"
 echo.
@@ -98,22 +98,22 @@ goto end
 
 :copy_local
 echo.
-echo [INFO] Syncing current build outputs into releases\v%VERSION% ...
-echo [INFO] Existing snapshot will be replaced to avoid stale files affecting delta generation.
+echo [信息] 正在同步当前构建产物到 releases\v%VERSION% ...
+echo [信息] 为避免旧文件影响增量包生成，将覆盖已有快照。
 node scripts\release\archive-release.js --version=%VERSION%
 if errorlevel 1 (
     echo.
-    echo [ERROR] Failed to sync local release snapshot.
+    echo [错误] 同步本地发布快照失败。
     pause
     goto end
 )
 echo.
-echo [INFO] You can now run scripts\release\generate-delta.bat or npm run delta -- sourceVersion
+echo [信息] 现在可以运行 scripts\release\generate-delta.bat 或 npm run delta -- sourceVersion
 echo.
 pause
 goto end
 
 :end
 echo.
-echo Exit.
+echo 已退出。
 exit /b 0
