@@ -1,128 +1,222 @@
-# VidFlow 工具脚本
+# VidFlow 脚本与打包说明
 
-本目录包含用于维护和管理 VidFlow 应用的实用脚本。
+本文档只保留当前仍在维护和推荐使用的脚本，并给出 Windows 打包、归档和增量更新的实际流程。
 
-## 📋 脚本列表
+## 当前保留的脚本
 
-### 1. `generate_icon.py` - 图标生成器
+### Windows 开发
 
-**用途**: 从 PNG 源文件生成多尺寸的 Windows ICO 图标文件
+| 脚本 | 用途 |
+| --- | --- |
+| `SETUP.bat` | 初始化 Node/Python 环境并创建 `backend\venv` |
+| `START.bat` | 启动后端、前端和 Electron 开发环境 |
+| `STOP.bat` | 停止开发环境相关进程 |
+| `START_ELECTRON_DEV.bat` | 由 `START.bat` 调用，单独启动 Electron |
 
-**功能**:
-- 读取 `resources/icons/icon.png`
-- 生成包含 5 个尺寸的 ICO 文件：
-  - 16x16 (任务栏、标题栏)
-  - 32x32 (资源管理器)
-  - 48x48 (桌面快捷方式)
-  - 128x128 (Alt+Tab)
-  - 256x256 (固定到任务栏)
+### Windows 打包与发布
 
-**使用方法**:
-```bash
-# 在项目根目录运行
-python scripts/generate_icon.py
+| 脚本 | 用途 |
+| --- | --- |
+| `BUILD_OPTIMIZED.bat` | 推荐的 Windows 发布构建脚本 |
+| `BUILD_RELEASE.bat` | 交互式构建菜单，可只构建某一部分 |
+| `UPLOAD_RELEASE.bat` | 生成发布 JSON，或把当前构建同步到 `releases\` |
+| `VERSION.bat` | 版本号管理 |
+| `GENERATE_DELTA.bat` | 从已有历史版本生成增量更新包 |
+| `BUILD_AND_GENERATE_DELTA.bat` | 一键执行“构建当前版本 -> 归档 -> 生成增量包” |
+
+### Node 辅助脚本
+
+| 脚本 | 用途 |
+| --- | --- |
+| `build-backend.js` | `npm run build:backend` 使用的后端打包入口 |
+| `archive-release.js` | 归档当前构建产物到 `releases\vX.Y.Z\` |
+| `generate-delta.js` | 增量包命令行入口 |
+| `build-and-generate-delta.js` | 一键串联构建、归档、差分生成 |
+| `generate-tray-icons.js` | 生成托盘图标资源 |
+
+### macOS
+
+| 脚本 | 用途 |
+| --- | --- |
+| `setup-mac.sh` | macOS 环境初始化 |
+| `dev-mac.sh` | macOS 开发模式 |
+| `build-mac.sh` | macOS 构建脚本 |
+| `README-macOS.md` | macOS 使用说明 |
+
+## 已清理的历史脚本
+
+下列脚本没有被当前 `package.json`、主流程脚本或运行入口引用，且功能已被现有命令覆盖，因此已移除：
+
+- `dev.js`
+- `validate-build.js`
+- `CLEAN_CACHE.bat`
+
+## Windows 打包流程
+
+### 1. 首次环境准备
+
+```bat
+scripts\SETUP.bat
 ```
 
-**依赖**:
-- Python 3.x
-- Pillow (PIL)
+完成后应至少具备以下环境：
 
-**输出**:
-- `resources/icons/icon.ico`
+- 根目录 `node_modules`
+- `frontend\node_modules`
+- `backend\venv`
 
----
+### 2. 构建当前版本
 
-### 2. `clear_icon_cache.bat` - Windows 图标缓存清理
+推荐直接运行：
 
-**用途**: 清理 Windows 图标缓存，强制系统重新加载应用图标
-
-**功能**:
-- 停止 Windows Explorer
-- 删除图标缓存文件
-- 重启 Windows Explorer
-
-**使用方法**:
-```bash
-# 双击运行或在命令行执行
-scripts\clear_icon_cache.bat
+```bat
+scripts\BUILD_OPTIMIZED.bat
 ```
 
-**注意事项**:
-- 运行前请关闭所有应用程序
-- 脚本会暂时关闭 Windows Explorer（桌面会短暂消失）
-- 完成后会自动重启 Explorer
+或使用 npm：
 
-**何时使用**:
-- 更新图标后，任务栏仍显示旧图标
-- 固定到任务栏的快捷方式图标不正确
-- Alt+Tab 切换器显示默认图标
-
----
-
-## 🔄 常见工作流程
-
-### 更新应用图标
-
-1. 替换 `resources/icons/icon.png` 为新图标
-2. 运行图标生成器：
-   ```bash
-   python scripts/generate_icon.py
-   ```
-3. 清理图标缓存：
-   ```bash
-   scripts\clear_icon_cache.bat
-   ```
-4. 重启 VidFlow 应用
-
-### 首次设置图标
-
-如果是首次运行或图标显示不正确：
-
-1. 确认 `resources/icons/icon.ico` 存在
-2. 运行缓存清理脚本
-3. 重启应用
-
----
-
-## 🐛 故障排除
-
-### 图标仍然显示为默认 Electron 图标
-
-**解决方案**:
-1. 确认 `icon.ico` 文件存在且大小正常（应该 > 100KB）
-2. 运行 `clear_icon_cache.bat`
-3. 完全关闭 VidFlow（包括托盘图标）
-4. 重启应用
-
-### 生成图标脚本报错
-
-**常见错误**: `ModuleNotFoundError: No module named 'PIL'`
-
-**解决方案**:
 ```bash
-pip install Pillow
+npm run build
 ```
 
-### 缓存清理脚本无效
+构建完成后，主要产物位于：
 
-**解决方案**:
-1. 以管理员身份运行脚本
-2. 手动删除缓存文件：
-   ```powershell
-   del %LOCALAPPDATA%\IconCache.db
-   del %LOCALAPPDATA%\Microsoft\Windows\Explorer\iconcache*.db
-   ```
-3. 重启计算机（终极方案）
+- `dist-output\VidFlow Setup x.y.z.exe`
+- `backend\dist\VidFlow-Backend\`
+- `frontend\dist\`
 
----
+### 3. 归档发布快照
 
-## 📚 相关文档
+如果需要为后续增量更新保留一个完整版本快照，执行：
 
-- [图标状态文档](../Development%20process%20record%20document/ICON_STATUS.md)
-- [Electron 图标配置](../electron/main.js)
-- [构建配置](../electron-builder.json)
+```bash
+npm run release:archive
+```
 
----
+或使用：
 
-**维护者**: VidFlow 开发团队
-**最后更新**: 2025-12-10
+```bat
+scripts\UPLOAD_RELEASE.bat
+```
+
+然后选择：
+
+- `[3] Sync to local releases directory`
+
+归档完成后会生成：
+
+```text
+releases\
+  v1.0.0\
+    VidFlow Setup 1.0.0.exe
+    VidFlow-Backend\
+    frontend\dist\
+```
+
+说明：
+
+- 归档脚本会先重建 `releases\v当前版本\`
+- 这样可以避免同版本重复归档时残留旧文件，影响 delta 对比结果
+
+### 4. 生成发布信息
+
+如果只需要生成安装包元数据 JSON：
+
+```bat
+scripts\UPLOAD_RELEASE.bat
+```
+
+然后选择：
+
+- `[2] Generate release metadata JSON`
+
+输出文件位于：
+
+- `dist-output\release-x.y.z.json`
+
+### 5. 生成增量更新包
+
+前提：
+
+- 已有旧版本快照，例如 `releases\v0.9.0\`
+- 已归档当前版本快照，例如 `releases\v1.0.0\`
+
+可以先查看可用旧版本：
+
+```bash
+npm run delta:list
+```
+
+再生成差异包：
+
+```bash
+npm run delta -- 0.9.0
+```
+
+或使用批处理：
+
+```bat
+scripts\GENERATE_DELTA.bat
+```
+
+生成后的文件位于：
+
+- `releases\deltas\delta-0.9.0-to-1.0.0-win32-x64.zip`
+
+### 6. 一键构建并生成增量包
+
+如果你想从当前源码直接走到差异包，可以使用：
+
+```bat
+scripts\BUILD_AND_GENERATE_DELTA.bat --source=0.9.0
+```
+
+或：
+
+```bash
+npm run delta:build -- --source=0.9.0
+```
+
+流程会自动执行：
+
+1. 构建当前版本
+2. 归档当前构建产物
+3. 根据 `--source` 指定的旧版本生成 delta 包
+
+如果缺少旧版本目录，例如 `releases\v0.9.0\`，脚本会直接提示并停止。
+
+## 推荐发布流程
+
+### 仅发布全量安装包
+
+1. `scripts\VERSION.bat`
+2. `scripts\BUILD_OPTIMIZED.bat`
+3. `scripts\UPLOAD_RELEASE.bat` 选择 `[2]` 或 `[3]`
+
+### 发布全量包并保留增量更新能力
+
+1. `scripts\VERSION.bat`
+2. `scripts\BUILD_OPTIMIZED.bat`
+3. `npm run release:archive`
+4. `npm run delta -- 旧版本号`
+
+### 从已有构建产物补做 delta
+
+1. 确认 `releases\v旧版本\` 存在
+2. 确认 `releases\v当前版本\` 已通过 `release:archive` 归档
+3. 执行 `npm run delta -- 旧版本号`
+
+## 常用命令速查
+
+```bash
+npm run build
+npm run release:archive
+npm run delta:list
+npm run delta -- 0.9.0
+npm run delta:build -- --source=0.9.0
+```
+
+## 相关文档
+
+- [增量更新说明](README-DELTA-UPDATE.md)
+- [macOS 脚本说明](README-macOS.md)

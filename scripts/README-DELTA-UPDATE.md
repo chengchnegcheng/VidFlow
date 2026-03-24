@@ -11,6 +11,25 @@
 - 直接打包变化的文件，排除大型依赖库
 - 支持文件的新增、替换、删除操作
 
+## 快速入口
+
+除了直接运行 `scripts\GENERATE_DELTA.bat`，现在也可以直接使用 npm 命令：
+
+```bash
+npm run release:archive
+npm run delta:list
+npm run delta -- 1.0.2
+npm run delta:build -- --source=1.0.2
+```
+
+其中 `1.0.2` 是源版本号，目标版本默认读取根目录 `package.json` 里的当前版本号。
+
+如果你想一键完成“构建当前版本 -> 保存到 releases -> 生成差异包”，可以直接运行：
+
+```batch
+scripts\BUILD_AND_GENERATE_DELTA.bat --source=1.0.2
+```
+
 ## 完整发布流程
 
 ```
