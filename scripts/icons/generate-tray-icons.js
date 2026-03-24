@@ -8,7 +8,7 @@ const fs = require('fs');
 const path = require('path');
 
 // 项目根目录
-const projectRoot = path.join(__dirname, '..');
+const projectRoot = path.join(__dirname, '..', '..');
 const sourceIcon = path.join(projectRoot, 'resources', 'icon.png');
 const iconsDir = path.join(projectRoot, 'resources', 'icons');
 

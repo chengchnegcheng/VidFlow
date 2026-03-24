@@ -1,7 +1,7 @@
 @echo off
 setlocal EnableExtensions EnableDelayedExpansion
 
-cd /d "%~dp0\.." || exit /b 1
+cd /d "%~dp0\..\.." || exit /b 1
 set "ROOT_DIR=%CD%"
 set "BUILD_LOG_DIR=%ROOT_DIR%\build-logs\optimized"
 set "FRONTEND_LOG=%BUILD_LOG_DIR%\frontend-build.log"
@@ -162,7 +162,7 @@ goto :eof
 
 :missing_venv
 echo Backend virtual environment not found: backend\venv\Scripts\python.exe
-echo Run scripts\SETUP.bat first.
+echo Run scripts\dev\setup.bat first.
 goto :abort
 
 :version_error

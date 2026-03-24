@@ -54,12 +54,12 @@
 
 ```bash
 # Windows
-scripts\SETUP.bat              # 安装 Node / Python 依赖并创建 venv
-scripts\START.bat              # 启动开发环境
+scripts\dev\setup.bat              # 安装 Node / Python 依赖并创建 venv
+scripts\dev\start.bat              # 启动开发环境
 
 # 打包
-scripts\BUILD_OPTIMIZED.bat    # 推荐：精简构建，产物更小
-scripts\BUILD_RELEASE.bat      # 交互式发布构建菜单
+scripts\build\build-optimized.bat  # 推荐：精简构建，产物更小
+scripts\build\build-release.bat    # 交互式发布构建菜单
 ```
 
 ### 方式 2：手动安装
@@ -93,7 +93,7 @@ npm run dev
 ### 推荐：Windows 优化构建
 
 ```bash
-scripts\BUILD_OPTIMIZED.bat
+scripts\build\build-optimized.bat
 ```
 
 这个脚本会自动完成：
@@ -119,7 +119,7 @@ scripts\BUILD_OPTIMIZED.bat
 ### 交互式发布构建
 
 ```bash
-scripts\BUILD_RELEASE.bat
+scripts\build\build-release.bat
 ```
 
 适合需要手动选择“仅构建后端 / 仅构建前端 / 仅打包 Electron”的场景。
@@ -180,7 +180,7 @@ npm run build:electron   # 仅打包 Electron
 - [打包准备](PACKAGE_READY.md)
 - [AI 工具指南](Docs/AI_TOOLS_GUIDE.md)
 - [前端实施](Docs/FRONTEND_IMPLEMENTATION.md)
-- [脚本说明](scripts/README.md)
+- [脚本说明](scripts/docs/README.md)
 - [变更日志](Docs/CHANGELOG_AI_TOOLS.md)
 
 ## 🐛 故障排除
@@ -193,7 +193,7 @@ npm run build:electron   # 仅打包 Electron
 
 ### Electron 无法连接后端
 
-1. 先运行 `scripts\START.bat`
+1. 先运行 `scripts\dev\start.bat`
 2. 检查 `backend\data\backend_port.json` 是否生成
 3. 查看 Electron 或后端控制台日志
 

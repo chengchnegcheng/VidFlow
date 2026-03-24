@@ -39,7 +39,7 @@ log_header() {
 
 # 获取脚本所在目录的上级目录（项目根目录）
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
-PROJECT_ROOT="$( cd "$SCRIPT_DIR/.." &> /dev/null && pwd )"
+PROJECT_ROOT="$( cd "$SCRIPT_DIR/../.." &> /dev/null && pwd )"
 
 cd "$PROJECT_ROOT"
 
@@ -245,7 +245,7 @@ log_header "步骤 3/7: 生成图标"
 
 if [ ! -f "resources/icon.icns" ]; then
     log_info "生成 macOS .icns 图标..."
-    node scripts/generate-icns.js
+    node scripts/icons/generate-icns.js
 
     if [ -f "resources/icon.icns" ]; then
         log_success "图标生成成功"

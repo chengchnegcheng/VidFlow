@@ -2,11 +2,11 @@
 chcp 65001 >nul
 setlocal
 
-cd /d "%~dp0\.."
+cd /d "%~dp0\..\.."
 title VidFlow - Generate Delta Update Package
 color 0E
 
-node scripts\generate-delta.js %*
+node scripts\release\generate-delta.js %*
 set "EXIT_CODE=%ERRORLEVEL%"
 
 echo.

@@ -4,7 +4,7 @@ title VidFlow Desktop - Environment Setup
 color 0A
 
 REM Change to project root directory (one level up from scripts)
-cd /d "%~dp0.."
+cd /d "%~dp0..\.."
 
 echo.
 echo ========================================
@@ -193,7 +193,7 @@ cd backend
 
 if exist "venv" (
     echo [INFO] Virtual environment exists, skipping...
-    echo [HINT] To rebuild with Python 3.11, delete 'backend\venv' and run SETUP.bat again
+    echo [HINT] To rebuild with Python 3.11, delete 'backend\venv' and run setup.bat again
 ) else (
     echo [INFO] Creating Python virtual environment with %PYTHON_CMD%...
     echo.
@@ -355,7 +355,7 @@ echo.
 echo [OK] All dependencies installed
 echo.
 echo Next steps:
-echo   1. Run: START.bat
+echo   1. Run: start.bat
 echo   2. Or: npm run dev
 echo.
 echo Note: Backend uses dynamic port (configured in Electron)
@@ -370,10 +370,10 @@ if /i "%START_NOW%"=="Y" (
     echo Starting...
     timeout /t 1 >nul
     cd /d "%~dp0"
-    call START.bat
+    call start.bat
 ) else (
     echo.
-    echo Run START.bat when ready
+    echo Run start.bat when ready
     echo.
     pause
 )

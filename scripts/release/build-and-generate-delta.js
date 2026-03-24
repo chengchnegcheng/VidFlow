@@ -2,7 +2,7 @@ const path = require('path');
 const readline = require('readline');
 const { spawn } = require('child_process');
 
-const rootDir = path.join(__dirname, '..');
+const rootDir = path.join(__dirname, '..', '..');
 const isWin = process.platform === 'win32';
 const nodeCommand = process.execPath;
 const npmCommand = isWin ? 'npm.cmd' : 'npm';
@@ -21,7 +21,7 @@ function printHeader() {
 
 function printUsage() {
   console.log('Usage:');
-  console.log('  node scripts/build-and-generate-delta.js --source=1.0.2');
+  console.log('  node scripts/release/build-and-generate-delta.js --source=1.0.2');
   console.log('  npm run delta:build -- --source=1.0.2');
   console.log('');
   console.log('Options:');
@@ -145,13 +145,13 @@ async function main() {
     console.log('>>> Skip build and reuse existing artifacts');
   }
 
-  const archiveArgs = ['scripts/archive-release.js'];
+  const archiveArgs = ['scripts/release/archive-release.js'];
   if (options.targetVersion) {
     archiveArgs.push(`--version=${options.targetVersion}`);
   }
   await runCommand(nodeCommand, archiveArgs, 'Archive current release artifacts');
 
-  const deltaArgs = ['scripts/generate-delta.js', `--source=${sourceVersion}`];
+  const deltaArgs = ['scripts/release/generate-delta.js', `--source=${sourceVersion}`];
   if (options.targetVersion) {
     deltaArgs.push(`--target=${options.targetVersion}`);
   }

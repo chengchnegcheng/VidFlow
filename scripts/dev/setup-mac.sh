@@ -40,7 +40,7 @@ log_header() {
 
 # 获取脚本所在目录的上级目录（项目根目录）
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
-PROJECT_ROOT="$( cd "$SCRIPT_DIR/.." &> /dev/null && pwd )"
+PROJECT_ROOT="$( cd "$SCRIPT_DIR/../.." &> /dev/null && pwd )"
 
 cd "$PROJECT_ROOT"
 
@@ -327,7 +327,7 @@ log_header "步骤 5/6: 生成 macOS 图标"
 
 if [ ! -f "resources/icon.icns" ]; then
     log_info "生成 .icns 图标..."
-    node scripts/generate-icns.js
+    node scripts/icons/generate-icns.js
 
     if [ -f "resources/icon.icns" ]; then
         log_success "图标生成成功"
@@ -384,8 +384,8 @@ log_header "🎉 环境初始化完成"
 echo ""
 
 log_info "下一步:"
-echo "  📝 开发模式: ./scripts/dev-mac.sh"
-echo "  📦 构建应用: ./scripts/build-mac.sh"
+echo "  📝 开发模式: ./scripts/dev/dev-mac.sh"
+echo "  📦 构建应用: ./scripts/build/build-mac.sh"
 echo ""
 
 log_info "快速命令:"

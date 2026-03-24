@@ -8,7 +8,7 @@ const { execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
-const rootDir = path.join(__dirname, '..');
+const rootDir = path.join(__dirname, '..', '..');
 const sourceIcon = path.join(rootDir, 'Docs', 'Ioc', 'icons', 'png', 'vidflow-1024x1024.png');
 const outputIcon = path.join(rootDir, 'resources', 'icon.icns');
 

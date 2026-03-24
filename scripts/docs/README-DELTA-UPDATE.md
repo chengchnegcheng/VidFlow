@@ -13,7 +13,7 @@
 
 ## 快速入口
 
-除了直接运行 `scripts\GENERATE_DELTA.bat`，现在也可以直接使用 npm 命令：
+除了直接运行 `scripts\release\generate-delta.bat`，现在也可以直接使用 npm 命令：
 
 ```bash
 npm run release:archive
@@ -27,19 +27,19 @@ npm run delta:build -- --source=1.0.2
 如果你想一键完成“构建当前版本 -> 保存到 releases -> 生成差异包”，可以直接运行：
 
 ```batch
-scripts\BUILD_AND_GENERATE_DELTA.bat --source=1.0.2
+scripts\release\build-and-generate-delta.bat --source=1.0.2
 ```
 
 ## 完整发布流程
 
 ```
-1. 修改版本号 (VERSION.bat)
+1. 修改版本号 (build\version.bat)
         ↓
-2. 构建新版本 (BUILD_RELEASE.bat)
+2. 构建新版本 (build\build-release.bat)
         ↓
-3. 保存构建产物 (UPLOAD_RELEASE.bat → 选项3)
+3. 保存构建产物 (release\upload-release.bat → 选项3)
         ↓
-4. 生成差异包 (GENERATE_DELTA.bat)
+4. 生成差异包 (release\generate-delta.bat)
         ↓
 5. 上传到更新服务器管理后台
 ```
@@ -49,7 +49,7 @@ scripts\BUILD_AND_GENERATE_DELTA.bat --source=1.0.2
 ### 步骤 1: 修改版本号
 
 ```batch
-scripts\VERSION.bat
+scripts\build\version.bat
 ```
 
 选择 `[2] 快速升级版本`，根据更新类型选择：
@@ -60,7 +60,7 @@ scripts\VERSION.bat
 ### 步骤 2: 构建新版本
 
 ```batch
-scripts\BUILD_RELEASE.bat
+scripts\build\build-release.bat
 ```
 
 选择 `[1] 完整构建`，等待构建完成。
@@ -73,7 +73,7 @@ scripts\BUILD_RELEASE.bat
 ### 步骤 3: 保存构建产物
 
 ```batch
-scripts\UPLOAD_RELEASE.bat
+scripts\release\upload-release.bat
 ```
 
 选择 `[3] 复制到本地发布目录`
@@ -95,7 +95,7 @@ releases\
 ### 步骤 4: 生成差异包
 
 ```batch
-scripts\GENERATE_DELTA.bat
+scripts\release\generate-delta.bat
 ```
 
 输入源版本号（如 `1.0.2`），脚本会自动：
@@ -294,10 +294,10 @@ venv\Scripts\python.exe -m src.core.delta_generator 1.0.2 1.0.3 ..\releases\v1.0
 
 | 脚本 | 功能 |
 |------|------|
-| `VERSION.bat` | 版本号管理 |
-| `BUILD_RELEASE.bat` | 构建发布版本 |
-| `UPLOAD_RELEASE.bat` | 上传/保存发布版本 |
-| `GENERATE_DELTA.bat` | 生成差异包 |
+| `build\version.bat` | 版本号管理 |
+| `build\build-release.bat` | 构建发布版本 |
+| `release\upload-release.bat` | 上传/保存发布版本 |
+| `release\generate-delta.bat` | 生成差异包 |
 
 ## 相关文件
 

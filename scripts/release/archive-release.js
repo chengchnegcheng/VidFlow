@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const rootDir = path.join(__dirname, '..');
+const rootDir = path.join(__dirname, '..', '..');
 const packageJsonPath = path.join(rootDir, 'package.json');
 const distOutputDir = path.join(rootDir, 'dist-output');
 const backendOutputDir = path.join(rootDir, 'backend', 'dist', 'VidFlow-Backend');
@@ -19,8 +19,8 @@ function normalizeVersion(value) {
 
 function printUsage() {
   console.log('Usage:');
-  console.log('  node scripts/archive-release.js');
-  console.log('  node scripts/archive-release.js --version=1.0.0');
+  console.log('  node scripts/release/archive-release.js');
+  console.log('  node scripts/release/archive-release.js --version=1.0.0');
 }
 
 function parseArgs(argv) {

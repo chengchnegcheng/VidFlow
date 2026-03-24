@@ -4,7 +4,7 @@ chcp 65001 >nul
 title VidFlow Desktop - Electron Mode
 color 0A
 
-cd /d "%~dp0\.."
+cd /d "%~dp0\..\.."
 
 echo.
 echo ========================================
@@ -19,7 +19,7 @@ if exist "backend\data\backend_port.json" (
 
 REM Start backend with random port
 echo [1/3] Starting Python backend...
-start "VidFlow Backend" cmd /k "cd /d "%~dp0\..\backend" && venv\Scripts\activate && set PYTHONPATH=%CD% && python -m src.main"
+start "VidFlow Backend" cmd /k "cd /d "%~dp0\..\..\backend" && venv\Scripts\activate && set PYTHONPATH=%CD% && python -m src.main"
 echo [INFO] Backend will use random port
 
 REM Wait for backend to become healthy before Electron tries to reuse it
@@ -50,7 +50,7 @@ if exist "frontend_port.json" (
 )
 
 echo [2/3] Starting frontend dev server...
-start "VidFlow Frontend" cmd /k "cd /d "%~dp0\..\frontend" && npm run dev"
+start "VidFlow Frontend" cmd /k "cd /d "%~dp0\..\..\frontend" && npm run dev"
 echo [WAIT] Waiting for frontend to write port file...
 for /l %%i in (1,1,30) do (
     if exist "frontend_port.json" goto :frontend_ready
@@ -70,7 +70,7 @@ echo [3/3] Starting Electron Desktop App...
 timeout /t 2 >nul
 
 REM Start Electron
-start "VidFlow Electron" "%~dp0START_ELECTRON_DEV.bat"
+start "VidFlow Electron" "%~dp0start-electron-dev.bat"
 
 echo.
 color 0A

@@ -4,7 +4,7 @@
 
 ## 📋 脚本列表
 
-### 1. `setup-mac.sh` - 环境初始化
+### 1. `dev/setup-mac.sh` - 环境初始化
 一键配置开发环境，安装所有必要的依赖。
 
 **功能**:
@@ -15,15 +15,15 @@
 
 **使用方法**:
 ```bash
-chmod +x scripts/setup-mac.sh
-./scripts/setup-mac.sh
+chmod +x scripts/dev/setup-mac.sh
+./scripts/dev/setup-mac.sh
 ```
 
 **首次使用必须运行此脚本！**
 
 ---
 
-### 2. `dev-mac.sh` - 开发模式
+### 2. `dev/dev-mac.sh` - 开发模式
 启动完整的开发环境（前端 + 后端 + Electron）。
 
 **功能**:
@@ -34,8 +34,8 @@ chmod +x scripts/setup-mac.sh
 
 **使用方法**:
 ```bash
-chmod +x scripts/dev-mac.sh
-./scripts/dev-mac.sh
+chmod +x scripts/dev/dev-mac.sh
+./scripts/dev/dev-mac.sh
 ```
 
 **或使用 npm 命令**:
@@ -47,7 +47,7 @@ npm run dev
 
 ---
 
-### 3. `build-mac.sh` - 生产构建
+### 3. `build/build-mac.sh` - 生产构建
 构建可分发的 macOS DMG 安装包。
 
 **功能**:
@@ -59,8 +59,8 @@ npm run dev
 
 **使用方法**:
 ```bash
-chmod +x scripts/build-mac.sh
-./scripts/build-mac.sh
+chmod +x scripts/build/build-mac.sh
+./scripts/build/build-mac.sh
 ```
 
 **或使用 npm 命令**:
@@ -81,13 +81,13 @@ git clone <repository-url>
 cd VidFlow
 
 # 2. 赋予脚本执行权限
-chmod +x scripts/*.sh
+chmod +x scripts/dev/*.sh scripts/build/*.sh
 
 # 3. 初始化环境
-./scripts/setup-mac.sh
+./scripts/dev/setup-mac.sh
 
 # 4. 启动开发模式
-./scripts/dev-mac.sh
+./scripts/dev/dev-mac.sh
 ```
 
 ### 日常开发
@@ -96,7 +96,7 @@ chmod +x scripts/*.sh
 npm run dev
 
 # 或直接运行脚本
-./scripts/dev-mac.sh
+./scripts/dev/dev-mac.sh
 ```
 
 ### 构建发布版本
@@ -105,7 +105,7 @@ npm run dev
 npm run build:mac
 
 # 或直接运行脚本
-./scripts/build-mac.sh
+./scripts/build/build-mac.sh
 ```
 
 ---
@@ -158,7 +158,7 @@ dist-output/
 ### 1. 权限错误
 ```bash
 # 赋予执行权限
-chmod +x scripts/*.sh
+chmod +x scripts/dev/*.sh scripts/build/*.sh
 ```
 
 ### 2. Python 版本问题
@@ -184,8 +184,8 @@ brew upgrade node
 ```bash
 # 清理并重新构建
 rm -rf node_modules frontend/node_modules backend/venv
-./scripts/setup-mac.sh
-./scripts/build-mac.sh
+./scripts/dev/setup-mac.sh
+./scripts/build/build-mac.sh
 ```
 
 ### 5. Electron 打包失败

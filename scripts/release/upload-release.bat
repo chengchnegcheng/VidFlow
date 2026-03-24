@@ -2,7 +2,7 @@
 chcp 65001 >nul
 setlocal
 
-cd /d "%~dp0\.."
+cd /d "%~dp0\..\.."
 title VidFlow - Upload Release
 color 0A
 
@@ -23,7 +23,7 @@ if not exist "%INSTALLER_PATH%" (
 
 if not exist "%INSTALLER_PATH%" (
     echo [ERROR] Installer not found.
-    echo [INFO] Build the release first with BUILD_RELEASE.bat or npm run build.
+    echo [INFO] Build the release first with scripts\build\build-release.bat or npm run build.
     echo.
     dir dist-output\*.exe 2>nul
     pause
@@ -100,7 +100,7 @@ goto end
 echo.
 echo [INFO] Syncing current build outputs into releases\v%VERSION% ...
 echo [INFO] Existing snapshot will be replaced to avoid stale files affecting delta generation.
-node scripts\archive-release.js --version=%VERSION%
+node scripts\release\archive-release.js --version=%VERSION%
 if errorlevel 1 (
     echo.
     echo [ERROR] Failed to sync local release snapshot.
@@ -108,7 +108,7 @@ if errorlevel 1 (
     goto end
 )
 echo.
-echo [INFO] You can now run GENERATE_DELTA.bat or npm run delta -- sourceVersion
+echo [INFO] You can now run scripts\release\generate-delta.bat or npm run delta -- sourceVersion
 echo.
 pause
 goto end

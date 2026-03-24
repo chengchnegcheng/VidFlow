@@ -1,5 +1,6 @@
 @echo off
 chcp 65001 >nul
+cd /d "%~dp0\..\.."
 echo ===============================================
 echo VidFlow 发布构建脚本
 echo ===============================================
@@ -50,7 +51,7 @@ cd backend
 REM 检查虚拟环境
 if not exist "venv\Scripts\python.exe" (
     echo ❌ 虚拟环境不存在！
-    echo 💡 请先运行 SETUP.bat 创建虚拟环境
+    echo 💡 请先运行 scripts\dev\setup.bat 创建虚拟环境
     cd ..
     pause
     goto menu
@@ -112,7 +113,7 @@ cd backend
 REM 检查虚拟环境
 if not exist "venv\Scripts\python.exe" (
     echo ❌ 虚拟环境不存在！
-    echo 💡 请先运行 SETUP.bat 创建虚拟环境
+    echo 💡 请先运行 scripts\dev\setup.bat 创建虚拟环境
     cd ..
     pause
     goto menu

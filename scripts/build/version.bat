@@ -2,7 +2,7 @@
 chcp 65001 >nul
 setlocal enabledelayedexpansion
 
-cd /d "%~dp0\.."
+cd /d "%~dp0\..\.."
 title VidFlow - 版本号管理
 color 0B
 

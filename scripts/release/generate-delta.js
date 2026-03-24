@@ -3,7 +3,7 @@ const path = require('path');
 const readline = require('readline');
 const { spawn } = require('child_process');
 
-const rootDir = path.join(__dirname, '..');
+const rootDir = path.join(__dirname, '..', '..');
 const backendDir = path.join(rootDir, 'backend');
 const releasesDir = path.join(rootDir, 'releases');
 const packageJsonPath = path.join(rootDir, 'package.json');
@@ -50,7 +50,7 @@ function printHeader(targetVersion) {
 
 function printUsage() {
   console.log('Usage:');
-  console.log('  node scripts/generate-delta.js <sourceVersion>');
+  console.log('  node scripts/release/generate-delta.js <sourceVersion>');
   console.log('  npm run delta -- <sourceVersion>');
   console.log('  npm run delta:list');
   console.log('');

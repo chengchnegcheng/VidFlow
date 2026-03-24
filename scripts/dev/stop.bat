@@ -3,7 +3,7 @@ chcp 65001 >nul
 title VidFlow Desktop - Stop Services
 color 0C
 
-cd /d "%~dp0\.."
+cd /d "%~dp0\..\.."
 
 echo.
 echo ========================================
@@ -101,7 +101,7 @@ echo   Frontend: Stopped
 echo   Electron: Stopped
 echo   Port file: Cleaned
 echo.
-echo You can now safely restart using START.bat
+echo You can now safely restart using start.bat
 echo.
 echo ========================================
 echo.
