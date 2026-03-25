@@ -28,7 +28,7 @@ function printUsage() {
   console.log('  --source=<version>    增量包的源版本号');
   console.log('  --target=<version>    目标版本号，默认使用 package.json 中的版本');
   console.log('  --platform=<name>     平台，默认使用当前平台');
-  console.log('  --arch=<name>         架构，默认使用当前架构');
+  console.log('  --arch=<name>         架构，默认自动识别目标安装包架构');
   console.log('  --skip-build          跳过重新构建，直接复用现有产物');
 }
 
@@ -37,7 +37,7 @@ function parseArgs(argv) {
     sourceVersion: '',
     targetVersion: '',
     platform: isWin ? 'win32' : process.platform,
-    arch: process.arch,
+    arch: '',
     skipBuild: false
   };
 

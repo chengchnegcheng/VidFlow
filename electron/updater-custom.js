@@ -6,6 +6,11 @@ const crypto = require('crypto');
 const axios = require('axios');
 const { DeltaUpdater } = require('./delta-updater');
 
+// 创建禁用代理的 axios 实例，防止嗅探器的系统代理干扰更新请求
+const updateAxios = axios.create({
+  proxy: false
+});
+
 const DEFAULT_UPDATE_SERVER_URL = process.env.VIDFLOW_UPDATE_SERVER_URL || 'https://shcrystal.top:8321';
 const LOOPBACK_UPDATE_HOSTS = new Set(['127.0.0.1', 'localhost', '::1']);
 
@@ -68,7 +73,8 @@ class CustomUpdater extends EventEmitter {
       'ETIMEDOUT',
       'ENOTFOUND',
       'EAI_AGAIN',
-      'ERR_NETWORK'
+      'ERR_NETWORK',
+      'EPROTO'
     ]);
 
     if (transientCodes.has(code)) {
@@ -86,7 +92,10 @@ class CustomUpdater extends EventEmitter {
       'timed out',
       'timeout',
       'enotfound',
-      'eai_again'
+      'eai_again',
+      'eproto',
+      'wrong_version_number',
+      'ssl routines'
     ].some((token) => message.includes(token));
   }
 
@@ -373,7 +382,7 @@ class CustomUpdater extends EventEmitter {
     try {
       await this.reportPendingInstallSuccessIfNeeded();
 
-      const response = await axios.post(
+      const response = await updateAxios.post(
         `${this.updateServerUrl}/api/v1/updates/check`,
         {
           current_version: this.currentVersion,
@@ -510,7 +519,7 @@ class CustomUpdater extends EventEmitter {
       }
 
       // 下载文件
-      const response = await axios({
+      const response = await updateAxios({
         method: 'GET',
         url: trustedDownloadUrl,
         responseType: 'stream',
@@ -617,7 +626,7 @@ class CustomUpdater extends EventEmitter {
       const pendingInstall = JSON.parse(fs.readFileSync(this.pendingInstallPath, 'utf8'));
       if (pendingInstall.to_version !== this.currentVersion) {
         if (pendingInstall.from_version === this.currentVersion) {
-          await axios.post(
+          await updateAxios.post(
             `${this.updateServerUrl}/api/v1/stats/install`,
             {
               user_id: pendingInstall.user_id || this.userId,
@@ -637,7 +646,7 @@ class CustomUpdater extends EventEmitter {
         return;
       }
 
-      await axios.post(
+      await updateAxios.post(
         `${this.updateServerUrl}/api/v1/stats/install`,
         {
           user_id: pendingInstall.user_id || this.userId,
@@ -753,7 +762,7 @@ class CustomUpdater extends EventEmitter {
    */
   async reportDownloadComplete() {
     try {
-      await axios.post(
+      await updateAxios.post(
         `${this.updateServerUrl}/api/v1/stats/download`,
         {
           user_id: this.userId,
@@ -776,7 +785,7 @@ class CustomUpdater extends EventEmitter {
    */
   async reportInstallStarted() {
     try {
-      await axios.post(
+      await updateAxios.post(
         `${this.updateServerUrl}/api/v1/stats/install`,
         {
           user_id: this.userId,
@@ -799,7 +808,7 @@ class CustomUpdater extends EventEmitter {
    */
   async reportInstallFailed(errorMessage) {
     try {
-      await axios.post(
+      await updateAxios.post(
         `${this.updateServerUrl}/api/v1/stats/install`,
         {
           user_id: this.userId,

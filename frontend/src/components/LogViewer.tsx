@@ -55,10 +55,20 @@ export function LogViewer() {
   const [stats, setStats] = useState<LogStats | null>(null);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [levelFilter, setLevelFilter] = useState<string>('ALL');
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [showClearDialog, setShowClearDialog] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout>>();
+
+  // 搜索防抖：输入停止 400ms 后才触发查询
+  useEffect(() => {
+    debounceTimerRef.current = setTimeout(() => {
+      setDebouncedSearch(searchQuery);
+    }, 400);
+    return () => clearTimeout(debounceTimerRef.current);
+  }, [searchQuery]);
 
   // 切换日志级别过滤
   const handleLevelChange = (newLevel: string) => {
@@ -75,8 +85,8 @@ export function LogViewer() {
         params.level = levelFilter;
       }
 
-      if (searchQuery.trim()) {
-        params.search = searchQuery.trim();
+      if (debouncedSearch.trim()) {
+        params.search = debouncedSearch.trim();
       }
 
       const result = await invoke('get_logs', params);
@@ -87,7 +97,7 @@ export function LogViewer() {
     } finally {
       setLoading(false);
     }
-  }, [levelFilter, searchQuery]);
+  }, [levelFilter, debouncedSearch]);
 
   // 获取统计
   const fetchStats = useCallback(async () => {
@@ -431,7 +441,7 @@ export function LogViewer() {
                       <span className="text-muted-foreground text-xs mt-0.5 w-32 flex-shrink-0 truncate select-text">
                         {log.logger}
                       </span>
-                      <span className="flex-1 break-words select-text">{log.message}</span>
+                      <span className="flex-1 break-words select-text whitespace-pre-wrap">{log.message}</span>
                     </div>
                   </div>
                 ))

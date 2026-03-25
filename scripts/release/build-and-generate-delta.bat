@@ -16,5 +16,9 @@ if not "%EXIT_CODE%"=="0" (
     echo [完成] 构建并生成增量包完成。
 )
 echo.
-pause
+call :pause_if_needed
 exit /b %EXIT_CODE%
+
+:pause_if_needed
+if /i not "%VIDFLOW_SKIP_PAUSE%"=="1" pause
+exit /b 0

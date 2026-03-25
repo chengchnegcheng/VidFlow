@@ -313,6 +313,8 @@ async def add_process_time_header(request: Request, call_next):
         "/api/v1/system/network/proxy-check",
         "/api/v1/system/tools/status",
         "/api/v1/system/tools/check-updates",
+        "/api/v1/system/gpu/status",
+        "/api/channels/certificate",
     }
     if process_time > 1.0 and request.url.path not in slow_request_whitelist:
         logger.warning(

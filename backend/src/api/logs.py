@@ -2,8 +2,10 @@
 日志管理 API
 """
 import os
+import re
 import sys
 import logging
+from datetime import datetime
 from pathlib import Path
 from fastapi import APIRouter, HTTPException, Query, Depends, Request, Header, status
 from fastapi.responses import FileResponse
@@ -29,6 +31,13 @@ else:
 LOGS_DIR = BASE_DIR / "data" / "logs"
 LOG_FILE = LOGS_DIR / "app.log"
 
+# 日志行起始模式：以时间戳开头 (2025-10-26 01:53:12,123)
+_LOG_LINE_START = re.compile(r'^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}')
+
+# 尾部读取默认大小（1MB，足够容纳数千条日志）
+_TAIL_READ_BYTES = 1024 * 1024
+
+
 class LogEntry(BaseModel):
     """日志条目"""
     timestamp: str
@@ -36,6 +45,7 @@ class LogEntry(BaseModel):
     logger: str
     message: str
     line_number: int
+
 
 class LogStats(BaseModel):
     """日志统计"""
@@ -47,26 +57,100 @@ class LogStats(BaseModel):
     file_size: int
     last_modified: str
 
+
 # 统计缓存（避免频繁读取大文件）
 _stats_cache: Optional[LogStats] = None
 _stats_cache_mtime: Optional[float] = None
 
-def parse_log_line(line: str, line_number: int) -> Optional[LogEntry]:
-    """解析日志行"""
+
+async def _read_file_tail(file_path: Path, max_bytes: int = _TAIL_READ_BYTES) -> tuple[str, int]:
+    """从文件尾部读取内容，避免全量加载大文件
+
+    Args:
+        file_path: 日志文件路径
+        max_bytes: 最大读取字节数
+
+    Returns:
+        (文本内容, 估算的跳过行数)
+    """
+    file_size = file_path.stat().st_size
+    if file_size <= max_bytes:
+        async with aiofiles.open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+            return await f.read(), 0
+
+    # 从尾部读取
+    async with aiofiles.open(file_path, 'rb') as f:
+        await f.seek(-max_bytes, 2)
+        raw = await f.read()
+
+    text = raw.decode('utf-8', errors='ignore')
+    # 丢弃第一个不完整的行
+    first_newline = text.find('\n')
+    if first_newline >= 0:
+        text = text[first_newline + 1:]
+
+    # 估算跳过的行数
+    lines_in_text = text.count('\n') + 1
+    avg_line_len = max(1, len(text) / max(1, lines_in_text))
+    skipped_bytes = file_size - max_bytes
+    estimated_skipped = int(skipped_bytes / avg_line_len)
+
+    return text, estimated_skipped
+
+
+def _merge_multiline(raw_lines: list[str], line_offset: int = 0) -> list[tuple[str, int]]:
+    """将续行（堆栈跟踪等）合并到所属的日志条目
+
+    返回 (合并后的文本, 起始行号) 列表
+    """
+    entries: list[tuple[str, int]] = []
+    current_text: Optional[str] = None
+    current_line_no = 0
+
+    for i, line in enumerate(raw_lines):
+        stripped = line.rstrip('\n\r')
+        if not stripped:
+            continue
+
+        if _LOG_LINE_START.match(stripped):
+            # 新日志条目开始 → 保存上一条
+            if current_text is not None:
+                entries.append((current_text, current_line_no))
+            current_text = stripped
+            current_line_no = line_offset + i
+        elif current_text is not None:
+            # 续行（traceback / 多行消息），追加到当前条目
+            current_text += '\n' + stripped
+
+    # 保存最后一条
+    if current_text is not None:
+        entries.append((current_text, current_line_no))
+
+    return entries
+
+
+def _parse_entry(text: str, line_number: int) -> Optional[LogEntry]:
+    """解析单条日志（支持多行消息）"""
     try:
-        # 格式: 2025-10-26 01:53:12,123 - logger_name - LEVEL - message
-        parts = line.split(' - ', 3)
-        if len(parts) >= 4:
-            return LogEntry(
-                timestamp=parts[0].strip(),
-                logger=parts[1].strip(),
-                level=parts[2].strip(),
-                message=parts[3].strip(),
-                line_number=line_number
-            )
-    except Exception as e:
-        logger.error(f"Failed to parse log line: {e}")
-    return None
+        first_line, *rest = text.split('\n', 1)
+        parts = first_line.split(' - ', 3)
+        if len(parts) < 4:
+            return None
+
+        message = parts[3].strip()
+        if rest:
+            message += '\n' + rest[0]
+
+        return LogEntry(
+            timestamp=parts[0].strip(),
+            logger=parts[1].strip(),
+            level=parts[2].strip(),
+            message=message,
+            line_number=line_number,
+        )
+    except Exception:
+        return None
+
 
 def _extract_bearer_token(authorization: Optional[str]) -> Optional[str]:
     if not authorization:
@@ -75,6 +159,7 @@ def _extract_bearer_token(authorization: Optional[str]) -> Optional[str]:
     if len(parts) == 2 and parts[0].lower() == "bearer":
         return parts[1]
     return None
+
 
 async def verify_log_access(
     request: Request,
@@ -93,6 +178,7 @@ async def verify_log_access(
 
     raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized")
 
+
 @router.get("/", response_model=List[LogEntry], dependencies=[Depends(verify_log_access)])
 async def get_logs(
     limit: int = Query(default=100, description="返回的日志条数"),
@@ -100,57 +186,46 @@ async def get_logs(
     search: Optional[str] = Query(default=None, description="搜索关键词"),
     offset: int = Query(default=0, description="偏移量（用于分页）")
 ):
-    """
-    获取日志列表
-
-    Args:
-        limit: 返回的日志条数
-        level: 日志级别筛选 (INFO, WARNING, ERROR, DEBUG)
-        search: 搜索关键词（支持搜索消息和logger名称）
-        offset: 偏移量（用于分页）
-    """
+    """获取日志列表（从尾部读取，最新在前）"""
     try:
         if not LOG_FILE.exists():
             return []
 
-        logs = []
+        # 尾部读取，避免加载整个 10MB 文件
+        content, line_offset = await _read_file_tail(LOG_FILE)
+        raw_lines = content.splitlines()
+
+        # 合并多行日志（堆栈跟踪）
+        entries = _merge_multiline(raw_lines, line_offset)
+
         search_lower = search.lower() if search else None
+        logs: list[LogEntry] = []
+        need = offset + limit
 
-        # 异步读取文件，避免阻塞事件循环
-        async with aiofiles.open(LOG_FILE, 'r', encoding='utf-8', errors='ignore') as f:
-            content = await f.read()
-            all_lines = content.splitlines(keepends=True)
-
-        # 倒序读取（最新的在前）
-        for i, line in enumerate(reversed(all_lines)):
-            if not line.strip():
+        # 倒序遍历（最新的在前）
+        for text, line_no in reversed(entries):
+            entry = _parse_entry(text, line_no)
+            if entry is None:
                 continue
 
-            log_entry = parse_log_line(line, len(all_lines) - i - 1)
-            if not log_entry:
+            if level and entry.level != level:
                 continue
 
-            # 级别过滤
-            if level and log_entry.level != level:
-                continue
-
-            # 关键词搜索（搜索消息和logger名称）
             if search_lower:
-                if search_lower not in log_entry.message.lower() and search_lower not in log_entry.logger.lower():
+                if (search_lower not in entry.message.lower()
+                        and search_lower not in entry.logger.lower()):
                     continue
 
-            logs.append(log_entry)
-
-            # 达到所需数量就停止
-            if len(logs) >= (offset + limit):
+            logs.append(entry)
+            if len(logs) >= need:
                 break
 
-        # 应用偏移和限制
         return logs[offset:offset + limit]
 
     except Exception as e:
         logger.error(f"Error reading logs: {e}")
         raise HTTPException(status_code=500, detail=f"读取日志失败: {str(e)}")
+
 
 @router.get("/stats", response_model=LogStats, dependencies=[Depends(verify_log_access)])
 async def get_log_stats():
@@ -177,7 +252,7 @@ async def get_log_stats():
         if _stats_cache is not None and _stats_cache_mtime == current_mtime:
             return _stats_cache
 
-        # 统计日志 - 使用异步文件读取避免阻塞
+        # 统计日志 - 逐行扫描，已有缓存机制不会频繁执行
         error_count = 0
         warning_count = 0
         info_count = 0
@@ -196,7 +271,9 @@ async def get_log_stats():
                 elif ' - DEBUG - ' in line:
                     debug_count += 1
 
-        # 创建统计结果
+        # 返回可读的 ISO 格式日期
+        last_modified_str = datetime.fromtimestamp(current_mtime).strftime('%Y-%m-%d %H:%M:%S')
+
         result = LogStats(
             total_lines=total_lines,
             error_count=error_count,
@@ -204,7 +281,7 @@ async def get_log_stats():
             info_count=info_count,
             debug_count=debug_count,
             file_size=file_stat.st_size,
-            last_modified=str(current_mtime)
+            last_modified=last_modified_str,
         )
 
         # 更新缓存
@@ -217,6 +294,7 @@ async def get_log_stats():
         logger.error(f"Error getting log stats: {e}")
         raise HTTPException(status_code=500, detail=f"获取统计失败: {str(e)}")
 
+
 @router.delete("/clear", dependencies=[Depends(verify_log_access)])
 async def clear_logs():
     """清空日志文件"""
@@ -224,11 +302,9 @@ async def clear_logs():
 
     try:
         if LOG_FILE.exists():
-            # 异步清空文件
             async with aiofiles.open(LOG_FILE, 'w', encoding='utf-8', errors='ignore') as f:
                 await f.write("")
 
-            # 清空统计缓存
             _stats_cache = None
             _stats_cache_mtime = None
 
@@ -238,6 +314,7 @@ async def clear_logs():
     except Exception as e:
         logger.error(f"Error clearing logs: {e}")
         raise HTTPException(status_code=500, detail=f"清空日志失败: {str(e)}")
+
 
 @router.get("/download", dependencies=[Depends(verify_log_access)])
 async def download_logs():
@@ -256,6 +333,7 @@ async def download_logs():
         logger.error(f"Error downloading logs: {e}")
         raise HTTPException(status_code=500, detail=f"下载日志失败: {str(e)}")
 
+
 @router.get("/path", dependencies=[Depends(verify_log_access)])
 async def get_log_path():
     """获取日志文件所在目录路径"""
@@ -269,27 +347,27 @@ async def get_log_path():
         logger.error(f"Error getting log path: {e}")
         raise HTTPException(status_code=500, detail=f"获取日志路径失败: {str(e)}")
 
+
 @router.get("/tail", dependencies=[Depends(verify_log_access)])
 async def tail_logs(lines: int = 50):
-    """获取最新的N行日志"""
+    """获取最新的 N 条日志（尾部读取）"""
     try:
         if not LOG_FILE.exists():
             return []
 
-        async with aiofiles.open(LOG_FILE, 'r', encoding='utf-8', errors='ignore') as f:
-            content = await f.read()
-            all_lines = content.splitlines(keepends=True)
+        # 尾部读取（256KB 足够 50 条）
+        content, line_offset = await _read_file_tail(LOG_FILE, max_bytes=256 * 1024)
+        raw_lines = content.splitlines()
+        entries = _merge_multiline(raw_lines, line_offset)
 
-        # 获取最后N行
-        recent_lines = all_lines[-lines:] if len(all_lines) > lines else all_lines
+        # 只取最后 N 条
+        tail_entries = entries[-lines:] if len(entries) > lines else entries
 
-        logs = []
-        for i, line in enumerate(recent_lines):
-            if not line.strip():
-                continue
-            log_entry = parse_log_line(line, len(all_lines) - len(recent_lines) + i)
-            if log_entry:
-                logs.append(log_entry)
+        logs: list[LogEntry] = []
+        for text, line_no in tail_entries:
+            entry = _parse_entry(text, line_no)
+            if entry:
+                logs.append(entry)
 
         return logs
 

@@ -491,7 +491,7 @@ def main():
         platform, arch
     )
 
-    print(f"\n✅ 差异包已生成: {result.delta_path}")
+    print(f"\n[完成] 差异包已生成: {result.delta_path}")
     print(f"   哈希: {result.delta_hash[:32]}...")
 
 

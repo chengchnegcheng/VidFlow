@@ -404,25 +404,39 @@ async def _get_github_version(repo: str, timeout: float = 5.0) -> Optional[str]:
 
     return version
 
+# 工具版本缓存: { tool_path: (version_str, timestamp) }
+_version_cache: dict[str, tuple[Optional[str], float]] = {}
+_VERSION_CACHE_TTL = 60.0  # 缓存 60 秒
+
+
 async def _get_tool_version(tool_path: str, version_arg: str, parse_fn=None, timeout: float = 5.0) -> Optional[str]:
     """
-    通用工具版本检查函数（支持并行执行）
+    通用工具版本检查函数（支持并行执行，带 60s TTL 缓存）
 
     Args:
         tool_path: 工具路径
         version_arg: 版本查询参数（如 "-version" 或 "--version"）
         parse_fn: 可选的版本解析函数
+        timeout: 进程执行超时（秒）
 
     Returns:
         版本字符串或 None
     """
-    try:
-        import asyncio
-        import os
+    import asyncio
+    import os
+    import time as _time
 
-        # 检查工具是否存在
+    # 命中缓存则直接返回
+    cached = _version_cache.get(tool_path)
+    if cached is not None:
+        cached_version, cached_at = cached
+        if _time.monotonic() - cached_at < _VERSION_CACHE_TTL:
+            return cached_version
+
+    try:
         if not os.path.exists(tool_path):
             logger.warning(f"[Version Check] Tool not found: {tool_path}")
+            _version_cache[tool_path] = (None, _time.monotonic())
             return None
 
         logger.debug(f"[Version Check] Getting version for: {tool_path} {version_arg}")
@@ -433,35 +447,34 @@ async def _get_tool_version(tool_path: str, version_arg: str, parse_fn=None, tim
             stderr=asyncio.subprocess.PIPE
         )
 
-        # 设置超时（默认 5 秒，yt-dlp/ffmpeg 足够）
         try:
             stdout, stderr = await asyncio.wait_for(
                 process.communicate(),
                 timeout=timeout
             )
 
-            # yt-dlp 和 ffmpeg 都可能输出到 stdout 或 stderr
             output_raw = stdout or stderr
             if output_raw:
                 output = output_raw.decode('utf-8', errors='ignore').strip()
                 if output:
                     logger.debug(f"[Version Check] Raw output: {output[:100]}")
-                    if parse_fn:
-                        result = parse_fn(output)
-                        logger.info(f"[Version Check] {tool_path}: {result}")
-                        return result
-                    logger.info(f"[Version Check] {tool_path}: {output[:50]}")
-                    return output
+                    result = parse_fn(output) if parse_fn else output[:50]
+                    logger.info(f"[Version Check] {tool_path}: {result}")
+                    _version_cache[tool_path] = (result, _time.monotonic())
+                    return result
 
             logger.warning(f"[Version Check] {tool_path} {version_arg}: no output (returncode={process.returncode})")
         except asyncio.TimeoutError:
             logger.warning(f"[Version Check] {tool_path} {version_arg}: timeout after {timeout}s")
             try:
                 process.kill()
-            except:
+            except Exception:
                 pass
     except Exception as e:
         logger.error(f"[Version Check] {tool_path} {version_arg}: {type(e).__name__}: {e}")
+
+    # 超时或失败也缓存，避免反复重试
+    _version_cache[tool_path] = (None, _time.monotonic())
     return None
 
 @router.get("/tools/status", response_model=List[ToolStatus])

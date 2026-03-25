@@ -2486,9 +2486,11 @@ async def get_driver_status():
 
 @router.post("/driver/install")
 async def install_driver():
-    """安装驱动"""
+    """安装驱动（自动从 GitHub 下载 WinDivert）"""
     try:
-        result = await asyncio.to_thread(get_driver_manager().install)
+        manager = get_driver_manager()
+        # 优先使用自动下载安装，会自动检测是否已安装
+        result = await manager.download_and_install()
         return result.to_dict()
     except Exception as e:
         logger.error(f"Error installing driver: {e}")

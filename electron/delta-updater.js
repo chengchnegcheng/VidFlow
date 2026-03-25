@@ -5,6 +5,11 @@ const crypto = require('crypto');
 const axios = require('axios');
 const AdmZip = require('adm-zip');
 
+// 创建禁用代理的 axios 实例，防止嗅探器的系统代理干扰更新请求
+const updateAxios = axios.create({
+  proxy: false
+});
+
 class DeltaUpdater extends EventEmitter {
   constructor(customUpdater) {
     super();
@@ -167,7 +172,7 @@ class DeltaUpdater extends EventEmitter {
       }
 
       // 下载差异包
-      const response = await axios({
+      const response = await updateAxios({
         method: 'GET',
         url: trustedDeltaUrl,
         responseType: 'stream',
@@ -650,7 +655,7 @@ class DeltaUpdater extends EventEmitter {
   async reportUpdateResult(success, error = null) {
     try {
       const targetVersion = this.deltaInfo?.target_version || this.updateInfo?.latest_version;
-      await axios.post(
+      await updateAxios.post(
         `${this.customUpdater.updateServerUrl}/api/v1/updates/deltas/report`,
         {
           user_id: this.customUpdater.userId,
@@ -677,7 +682,7 @@ class DeltaUpdater extends EventEmitter {
   async reportPendingUpdateResult(updateInfo, success, error = null) {
     try {
       const { manifest } = updateInfo;
-      await axios.post(
+      await updateAxios.post(
         `${this.customUpdater.updateServerUrl}/api/v1/updates/deltas/report`,
         {
           user_id: this.customUpdater.userId,
